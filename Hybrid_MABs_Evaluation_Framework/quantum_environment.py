@@ -1,5 +1,5 @@
 from __future__ import annotations
-import numpy as np, gc
+import numpy as np, gc, copy
 from typing import Optional, List
 from abc import ABC, abstractmethod
 
@@ -335,14 +335,14 @@ class QuantumEnvironment:
         attack = self.generate_attack_pattern().astype(np.int8, copy=False)
         attack.setflags(write=False)
         return {
-            'contexts': self.contexts,
-            'reward_functions': self.reward_list,
-            'attack_pattern': attack,
+            'contexts': copy.deepcopy(self.contexts),
+            'reward_functions': copy.deepcopy(self.reward_list),
+            'attack_pattern': copy.deepcopy(attack),
             'num_paths': self.num_paths,        # Add these for consistency
-            'frame_length': self.frame_length,  # Add these for consistency  
-            'qubit_capacities': self.qubit_capacities,  # Add these for consistency
+            'frame_length': self.frame_length,  # Add these for consistency
+            'qubit_capacities': copy.deepcopy(self.qubit_capacities),  # Add these for consistency
             'config': {
-                'qubit_capacities': self.qubit_capacities,
+                'qubit_capacities': copy.deepcopy(self.qubit_capacities),
                 'frame_length': self.frame_length,
                 'num_paths': self.num_paths,
                 'attack_strategy': "NoAttack",

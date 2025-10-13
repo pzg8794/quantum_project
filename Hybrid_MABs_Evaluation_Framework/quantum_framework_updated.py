@@ -1,5 +1,5 @@
 import time, gc
-import numpy as np
+import numpy as np, copy
 from quantum_configuration import QuantumExperimentConfig
 from quantum_experiments_updated import QuantumExperimentRunner as ExperimentRunner
 
@@ -198,12 +198,11 @@ class MultiRunEvaluator:
             self.calculate_scenario_performance(scenario)
                 
 
-    def calculate_scenario_winner(self, comparison_results, scenario):
+    def calculate_scenario_winner(self, comparison_results, scenario, baseline_model='Oracle'):
         """
         FIXED: Calculate efficiency per experiment, then average.
         """
         if scenario not in comparison_results: return {}
-
         all_experiments = comparison_results[scenario]
         exps_no = len(all_experiments)
         if exps_no == 0: return {}
@@ -212,8 +211,7 @@ class MultiRunEvaluator:
         winner_efficients = {}
         total_oracle_reward = 0
         for exp_data in all_experiments.values():
-            exp_oracle = exp_data['oracle_reward']
-
+            exp_oracle = exp_data['results'][baseline_model]['final_reward']
             for model_name, model_result in exp_data['results'].items():
                 if model_name not in model_totals:
                     model_totals[model_name] = {'avg_reward':0, 'avg_gap':0, 'efficiency_list':[], 'wins':0, 'avg_efficiency':0, 'reward_list':[], 'creward_list':[]}
@@ -256,6 +254,7 @@ class MultiRunEvaluator:
             'avg_efficiency': model_totals[efficiency_winner]['avg_efficiency']
         }
         self.evaluation_results[scenario].update({'avg_efficiency_stats':self.scenarios_stats[scenario]})
+        print(f"Scenario '{scenario}' evaluation completed.")
 
 
     def calculate_scenarios_winner(self, comparison_results, scenarios):
@@ -265,8 +264,18 @@ class MultiRunEvaluator:
         for scenario in scenarios.keys():
             if scenario in comparison_results:
                 self.calculate_scenario_winner(comparison_results, scenario)
+        self.evaluation_results.update({'scenarios_results':self.scenarios_stats})
+        self.calculate_scenarios_performance()
+        self.generate_key_insights()
 
-    def run_scenario_model_evaluaiton(self, runs=1, models=None, attack_type=None, scenario=None):
+
+    def get_evaluation_results(self):
+        """
+        Get the comprehensive evaluation results.
+        """    
+        return copy.deepcopy(self.evaluation_results)
+
+    def run_scenario_model_evaluation(self, runs=1, models=None, attack_type=None, scenario=None):
         """
         Wrapper to run comprehensive evaluation for a single scenario.
         """
@@ -276,16 +285,22 @@ class MultiRunEvaluator:
         if scenario is None: scenario = self.attack_type
         return self.run_experiments(exps_num=runs, attack_type=attack_type, algorithms=models)
 
-    def generate_key_insights(self, runs, models=None):
+    def generate_key_insights(self):
         """
         Generate key insights from the evaluation results.
         """
         print("KEY INSIGHTS:")
         # Performance retention analysis if both stochastic and baseline exist
+        exp_ran = 0
+        models_length = 0
         if 'stochastic' in self.scenarios_stats and self.scenarios_stats['stochastic'] and 'none' in self.scenarios_stats and self.scenarios_stats['none']:
-            baseline_stats = self.scenarios_stats['none']
-            stoch_stats = self.scenarios_stats['stochastic']
-            
+
+            baseline_stats = self.scenarios_stats['none']['avg_efficiency_stats'] if 'avg_efficiency_stats' in self.scenarios_stats['none'] else self.scenarios_stats['none']
+            stoch_stats = self.scenarios_stats['stochastic']['avg_efficiency_stats'] if 'avg_efficiency_stats' in self.scenarios_stats['stochastic'] else self.scenarios_stats['stochastic']
+
+            exp_ran = stoch_stats['total_experiments']
+            models_length = len(stoch_stats['all_model_metrics'])
+
             best_model = stoch_stats['overall_winner']
             stoch_performance = stoch_stats['avg_reward']
             baseline_performance = baseline_stats['avg_reward']
@@ -309,6 +324,9 @@ class MultiRunEvaluator:
 
         elif 'stochastic' in self.scenarios_stats and self.scenarios_stats['stochastic']:
             # Stochastic-only analysis
+            exp_ran = self.scenarios_stats['stochastic']['total_experiments']
+            models_length = len(self.evaluation_results['stochastic']['all_model_metrics'])
+            
             stoch_stats = self.scenarios_stats['stochastic']
             print(f"Stochastic Environment Analysis:")
             print(f"\t• Best Model:         \t{stoch_stats['overall_winner']}")
@@ -317,14 +335,14 @@ class MultiRunEvaluator:
 
         # Statistical significance and ranking
         print(f"Statistical Analysis:")
-        print(f"\t• Total models evaluated:     \t{len(models)}")
-        print(f"\t• Experiments per environment:\t{runs}")
+        print(f"\t• Total models evaluated:     \t{models_length}")
+        print(f"\t• Experiments per environment:\t{exp_ran}")
         print(f"\t• Quantum network simulation: \tComprehensive stochastic modeling")
         
         print("="*70)
 
 
-    def run_scenarios_model_evaluation(self, runs=1, models=None, attack_type=None, scenarios=None):
+    def run_scenarios_model_evaluation(self, runs=1, models=None, attack_type=None, scenarios=None, cal_winner=False):
         """
         Run comprehensive model evaluation in realistic quantum network conditions.
 
@@ -352,20 +370,16 @@ class MultiRunEvaluator:
         # Run experiments for all specified scenarios
         self.evaluation_results = {}
         for environ_type in self.test_scenarios.keys():
-            if attack_type and environ_type != attack_type: continue
-            experiment_results = self.run_scenario_model_evaluaiton(runs=runs, models=models, attack_type=environ_type, scenario=environ_type)
-            self.evaluation_results[environ_type] = experiment_results
-            self.calculate_scenario_winner(experiment_results, environ_type)
-
-        self.calculate_scenarios_performance()
-        self.evaluation_results.update({'scenarios_results':self.scenarios_stats})
-
-        # --- Your KEY INSIGHTS section remains the same and should now work correctly ---
-        self.generate_key_insights(runs, models=models)
+            # if attack_type and environ_type != attack_type: continue
+            experiment_results = self.run_scenario_model_evaluation(runs=runs, models=models, attack_type=environ_type, scenario=environ_type)
+            # deep copy
+            self.evaluation_results[environ_type] = copy.deepcopy(experiment_results)
+            # self.calculate_scenario_winner(experiment_results, environ_type)
+        if cal_winner: self.calculate_scenarios_winner(self.evaluation_results, self.test_scenarios)
 
         return self.evaluation_results
 
-    def print_summary(self, attack_type=None):
+    def print_summary(self, attack_type=None, baseline_model='Oracle'):
         """Print comprehensive results summary."""
         if attack_type: target_type = attack_type
         else: target_type = self.attack_type
@@ -382,9 +396,8 @@ class MultiRunEvaluator:
 
         # Get all algorithms from first experiment
         first_exp = next(iter(experiments.values()))
-        algorithms = [alg for alg in first_exp['results'].keys() if alg != 'Oracle']
-
-        for alg in algorithms:
+        for alg in first_exp['results'].keys():
+            if alg == baseline_model: continue
             rewards = [exp['results'][alg]['final_reward'] for exp in experiments.values()]
             gaps = [exp['results'][alg]['gap']  for exp in experiments.values()]
 
@@ -394,7 +407,7 @@ class MultiRunEvaluator:
             print(f"\tWins:     \t{sum(1 for exp in experiments.values() if exp['winner'] == alg)}/{len(experiments)}")
 
         # Oracle efficiency analysis
-        oracle_rewards = [exp['oracle_reward'] for exp in experiments.values()]
+        oracle_rewards = [exp['results'][baseline_model]['final_reward'] for exp in experiments.values()]
         print(f"Oracle Performance: \t{np.mean(oracle_rewards):.1f} ± {np.std(oracle_rewards):.1f}")
 
         # Best performing algorithm
@@ -406,7 +419,7 @@ class MultiRunEvaluator:
         best_algorithm = max(winner_counts, key=winner_counts.get)
         print(f"Best Overall Algorithm: \t{best_algorithm} ({winner_counts[best_algorithm]}/{len(experiments)} wins)")
         
-    def cleanup(self, verbose=False, cooldown_seconds=6):
+    def cleanup(self, verbose=False, cooldown_seconds=1):
         """
         Clean up multi-run evaluator resources.
         
@@ -416,9 +429,8 @@ class MultiRunEvaluator:
         Args:
             verbose: If True, print detailed cleanup information
         """
-        import gc
         cleanup_items = []
-        if cooldown_seconds > 0: time.sleep(self.configs.get_cleanup_wait_time())
+        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
         
         # 1. Deep clean env_experiments (nested dictionaries with results)
         if hasattr(self, 'env_experiments'):
@@ -493,7 +505,7 @@ class MultiRunEvaluator:
     
 
     # Usage functions
-    def test_stochastic_environment(self, runs=1, models=None, scenarios=None, attack_type='stochastic'):
+    def test_stochastic_environment(self, runs=1, models=None, scenarios=None, attack_type='stochastic', cal_winner=True):
         """
         Main function to test models in stochastic quantum network conditions.
         
@@ -506,6 +518,7 @@ class MultiRunEvaluator:
         # Run the comprehensive evaluation
         results = self.run_scenarios_model_evaluation(
             attack_type = attack_type,
+            cal_winner=cal_winner,
             scenarios=scenarios,
             models=models,
             runs=runs

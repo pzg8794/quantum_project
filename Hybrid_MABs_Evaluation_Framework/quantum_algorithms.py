@@ -122,7 +122,7 @@ class QuantumModel(ABC):
         }
     
     
-    def cleanup(self, verbose=False, cooldown_seconds=6):
+    def cleanup(self, verbose=False, cooldown_seconds=1):
         """
         Universal cleanup for all quantum models.
         Handles neural networks, CUDA cache, and large data structures.
@@ -131,7 +131,7 @@ class QuantumModel(ABC):
             verbose: If True, print cleanup details
         """
         cleanup_items = []
-        if cooldown_seconds > 0: time.sleep(self.get_cleanup_wait_time())
+        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
         
         # 1. Neural network components (for hybrid models)
         if hasattr(self, 'algorithms'):
@@ -190,7 +190,7 @@ class QuantumModel(ABC):
         cleanup_items.append(f"GC:{collected} objects")
         
         cleanup_items.append(f"cooldown:{cooldown_seconds}s")
-        if cooldown_seconds > 0: time.sleep(self.get_cleanup_wait_time())
+        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
         if verbose: print(f"✓ {self.__class__.__name__} cleaned: {', '.join(cleanup_items)}")
 
     def __del__(self):
@@ -266,11 +266,11 @@ class Oracle(QuantumModel):
 
     def get_results(self):
         return {
-            'regret_list': self.regret_list,
-            'reward_list': self.reward_list_total,
-            'path_action_list': self.path_action_list,
             'final_regret': 0,
-            'final_reward': self.total_reward
+            'regret_list': copy.deepcopy(self.regret_list),
+            'final_reward': copy.deepcopy(self.total_reward),
+            'reward_list': copy.deepcopy(self.reward_list_total),
+            'path_action_list': copy.deepcopy(self.path_action_list)
         }
 
 # Base Random Algorithm Class
@@ -789,17 +789,17 @@ class EXPNeuralUCB(QuantumModel):
 
     def get_results(self):
         results = {
-            'regret_list': self.regret_list,
-            'reward_list': self.reward_list_total,
-            'path_action_list': self.path_action_list,
-            'final_regret': self.regret,
-            'final_reward': self.total_reward,
-            'oracle_path': self.oracle_path,
-            'oracle_action': self.oracle_action,
-            'mode': self.mode
+            'regret_list': copy.deepcopy(self.regret_list),
+            'reward_list': copy.deepcopy(self.reward_list_total),
+            'path_action_list': copy.deepcopy(self.path_action_list),
+            'final_regret': copy.deepcopy(self.regret),
+            'final_reward': copy.deepcopy(self.total_reward),
+            'oracle_path': copy.deepcopy(self.oracle_path),
+            'oracle_action': copy.deepcopy(self.oracle_action),
+            'mode': copy.deepcopy(self.mode)
         }
         if self.mode in ['hybrid', 'exp3']:
-            results['prob_list'] = self.prob_list
+            results['prob_list'] = copy.deepcopy(self.prob_list)
         return results
     
     def cleanup(self, verbose=False):
@@ -1296,11 +1296,11 @@ class CMABModelBase(QuantumModel):
         
     def get_results(self):
         return {
-            'regret_list': self.regret_list,
-            'reward_list': self.reward_list_total,
-            'path_action_list': self.path_action_list,
-            'final_regret': sum(self.regret_list),
-            'final_reward': self.total_reward
+            'regret_list': copy.deepcopy(self.regret_list),
+            'reward_list': copy.deepcopy(self.reward_list_total),
+            'path_action_list': copy.deepcopy(self.path_action_list),
+            'final_regret': copy.deepcopy(sum(self.regret_list)),
+            'final_reward': copy.deepcopy(self.total_reward)
         }
 
 

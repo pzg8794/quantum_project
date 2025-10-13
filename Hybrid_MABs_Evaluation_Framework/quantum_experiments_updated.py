@@ -1,6 +1,6 @@
 from    quantum_configuration import QuantumExperimentConfig, QuantumAlgorithmLock
 from    tqdm    import tqdm
-import  numpy as np
+import  numpy as np, copy
 import  gc, time
 import  torch
 import  threading  
@@ -364,13 +364,13 @@ class QuantumExperimentRunner:
             
         # YOUR ORIGINAL return format with minimal addition
         experiment_results = {
-            'results': results,
             'winner': self.winner,
             'timestamp': time.time(),
             'frame_count': frame_count,
             'oracle_reward': oracle_reward,
             'attack_type': self.attack_type,
             'winner_effiency': oracle_reward,
+            'results': copy.deepcopy(results),
             'attack_category': attack_category,
             'id': int(time.time() * 1000) % 100000
         }
@@ -380,12 +380,11 @@ class QuantumExperimentRunner:
 
         return experiment_results
 
-    @staticmethod
-    def cleanup(self, verbose=False, cooldown_seconds=6):
+    def cleanup(self, verbose=False, cooldown_seconds=1):
         """Enhanced cleanup with model cache support."""
         import gc
         cleanup_items = []
-        if cooldown_seconds > 0: time.sleep(self.configs.get_cleanup_wait_time())
+        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
         
         # 1. Clean up environment
         if hasattr(self, 'environment') and self.environment:

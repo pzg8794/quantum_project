@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import seaborn as sns
-import gc
+import gc, time
 from quantum_configuration import QuantumExperimentConfig
 from quantum_framework_updated import MultiRunEvaluator
 
@@ -995,12 +995,13 @@ class QuantumEvaluatorVisualizer:
         plt.savefig('stochastic_vs_adversarial_comparison.png', dpi=300, bbox_inches='tight')
         plt.show()  # DISPLAYS in notebook
 
-    def cleanup(self, verbose=False):
+    def cleanup(self, verbose=False, cooldown_seconds=1):
         """Clean up visualizer resources."""
         cleanup_items = []
         
         plt.close('all')  # Close all figures
         cleanup_items.append("all matplotlib figures")
+        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
         
         if hasattr(self, 'evaluators'):
             for eval_key, evaluator in self.evaluators.items():
@@ -1029,8 +1030,8 @@ class QuantumEvaluatorVisualizer:
         collected = gc.collect()
         cleanup_items.append(f"GC:{collected} objects")
         
-        if verbose:
-            print(f"✓ QuantumEvaluatorVisualizer cleaned: {', '.join(cleanup_items)}")
+        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
+        if verbose: print(f"✓ QuantumEvaluatorVisualizer cleaned: {', '.join(cleanup_items)}")
 
 
     def __del__(self):

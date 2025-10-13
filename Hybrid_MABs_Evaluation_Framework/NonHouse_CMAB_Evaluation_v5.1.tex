@@ -1,0 +1,91 @@
+
+\documentclass[12pt,a4paper]{article}
+\usepackage{multirow} 
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{margin=0.5in}
+\usepackage{mathptmx}
+\usepackage{helvet}
+\usepackage{courier}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{url}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{tcolorbox}
+\tcbuselibrary{most}
+
+% Highlighting colors
+\definecolor{highlightcolor}{RGB}{255,245,153}
+\definecolor{criticalcolor}{RGB}{220,53,69}
+\definecolor{successcolor}{RGB}{40,167,69}
+
+\title{Evaluation Report: Contextual MAB Performance (Non-House Models)}
+\date{October 10, 2025}
+
+\begin{document}
+\maketitle
+
+\section*{Scope and Focus}
+This report evaluates non-house models only, excluding all versions of EXPNeuralUCB, CEXPNeuralUCB, and GNeuralUCB, due to stability concerns. The purpose is to determine the most robust contextual bandit algorithms for baseline performance and hybrid integration testing with iCMAB modules.
+
+\section*{Selected Evaluation Runs}
+We reference performance data across multiple runs:
+\begin{itemize}
+  \item \textbf{3 Runs, 5 Runs, 8 Runs, 10 Runs} — stochastic failures only
+  \item Baseline performance considered only when consistent across environments
+\end{itemize}
+
+\section*{Top Performing Non-House Models}
+
+\begin{tcolorbox}[colback=highlightcolor!30, colframe=successcolor, title=Recommended Models]
+\begin{itemize}
+  \item \textbf{iCEpsilonGreedy} — Best average efficiency (72.3\%) across stochastic and baseline
+  \item \textbf{iCPursuit} — Consistent top 3 performer (60.3\%) with robust learning patterns
+  \item \textbf{iCThompsonSampling} — Moderate but reliable performance (56.3\%)
+\end{itemize}
+\end{tcolorbox}
+
+\textit{Note: iCEpochGreedy and iCEXP4 were excluded due to poor or unstable performance across runs.}
+
+\section*{Performance Summary (Stochastic \& Baseline)}
+
+\begin{table}[H]
+\centering
+\caption{Stochastic + Baseline Efficiency Summary (Non-House Models)}
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Model} & \textbf{Avg Efficiency (\%)} & \textbf{Oracle Gap (\%)} \\
+\hline
+iCEpsilonGreedy & 72.3 & 27.7 \\
+iCPursuit & 60.3 & 39.7 \\
+iCThompsonSampling & 56.3 & 43.7 \\
+iCEpochGreedy & 33.5 & 66.5 \\
+iCEXP4 & 32.5 & 67.5 \\
+\hline
+\end{tabular}
+\end{table}
+
+\section*{Hybrid Integration Strategy}
+Based on consistent performance, we recommend:
+\begin{itemize}
+  \item Using \textbf{iCEpsilonGreedy} as the baseline in initial hybrid iCMAB integration.
+  \item Parallel testing with \textbf{iCPursuit} to evaluate learning stability under noise.
+  \item Avoiding iCEXP4/iCEpochGreedy until performance improves significantly.
+\end{itemize}
+
+\section*{Next Steps}
+\begin{enumerate}
+  \item Implement iCMAB-informed reward forecasting layer on top of iCEpsilonGreedy.
+  \item Design 3-stage robustness benchmark: stochastic, semi-adversarial, full adversarial.
+  \item Validate hybrid model with 10-run config and compare to Tier 1 performers (EXPNeuralUCB/GNeuralUCB).
+\end{enumerate}
+
+\end{document}

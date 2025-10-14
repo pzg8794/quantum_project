@@ -215,7 +215,7 @@ class QuantumExperimentRunner:
             results.update({algorithm_name:self.run_algorithm(algorithm_name, frame_count)})
             final_reward = results[algorithm_name].get('final_reward', 0.0)
 
-            gap = ((oracle_reward - final_reward) / oracle_reward) * 100 if final_reward > 0 else float('inf')
+            gap = ((oracle_reward - final_reward) / oracle_reward) * 100 if final_reward > 0 else 0.0
             results[algorithm_name].update({'efficiency': (final_reward/oracle_reward)*100})
             results[algorithm_name].update({'gap': gap})
 
@@ -264,7 +264,7 @@ class QuantumExperimentRunner:
             results[algorithm_name] = threaded_results[algorithm_name]
             final_reward = results[algorithm_name].get('final_reward', 0.0)
 
-            gap = ((oracle_reward - final_reward) / oracle_reward) * 100 if final_reward > 0 else float('inf')
+            gap = ((oracle_reward - final_reward) / oracle_reward) * 100 if final_reward > 0 else 0.0
             results[algorithm_name].update({'efficiency': final_reward/oracle_reward*100})
             results[algorithm_name].update({'gap': gap})
 
@@ -305,7 +305,7 @@ class QuantumExperimentRunner:
                 final_reward = results[algorithm_name].get('final_reward', 0.0)
 
                 # Calculate gap
-                gap = ((oracle_reward - final_reward) / oracle_reward) * 100 if final_reward > 0 else float('inf')
+                gap = ((oracle_reward - final_reward) / oracle_reward) * 100 if final_reward > 0 else 0.0
                 results[algorithm_name].update({'efficiency': final_reward/oracle_reward*100})
                 results[algorithm_name].update({'gap': gap})
 
@@ -327,7 +327,7 @@ class QuantumExperimentRunner:
                 results[algorithm_name] = {
                     'final_reward': 0.0,
                     'error': str(e),
-                    'gap': float('inf'),
+                    'gap': 0.0,
                     'efficiency': 0.0
                 }
             

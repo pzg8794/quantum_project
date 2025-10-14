@@ -1,12 +1,12 @@
 # quantum_mab_models_visualizer.py
 
 import matplotlib.pyplot as plt
+import gc, time, copy
+import seaborn as sns
 import pandas as pd
 import numpy as np
-import seaborn as sns
-import gc, time
-from quantum_configuration import QuantumExperimentConfig
 from quantum_framework_updated import MultiRunEvaluator
+from quantum_configuration import QuantumExperimentConfig
 
 class QuantumEvaluatorVisualizer:
     """
@@ -29,8 +29,8 @@ class QuantumEvaluatorVisualizer:
             config (QuantumExperimentConfig): Experiment configuration instance.
         """
         self.config = QuantumExperimentConfig()  if config is not None else config
-        self.framework_config = framework_config or {}
-        self.evaluation_results = comparison_results
+        self.framework_config = copy.deepcopy(framework_config) or {}
+        self.evaluation_results = copy.deepcopy(comparison_results)
         self.model_rankings = {}
         self.evaluators = {}  
         self._setup_framework_style()
@@ -748,7 +748,7 @@ class QuantumEvaluatorVisualizer:
                     label, ha='left', va='center', fontweight='bold', fontsize=9)
 
 
-    def _plot_oracle_efficiency(self, ax, results):
+    def _plot_oracle_efficiency(self, ax, results, baseline_model='Oracle'):
         """Plot Oracle efficiency using PRE-COMPUTED data - NO RECALCULATION."""
         if not results or 'results' not in results:
             ax.text(0.5, 0.5, 'No data available', 
@@ -761,6 +761,7 @@ class QuantumEvaluatorVisualizer:
         
         # USE PRE-COMPUTED EFFICIENCY
         for model, result in results['results'].items():
+            if model.lower() == baseline_model.lower(): continue  # Skip baseline model
             models.append(model)
             efficiencies.append(result['efficiency'])
         
@@ -913,15 +914,35 @@ class QuantumEvaluatorVisualizer:
         stoch_rewards = [stoch_results['results'][m]['final_reward'] for m in models]
         adv_rewards = [adv_results['results'][m]['final_reward'] for m in models]
 
+        # Get Oracle rewards for percentage calculation
+        stoch_oracle = stoch_results['results'].get('Oracle', {}).get('final_reward', 1)
+        adv_oracle = adv_results['results'].get('Oracle', {}).get('final_reward', 1)
+
         x = np.arange(len(models))
         width = 0.38
         
-        ax.bar(x - width/2, stoch_rewards, width,
+        bars1 = ax.bar(x - width/2, stoch_rewards, width,
             label='Stochastic', alpha=0.85, color=self.env_colors.get('stochastic', '#3498db'),
             edgecolor='black', linewidth=1.2)
-        ax.bar(x + width/2, adv_rewards, width,
+        bars2 = ax.bar(x + width/2, adv_rewards, width,
             label='Baseline/Adversarial', alpha=0.85, color=self.env_colors.get('adaptive', '#e67e22'),
             edgecolor='black', linewidth=1.2)
+
+        # Add percentage labels on bars
+        for i, (bar1, bar2, s_reward, a_reward) in enumerate(zip(bars1, bars2, stoch_rewards, adv_rewards)):
+            # Stochastic percentage
+            s_pct = (s_reward / stoch_oracle * 100) if stoch_oracle > 0 else 0
+            height1 = bar1.get_height()
+            ax.text(bar1.get_x() + bar1.get_width()/2., height1,
+                    f'{s_pct:.1f}%',
+                    ha='center', va='bottom', fontsize=8, fontweight='bold')
+            
+            # Baseline/Adversarial percentage
+            a_pct = (a_reward / adv_oracle * 100) if adv_oracle > 0 else 0
+            height2 = bar2.get_height()
+            ax.text(bar2.get_x() + bar2.get_width()/2., height2,
+                    f'{a_pct:.1f}%',
+                    ha='center', va='bottom', fontsize=8, fontweight='bold')
 
         ax.set_title('Environment Robustness Comparison', fontweight='bold', fontsize=12)
         ax.set_xlabel('Models', fontsize=11, fontweight='bold')
@@ -930,6 +951,7 @@ class QuantumEvaluatorVisualizer:
         ax.set_xticklabels(models, rotation=45, ha='right')
         ax.legend(fontsize=10, loc='best')
         ax.grid(axis='y', alpha=0.3, linestyle='--')
+
 
 
     def _plot_single_environment_analysis(self, ax, results):

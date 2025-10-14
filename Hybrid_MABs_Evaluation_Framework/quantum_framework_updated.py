@@ -228,9 +228,9 @@ class MultiRunEvaluator:
 
         # Calculate final averages
         for model_name, totals in model_totals.items():
-            avg_gap = totals['avg_gap'] / exps_no if totals['avg_gap'] > 0 else float('nan')
-            avg_reward = totals['avg_reward']/exps_no if totals['avg_reward'] > 0 else float('nan')
-            avg_efficiency = sum(totals['efficiency_list'])/exps_no if totals['efficiency_list'] else float('nan')
+            avg_gap = totals['avg_gap'] / exps_no if totals['avg_gap'] > 0 else 0.0
+            avg_reward = totals['avg_reward']/exps_no if totals['avg_reward'] > 0 else 0.0
+            avg_efficiency = sum(totals['efficiency_list'])/exps_no if totals['efficiency_list'] else 0.0
 
             model_totals[model_name]['avg_gap'] = float(avg_gap)
             model_totals[model_name]['avg_reward'] = float(avg_reward)

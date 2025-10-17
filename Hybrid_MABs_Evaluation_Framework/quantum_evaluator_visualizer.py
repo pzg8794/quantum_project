@@ -186,19 +186,22 @@ class QuantumEvaluatorVisualizer:
         self._print_framework_summary(avg_data)
 
 
-    def _extract_primary_results(self, environment):
+    def _extract_primary_results(self, environment, evaluation_results=None):
         """
         Extract averaged efficiency stats directly from pre-computed data.
         NO RECALCULATION - uses avg_efficiency_stats from framework.
         """
-        if environment not in self.evaluation_results:
+        if evaluation_results is None:
+            evaluation_results = self.evaluation_results
+
+        if environment not in evaluation_results:
             # Fallback: if 'stochastic' not found, try 'none' (baseline)
-            if environment == 'stochastic' and 'none' in self.evaluation_results:
+            if environment == 'stochastic' and 'none' in evaluation_results:
                 environment = 'none'
             else:
                 return None
-        
-        env_results = self.evaluation_results[environment]
+
+        env_results = evaluation_results[environment]
         if not env_results:
             return None
         
@@ -574,11 +577,11 @@ class QuantumEvaluatorVisualizer:
         if environment in self.viz_data: return self.viz_data[environment]
         return {}
     
-    def plot_stochastic_vs_adversarial_comparison(self, stoch_data=None, baseline_data=None):
+    def plot_stochastic_vs_adversarial_comparison(self, eval_results=None, stoch_data=None, baseline_data=None):
         """Generate comprehensive robustness visualization using pre-computed stats."""
         print("Creating stochastic vs adversarial comparison visualization...")
 
-        if not self.evaluation_results:
+        if not self.evaluation_results and eval_results is None:
             print("No evaluation results found. Running basic framework display...")
             self._create_basic_comparison_plot()
             return
@@ -589,19 +592,19 @@ class QuantumEvaluatorVisualizer:
 
         if stoch_data is None:
             # Get stochastic data using _extract_primary_results (uses avg_efficiency_stats)
-            self.viz_data['stoch_data'] = self._extract_primary_results('stochastic')
+            self.viz_data['stoch_data'] = self._extract_primary_results('stochastic', eval_results)
             if not self.viz_data['stoch_data']:
                 # Try fallback
-                self.viz_data['stoch_data'] = self._extract_primary_results('random')
+                self.viz_data['stoch_data'] = self._extract_primary_results('random', eval_results)
             stoch_data = self.viz_data['stoch_data']
         
         if baseline_data is None:
             # Get baseline/none data
-            self.viz_data['baseline_data'] = self._extract_primary_results('none')
+            self.viz_data['baseline_data'] = self._extract_primary_results('none', eval_results)
             if not self.viz_data['baseline_data']:
-                self.viz_data['baseline_data'] = self._extract_primary_results('baseline')
+                self.viz_data['baseline_data'] = self._extract_primary_results('baseline', eval_results)
             if not self.viz_data['baseline_data']:
-                self.viz_data['baseline_data'] = self._extract_primary_results('no_attack')
+                self.viz_data['baseline_data'] = self._extract_primary_results('no_attack', eval_results)
             baseline_data = self.viz_data['baseline_data']
 
         # Extract averaged results (already computed by framework)

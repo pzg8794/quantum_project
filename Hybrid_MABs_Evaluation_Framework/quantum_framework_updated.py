@@ -196,9 +196,21 @@ class MultiRunEvaluator:
             print("-"*70)
 
             self.calculate_scenario_performance(scenario)
-                
 
-    def calculate_scenario_winner(self, comparison_results, scenario, baseline_model='Oracle'):
+    def get_scenarios_stats(self, scenario=None):
+        """
+        Get the comprehensive scenarios statistics.
+        """
+        if scenario:
+            if scenario not in self.scenarios_stats:
+                print(f"Scenario '{scenario}' not found in statistics.")
+                return {}
+            
+            return copy.deepcopy(self.scenarios_stats.get(scenario, {}))    
+        
+        return copy.deepcopy(self.scenarios_stats)
+    
+    def calculate_scenario_winner(self, comparison_results, scenario, baseline_model='Oracle', update_results=True):
         """
         FIXED: Calculate efficiency per experiment, then average.
         """
@@ -210,6 +222,7 @@ class MultiRunEvaluator:
         model_totals = {}
         winner_efficients = {}
         total_oracle_reward = 0
+        scenarios_stats = {}
         for exp_data in all_experiments.values():
             exp_oracle = exp_data['results'][baseline_model]['final_reward']
             for model_name, model_result in exp_data['results'].items():
@@ -242,7 +255,7 @@ class MultiRunEvaluator:
         oracle_avg_reward = total_oracle_reward / exps_no if total_oracle_reward > 0 else float('nan')    
         efficiency_winner = max(winner_efficients, key=winner_efficients.get) if winner_efficients else "N/A"
         
-        self.scenarios_stats[scenario] = {
+        scenarios_stats[scenario] = {
             'total_experiments': exps_no,
             'win_counts': winner_efficients,
             'all_model_metrics': model_totals,
@@ -253,8 +266,13 @@ class MultiRunEvaluator:
             'winner_avg_metrics': model_totals.get(efficiency_winner, {}),
             'avg_efficiency': model_totals[efficiency_winner]['avg_efficiency']
         }
-        self.evaluation_results[scenario].update({'avg_efficiency_stats':self.scenarios_stats[scenario]})
         print(f"Scenario '{scenario}' evaluation completed.")
+
+        if update_results:
+            self.scenarios_stats[scenario] = scenarios_stats[scenario]
+            self.evaluation_results[scenario].update({'avg_efficiency_stats':self.scenarios_stats[scenario]})
+        
+        return scenarios_stats
 
 
     def calculate_scenarios_winner(self, comparison_results, scenarios):
@@ -269,11 +287,53 @@ class MultiRunEvaluator:
         self.generate_key_insights()
 
 
-    def get_evaluation_results(self):
+    def get_evaluation_results(self, scenario=None, exp_id=None):
         """
-        Get the comprehensive evaluation results.
-        """    
-        return copy.deepcopy(self.evaluation_results)
+        Get the comprehensive evaluation results, filtered by scenario and/or experiment ID.
+        
+        Supports:
+        - Full scenario results (averaged stats + all experiments)
+        - Single experiment (e.g., last run for isolated plotting)
+        - Maintains structure for visualization (e.g., peak/last run via exp_id=-1)
+        
+        Args:
+            scenario (str): Target scenario (e.g., 'stochastic', 'none').
+            exp_id (int): Specific experiment ID; -1 for last (highest frame) run.
+        
+        Returns:
+            dict: Filtered results with {scenario: {exp_id: data, 'avg_efficiency_stats': stats}}.
+        """
+        try:
+            if scenario is None:
+                # Return all scenarios if none specified
+                return copy.deepcopy(self.evaluation_results)
+            
+            if scenario not in self.evaluation_results:
+                raise ValueError(f"Scenario '{scenario}' not found in evaluation results.")
+            
+            scenario_results = copy.deepcopy(self.evaluation_results[scenario])
+            if exp_id is None: return scenario_results
+            
+            # Handle exp_id filtering
+            exp_keys = [key for key in scenario_results.keys() if key != 'avg_efficiency_stats']  
+            if exp_id not in exp_keys and exp_id > 0:
+                raise ValueError(f"Experiment ID '{exp_id}' not found in scenario '{scenario}' results.")
+            
+            if exp_id < 0: exp_id = exp_keys[-1]
+            # Build filtered results for single exp_id
+            filtered_results = {scenario: {exp_id: copy.deepcopy(scenario_results[exp_id])}}
+            # Recalculate stats for this single experiment (no averaging needed, but for consistency)
+            single_stats = self.calculate_scenario_winner(filtered_results, scenario, update_results=False)
+            filtered_results[scenario]['avg_efficiency_stats'] = single_stats[scenario]  # Use single-run as "avg"
+            # Add scenarios_results for framework compatibility (e.g., plotting)
+            filtered_results['scenarios_results'] = single_stats
+            
+            return filtered_results
+        except Exception as e:
+            print(f"Error retrieving evaluation results: {e}")
+
+        return {}
+
 
     def run_scenario_model_evaluation(self, runs=1, models=None, attack_type=None, scenario=None):
         """

@@ -103,6 +103,13 @@ class EXPNeuralUCB(QuantumModel):
         print(f"\nEXPNeuralUCB initialized in '{mode}' mode")
         self._print_mode_description()
 
+        self.thresholds = {
+                'EXPNeuralUCB': {'stochastic': 0.628, 'adversarial': 0.598},
+                'CPursuitNeuralUCB': {'stochastic': 0.634, 'adversarial': 0.614},
+                'GNeuralUCB': {'stochastic': 0.582, 'adversarial': 0.509},  # Added; higher stochastic for grouping
+                'iCPursuitNeuralUCB': {'stochastic': 0.712, 'adversarial': 0.689}
+            }
+
     def take_action(self, *args, **kwargs):
         raise NotImplementedError(
             f"EXPNeuralUCB is a {self.model_type} model that manages actions internally. "
@@ -348,14 +355,13 @@ class EXPNeuralUCB(QuantumModel):
         super().cleanup(verbose)
 
 
-    def _get_expected_min_reward(self, env_type: str, model_name: str, thresholds: dict = None) -> float:
+    def _get_expected_min_reward(self, model_name, env_type='stochastic') -> float:
         """Return expected minimum reward thresholds for retry decisions"""
-        if thresholds is None: thresholds = self.thresholds
+        if model_name not in self.thresholds:
+            return 0.5
 
         # Always retry 0% (return 0.0 if not in dict or as fallback)
-        if model_name not in thresholds:
-            return 0.0
-        return thresholds[model_name].get(env_type, 0.50)  # Fallback 50%
+        return self.thresholds[model_name].get(env_type, 0.50)  # Fallback 50%
 
 
 

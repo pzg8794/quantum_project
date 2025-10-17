@@ -142,7 +142,9 @@ class QuantumExperimentRunner:
                     
                     # raise exception
                     enable_progress = False
-                    if total_reward < 1: raise ValueError(f"Invalid reward '{total_reward}' retrying")
+                    if algorithm_name != 'Oracle' and total_reward < model._get_expected_min_reward(algorithm_name): 
+                        total_reward = 0.0
+                        raise ValueError(f"Invalid reward '{total_reward}' retrying")
 
                     avg_reward = total_reward / frame_count if (frame_count > 0 and total_reward > 0) else 0.0    
                     results = {

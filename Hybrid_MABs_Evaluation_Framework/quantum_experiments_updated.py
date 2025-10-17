@@ -55,6 +55,32 @@ class QuantumExperimentRunner:
         
         return self.environment
 
+    def run_step_wise_oracle(self, env_info, model, frame_count=4000, algorithm_name='Oracle'):
+        """Oracle execution for benchmarking"""
+        # Oracle step-wise execution
+        total_reward = 0.0
+        for t in tqdm(range(frame_count), desc=f"{algorithm_name}", disable=not self.enable_progress):
+            # Check bounds
+            if t >= env_info['attack_pattern'].shape[0]:
+                print(f"⚠️ Frame {t} exceeds attack pattern size {env_info['attack_pattern'].shape[0]}")
+                break
+                
+            path, action = model.take_action()
+            
+            base_reward = env_info['reward_functions'][path][action]
+            attack_modifier = env_info['attack_pattern'][t][path]
+            observed_reward = base_reward * attack_modifier
+            
+            model.update(path, action, observed_reward)
+            total_reward += observed_reward
+        
+        oracle_results = model.get_results()
+        if oracle_results and 'final_reward' in oracle_results:
+            total_reward = oracle_results['final_reward']
+        
+        return total_reward
+    
+
     def run_algorithm(self, algorithm_name, frame_count=4000):
         """Always recreate environment with correct frame_count"""
         if not self.environment: self.setup_environment(frame_count)
@@ -75,92 +101,72 @@ class QuantumExperimentRunner:
         algorithm_seed = self.experiment_seed + seed_offset
         torch.manual_seed(algorithm_seed)
         np.random.seed(algorithm_seed)
-
-        if algorithm_name not in self.algorithm_configs.keys():
-            raise ValueError(f"Algorithm {algorithm_name} not found in configurations.")
+        enable_progress = self.enable_progress
 
         try:
-            # Get environment data required by all algorithms
-            env_info = self.environment.get_environment_info()
-            
-            if algorithm_name == 'Oracle':
-                model = self.algorithm_configs['Oracle']['model_class'](
-                    X_n=env_info['contexts'], 
-                    reward_list=env_info['reward_functions'], 
-                    attack_list=env_info['attack_pattern']
-                )
-            else:
-                model = model_class(
-                    X_n=env_info['contexts'],
-                    reward_list=env_info['reward_functions'],  
-                    frame_number=frame_count,
-                    **model_kwargs
-                )
-
-            self.validate_quantum_model(model)
-
             total_reward = 0.0
-            try:
-                if runner_type == 'step-wise':
-                    # Oracle step-wise execution
-                    for t in tqdm(range(frame_count), desc=f"{algorithm_name}", disable=not self.enable_progress):
-                        # Check bounds
-                        if t >= env_info['attack_pattern'].shape[0]:
-                            print(f"⚠️ Frame {t} exceeds attack pattern size {env_info['attack_pattern'].shape[0]}")
-                            break
-                            
-                        path, action = model.take_action()
-                        
-                        base_reward = env_info['reward_functions'][path][action]
-                        attack_modifier = env_info['attack_pattern'][t][path]
-                        observed_reward = base_reward * attack_modifier
-                        
-                        model.update(path, action, observed_reward)
-                        total_reward += observed_reward
-                    
-                    oracle_results = model.get_results()
-                    if oracle_results and 'final_reward' in oracle_results:
-                        total_reward = oracle_results['final_reward']
-                    
-                else:
-                    # batch execution for EXPNeuralUCB
-                    result = model.run(
-                        attack_list=env_info['attack_pattern'],
-                        verbose=self.enable_progress
+            while total_reward <= 0.0:
+                # Get environment data required by all algorithms
+                env_info = self.environment.get_environment_info()
+                
+                if algorithm_name == 'Oracle':
+                    model = self.algorithm_configs['Oracle']['model_class'](
+                        X_n=env_info['contexts'], 
+                        reward_list=env_info['reward_functions'], 
+                        attack_list=env_info['attack_pattern']
                     )
-                    
-                    if result is not None:
-                        total_reward = float(result)
+                else:
+                    model = model_class(
+                        X_n=env_info['contexts'],
+                        reward_list=env_info['reward_functions'],  
+                        frame_number=frame_count,
+                        **model_kwargs
+                    )
+
+                if enable_progress: self.validate_quantum_model(model)
+
+                try:
+                    if runner_type == 'step-wise':
+                        total_reward = self.run_step_wise_oracle(env_info, model, frame_count, algorithm_name)
+
                     else:
-                        if hasattr(model, 'get_results'):
-                            model_results = model.get_results()
-                            if model_results and 'final_reward' in model_results:
-                                total_reward = float(model_results['final_reward'])
-                            else:
-                                total_reward = 0.0
+                        # batch execution for EXPNeuralUCB
+                        result = model.run(attack_list=env_info['attack_pattern'], verbose=enable_progress)
+
+                        if result is not None: total_reward = float(result)
                         else:
-                            total_reward = 0.0
+                            if hasattr(model, 'get_results'):
+                                model_results = model.get_results()
+                                if model_results and 'final_reward' in model_results:
+                                    total_reward = float(model_results['final_reward'])
+                    
+                    # raise exception
+                    enable_progress = False
+                    if total_reward < 1: raise ValueError(f"Invalid reward '{total_reward}' retrying")
 
-                avg_reward = total_reward / frame_count if (frame_count > 0 and total_reward > 0) else 0.0    
-                results = {
-                    'final_reward': float(total_reward),
-                    'avg_reward': float(avg_reward),
-                    'algorithm': algorithm_name,
-                    'seed': algorithm_seed,
-                    'frame_count': frame_count,
-                    'attack_type': self.attack_type,
-                    'model_results': model.get_results()
-                }
+                    avg_reward = total_reward / frame_count if (frame_count > 0 and total_reward > 0) else 0.0    
+                    results = {
+                        'final_reward': float(total_reward),
+                        'avg_reward': float(avg_reward),
+                        'algorithm': algorithm_name,
+                        'seed': algorithm_seed,
+                        'frame_count': frame_count,
+                        'attack_type': self.attack_type,
+                        'model_results': model.get_results()
+                    }
+                    
+                except ValueError as ve:  # Reward invalid: Continue loop
+                    print(f"❌ Runtime error in {algorithm_name}: {ve}")
 
-            except Exception as e:
-                print(f"❌ Runtime error in {algorithm_name}: {e}")
-                results = {
-                    'final_reward': 0.0,
-                    'error': str(e),
-                    'model_results': {},
-                    'frame_count': frame_count,
-                    'algorithm': algorithm_name
-                }
+                except Exception as e:
+                    print(f"❌ Runtime error in {algorithm_name}: {e}")
+                    results = {
+                        'final_reward': 0.0,
+                        'error': str(e),
+                        'model_results': {},
+                        'frame_count': frame_count,
+                        'algorithm': algorithm_name
+                    }
 
         except Exception as e:
             print(f"❌ Failed to create {algorithm_name}: {e}")

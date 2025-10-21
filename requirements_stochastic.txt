@@ -1,0 +1,8 @@
+matplotlib==3.10.7
+numpy==2.3.4
+pandas==2.3.3
+psutil==7.0.0
+scipy==1.16.2
+seaborn==0.13.2
+torch==2.8.0
+tqdm==4.67.1

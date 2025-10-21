@@ -1,0 +1,16 @@
+{
+  "environment": "none",
+  "experiment_id": 3,
+  "num_runs": 3,
+  "timestamp": "2025-10-18T21:38:11.757528",
+  "session_timestamp": "20251018_213806",
+  "session_id": "20251018_213806",
+  "framework_config": {},
+  "models_tested": [
+    "Oracle",
+    "GNeuralUCB",
+    "EXPNeuralUCB",
+    "CPursuitNeuralUCB",
+    "iCPursuitNeuralUCB"
+  ]
+}

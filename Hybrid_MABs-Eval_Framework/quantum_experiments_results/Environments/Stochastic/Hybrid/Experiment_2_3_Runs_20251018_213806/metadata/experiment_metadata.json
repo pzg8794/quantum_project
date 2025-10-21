@@ -1,0 +1,16 @@
+{
+  "environment": "stochastic",
+  "experiment_id": 2,
+  "num_runs": 3,
+  "timestamp": "2025-10-18T21:38:10.836725",
+  "session_timestamp": "20251018_213806",
+  "session_id": "20251018_213806",
+  "framework_config": {},
+  "models_tested": [
+    "Oracle",
+    "GNeuralUCB",
+    "EXPNeuralUCB",
+    "CPursuitNeuralUCB",
+    "iCPursuitNeuralUCB"
+  ]
+}

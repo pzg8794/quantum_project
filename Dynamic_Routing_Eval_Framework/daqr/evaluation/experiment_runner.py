@@ -122,7 +122,8 @@ class QuantumExperimentRunner:
                         X_n=env_info['contexts'],
                         reward_list=env_info['reward_functions'],
                         frame_number=frame_count,
-                        **model_kwargs
+                        capacity=self.configs.capacity
+                        **model_kwargs,
                     )
 
                 if enable_progress: self.validate_quantum_model(model)

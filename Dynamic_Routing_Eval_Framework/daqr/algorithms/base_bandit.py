@@ -466,7 +466,7 @@ class NeuralTS(RandomAlg):
                 self.optimizer.step()
 
 class NeuralUCB(RandomAlg):
-    def __init__(self, d, K, beta=1, lamb=1, hidden_size=128, lr=1e-4, reg=0.000625):
+    def __init__(self, d, K, beta=1, lamb=1, hidden_size=128, lr=1e-4, reg=0.000625, capacity=24000):
         super().__init__(K)
         self.T = 0
         self.reg = reg
@@ -478,8 +478,9 @@ class NeuralUCB(RandomAlg):
         self.numel = sum(w.numel() for w in self.net.parameters() if w.requires_grad)
         self.sigma_inv = lamb * np.eye(self.numel, dtype=np.float32)
         self.device = device
+        self.capacity = capacity
         self.theta0 = torch.cat([w.flatten() for w in self.net.parameters() if w.requires_grad])
-        self.replay_buffer = ReplayBuffer(d, 10000)
+        self.replay_buffer = ReplayBuffer(d, capacity)
 
     def take_action(self, context):
         context = torch.tensor(context, dtype=torch.float32).to(self.device)

@@ -74,7 +74,7 @@ class EXPNeuralUCB(QuantumModel):
         return True  # Override detection since we implement run
     
     def __init__(self, X_n, reward_list, frame_number, mode='hybrid', 
-                 gamma_factor=0.01, eta_factor=0.05, beta=0.2, verbose=True):
+                 gamma_factor=0.01, eta_factor=0.05, beta=0.2, verbose=True, capacity=24000):
         # Core parameters (shared across all modes)
         self.X_n = X_n
         self.reward_list = reward_list
@@ -94,6 +94,8 @@ class EXPNeuralUCB(QuantumModel):
         self.path_action_list = []
         self.regret = 0
         self.total_reward = 0
+        
+        self.capacity = capacity
         
         # Calculate oracle (shared across all modes)
         self.oracle_path, self.oracle_action = self._calculate_oracle()
@@ -131,10 +133,11 @@ class EXPNeuralUCB(QuantumModel):
         # Neural UCB components (hybrid + neural modes)
         if self.mode in ['hybrid', 'neural']:
             self.neuralucb_list = []
-            self.neuralucb_list.append(NeuralUCB(2, len(self.X_n[0]), self.beta, lamb=1))  # Path 1: 2D
-            self.neuralucb_list.append(NeuralUCB(2, len(self.X_n[1]), self.beta, lamb=1))  # Path 2: 2D
-            self.neuralucb_list.append(NeuralUCB(3, len(self.X_n[2]), self.beta, lamb=1))  # Path 3: 3D
-            self.neuralucb_list.append(NeuralUCB(3, len(self.X_n[3]), self.beta, lamb=1))  # Path 4: 3D
+            cap = self.capacity
+            self.neuralucb_list.append(NeuralUCB(2, len(self.X_n[0]), self.beta, lamb=1, capacity=cap)) # P1:2D
+            self.neuralucb_list.append(NeuralUCB(2, len(self.X_n[1]), self.beta, lamb=1, capacity=cap)) # P2:2D
+            self.neuralucb_list.append(NeuralUCB(3, len(self.X_n[2]), self.beta, lamb=1, capacity=cap)) # P3:3D
+            self.neuralucb_list.append(NeuralUCB(3, len(self.X_n[3]), self.beta, lamb=1, capacity=cap)) # P4:3D
         
         # EXP3 components (hybrid + exp3 modes)
         if self.mode in ['hybrid', 'exp3']:

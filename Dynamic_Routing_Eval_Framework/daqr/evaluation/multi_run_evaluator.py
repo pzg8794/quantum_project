@@ -49,7 +49,8 @@ class MultiRunEvaluator:
         self.cal_winner = True
         self.env_type = 'stochastic'
         self.update_configs(runs, models, attack_type, scenarios, attack_intensity)
-        self.capacity = (frame_step * self.configs.runs) + base_frames
+        # self.capacity = (frame_step * self.configs.runs) + base_frames
+        self.capacity = base_frames
         self.configs.capacity = self.capacity
 
         print("Multi-Run Evaluator Initialized")

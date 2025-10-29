@@ -96,7 +96,6 @@ class EXPNeuralUCB(QuantumModel):
         self.total_reward = 0
         
         self.capacity = capacity
-        
         # Calculate oracle (shared across all modes)
         self.oracle_path, self.oracle_action = self._calculate_oracle()
         
@@ -113,6 +112,10 @@ class EXPNeuralUCB(QuantumModel):
                 'GNeuralUCB': {'stochastic': 0.582, 'adversarial': 0.509},  # Added; higher stochastic for grouping
                 'iCPursuitNeuralUCB': {'stochastic': 0.712, 'adversarial': 0.689}
             }
+        
+
+    def set_capacity(self, capacity):
+        self.capacity = capacity
 
     def _get_min_efficiency(self, model_name, env_type='stochastic') -> float:
         """Return expected minimum reward thresholds for retry decisions"""

@@ -49,6 +49,8 @@ class MultiRunEvaluator:
         self.cal_winner = True
         self.env_type = 'stochastic'
         self.update_configs(runs, models, attack_type, scenarios, attack_intensity)
+        self.capacity = (frame_step * self.configs.runs) + base_frames
+        self.configs.capacity = self.capacity
 
         print("Multi-Run Evaluator Initialized")
         print(f"Environment Type: {attack_type}")
@@ -95,7 +97,6 @@ class MultiRunEvaluator:
                 frame_count=frame_count,
                 models=self.configs.models,
                 qubit_cap=qubit_cap  # critical: pass routing-derived capacities
-                capacity=self.configs.
             )
             experiment_results['attack_category'] = attack_category
             experiment_results['exp_id'] = exp_id

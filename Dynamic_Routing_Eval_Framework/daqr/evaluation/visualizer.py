@@ -578,6 +578,9 @@ class QuantumEvaluatorVisualizer:
         Extract averaged efficiency stats directly from pre-computed data.
         NO RECALCULATION - uses avg_efficiency_stats from framework.
         """
+        # print("TEST")
+        # print(self.evaluation_results)
+
         if evaluation_results is None:
             evaluation_results = self.evaluation_results
 
@@ -637,49 +640,49 @@ class QuantumEvaluatorVisualizer:
         }
 
 
-    def _plot_model_performance_ranking(self, ax, data):
-        """Plot comprehensive model performance ranking using PRE-COMPUTED efficiency."""
-        if 'results' not in data or 'oracle_reward' not in data:
-            ax.text(0.5, 0.5, 'No ranking data available',
-                    ha='center', va='center', transform=ax.transAxes)
-            ax.set_axis_off()
-            return
+    # def _plot_model_performance_ranking(self, ax, data, scenario='Stochastic'):
+    #     """Plot comprehensive model performance ranking using PRE-COMPUTED efficiency."""
+    #     if 'results' not in data or 'oracle_reward' not in data:
+    #         ax.text(0.5, 0.5, 'No ranking data available',
+    #                 ha='center', va='center', transform=ax.transAxes)
+    #         ax.set_axis_off()
+    #         return
         
-        model_efficiencies = []
-        model_names = []
+    #     model_efficiencies = []
+    #     model_names = []
         
-        for model, result in data['results'].items():
-            if model.lower() != 'oracle':
-                # Use PRE-COMPUTED efficiency
-                efficiency = result.get('efficiency', 0)
-                model_efficiencies.append(efficiency)
-                model_names.append(model)
+    #     for model, result in data['results'].items():
+    #         if model.lower() != 'oracle':
+    #             # Use PRE-COMPUTED efficiency
+    #             efficiency = result.get('efficiency', 0)
+    #             model_efficiencies.append(efficiency)
+    #             model_names.append(model)
         
-        if not model_names:
-            ax.text(0.5, 0.5, 'No models to rank',
-                    ha='center', va='center', transform=ax.transAxes)
-            ax.set_axis_off()
-            return
+    #     if not model_names:
+    #         ax.text(0.5, 0.5, 'No models to rank',
+    #                 ha='center', va='center', transform=ax.transAxes)
+    #         ax.set_axis_off()
+    #         return
         
-        # Sort by efficiency
-        sorted_data = sorted(zip(model_names, model_efficiencies), key=lambda x: x[1], reverse=True)
-        sorted_names, sorted_efficiencies = zip(*sorted_data)
+    #     # Sort by efficiency
+    #     sorted_data = sorted(zip(model_names, model_efficiencies), key=lambda x: x[1], reverse=True)
+    #     sorted_names, sorted_efficiencies = zip(*sorted_data)
         
-        colors = [self.model_colors.get(model, 'gray') for model in sorted_names]
-        bars = ax.bar(range(len(sorted_names)), sorted_efficiencies, color=colors, alpha=0.8)
+    #     colors = [self.model_colors.get(model, 'gray') for model in sorted_names]
+    #     bars = ax.bar(range(len(sorted_names)), sorted_efficiencies, color=colors, alpha=0.8)
         
-        ax.set_xlabel('Models (Ranked by Performance)', fontweight='bold')
-        ax.set_ylabel('Oracle Efficiency (%)', fontweight='bold')
-        ax.set_title('Model Performance Ranking\nStochastic Environment', fontweight='bold')
-        ax.set_xticks(range(len(sorted_names)))
-        ax.set_xticklabels(sorted_names, rotation=45, ha='right')
-        ax.grid(True, alpha=0.3, axis='y')
+    #     ax.set_xlabel('Models (Ranked by Performance)', fontweight='bold')
+    #     ax.set_ylabel('Oracle Efficiency (%)', fontweight='bold')
+    #     ax.set_title(f'Model Performance Ranking\n{scenario.title()} Environment', fontweight='bold')
+    #     ax.set_xticks(range(len(sorted_names)))
+    #     ax.set_xticklabels(sorted_names, rotation=45, ha='right')
+    #     ax.grid(True, alpha=0.3, axis='y')
         
-        # Add efficiency labels
-        for bar, efficiency in zip(bars, sorted_efficiencies):
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height + 1,
-                f'{efficiency:.1f}%', ha='center', va='bottom', fontweight='bold')
+    #     # Add efficiency labels
+    #     for bar, efficiency in zip(bars, sorted_efficiencies):
+    #         height = bar.get_height()
+    #         ax.text(bar.get_x() + bar.get_width()/2., height + 1,
+    #             f'{efficiency:.1f}%', ha='center', va='bottom', fontweight='bold')
 
 
     def _plot_oracle_efficiency(self, ax, results):
@@ -964,26 +967,97 @@ class QuantumEvaluatorVisualizer:
         if environment in self.viz_data: return self.viz_data[environment]
         return {}
     
-    def plot_stochastic_vs_adversarial_comparison(self, eval_results=None, stoch_data=None, baseline_data=None):
+    def plot_scenarios_comparison(self, eval_results=None, scen_data=None, baseline_data=None, scenario='stochastic'):
         """Generate comprehensive robustness visualization using pre-computed stats."""
-        print("Creating stochastic vs adversarial comparison visualization...")
+        print(f"Creating  {scenario} vs basline comparison visualization...")
 
         if not self.evaluation_results and eval_results is None:
             print("No evaluation results found. Running basic framework display...")
             self._create_basic_comparison_plot()
             return
 
+        scenario_data = f"{scenario}_data"
+        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+        fig.suptitle('Quantum MAB Models: Stochastic vs Baseline Robustness Analysis',
+                    fontsize=16, fontweight='bold')
+
+        if scen_data is None:
+            # Get stochastic data using _extract_primary_results (uses avg_efficiency_stats)
+            self.viz_data[scenario_data] = self._extract_primary_results(scenario, eval_results)
+            if not self.viz_data[scenario_data]:
+                # Try fallback
+                self.viz_data[scenario_data] = self._extract_primary_results('random', eval_results)
+            scen_data = self.viz_data[scenario_data]
+        
+        baseline = ''
+        if baseline_data is None:
+            # Get baseline/none data
+            baseline = 'baseline'
+            baseline_data = f'{baseline}_data'
+            self.viz_data[baseline_data] = self._extract_primary_results('none', eval_results)
+            if not self.viz_data[baseline_data]:
+                self.viz_data[baseline_data] = self._extract_primary_results('baseline', eval_results)
+            if not self.viz_data[baseline_data]:
+                self.viz_data[baseline_data] = self._extract_primary_results('no_attack', eval_results)
+            baseline_data = self.viz_data[baseline_data]
+
+        # Extract averaged results (already computed by framework)
+        scenario_results = scen_data['averaged'] if scen_data else None
+        baseline_results = baseline_data['averaged'] if baseline_data else None
+
+        # Plot all 6 panels
+        if scenario_results:
+            self._plot_model_performance_ranking(axes[0, 0], scenario_results, scenario)
+            self._plot_oracle_efficiency(axes[0, 1], scenario_results)
+            self._plot_reward_evolution(axes[0, 2], scenario_results, scenario_data)
+            self._plot_statistical_analysis(axes[1, 0], scenario_results)
+        else:
+            for (r, c) in [(0,0), (0,1), (0,2), (1,0)]:
+                axes[r, c].text(0.5, 0.5, f'No {scenario} results', 
+                            ha='center', va='center', transform=axes[r, c].transAxes)
+                axes[r, c].set_axis_off()
+
+        # Bottom row comparison (stochastic vs baseline)
+        if scenario_results and baseline_results:
+            self._plot_robustness_comparison(axes[1, 1], scenario_results, baseline_results, scenario)
+            self._plot_research_summary(axes[1, 2], scenario_results, baseline_results)
+        elif scenario_results:
+            self._plot_single_environment_summary(axes[1, 1], scenario_results, scenario.title())
+            self._plot_research_summary(axes[1, 2], scenario_results, None)
+        else:
+            axes[1, 1].text(0.5, 0.5, 'Need both environments for comparison',
+                        ha='center', va='center', transform=axes[1, 1].transAxes)
+            axes[1, 1].set_axis_off()
+            axes[1, 2].text(0.5, 0.5, 'No results available',
+                        ha='center', va='center', transform=axes[1, 2].transAxes)
+            axes[1, 2].set_axis_off()
+
+        plt.tight_layout()
+        plt.savefig(f'{scenario}_vs_{baseline if baseline else 'NA'}_comparison.png', dpi=300, bbox_inches='tight')
+        plt.show()
+
+
+    def plot_stochastic_vs_adversarial_comparison(self, eval_results=None, stoch_data=None, baseline_data=None, scenario='stochastic'):
+        """Generate comprehensive robustness visualization using pre-computed stats."""
+        print(f"Creating  {scenario} vs basline comparison visualization...")
+
+        if not self.evaluation_results and eval_results is None:
+            print("No evaluation results found. Running basic framework display...")
+            self._create_basic_comparison_plot()
+            return
+
+        scenario_data = f"{scenario}_data"
         fig, axes = plt.subplots(2, 3, figsize=(18, 12))
         fig.suptitle('Quantum MAB Models: Stochastic vs Baseline Robustness Analysis',
                     fontsize=16, fontweight='bold')
 
         if stoch_data is None:
             # Get stochastic data using _extract_primary_results (uses avg_efficiency_stats)
-            self.viz_data['stoch_data'] = self._extract_primary_results('stochastic', eval_results)
-            if not self.viz_data['stoch_data']:
+            self.viz_data[scenario_data] = self._extract_primary_results(scenario, eval_results)
+            if not self.viz_data[scenario_data]:
                 # Try fallback
-                self.viz_data['stoch_data'] = self._extract_primary_results('random', eval_results)
-            stoch_data = self.viz_data['stoch_data']
+                self.viz_data[scenario_data] = self._extract_primary_results('random', eval_results)
+            stoch_data = self.viz_data[scenario_data]
         
         if baseline_data is None:
             # Get baseline/none data
@@ -1083,7 +1157,7 @@ class QuantumEvaluatorVisualizer:
         ax.axis('off')
 
 
-    def _plot_model_performance_ranking(self, ax, data):
+    def _plot_model_performance_ranking(self, ax, data, scenario='Stochastic'):
         """
         Plot model performance ranking using PRE-COMPUTED efficiency ONLY.
         Data must come from _extract_primary_results()['averaged'].
@@ -1126,7 +1200,7 @@ class QuantumEvaluatorVisualizer:
         ax.set_yticks(y_pos)
         ax.set_yticklabels(sorted_names, fontsize=10, fontweight='bold')
         ax.set_xlabel('Oracle Efficiency (%)', fontsize=11, fontweight='bold')
-        ax.set_title('Model Performance Ranking\n(Stochastic Environment)', fontweight='bold')
+        ax.set_title(f'Model Performance Ranking\n({scenario.title()} Environment)', fontweight='bold')
         ax.grid(axis='x', alpha=0.3)
         
         # Add efficiency labels
@@ -1177,7 +1251,7 @@ class QuantumEvaluatorVisualizer:
                     f'{eff:.1f}%', ha='center', va='bottom', fontweight='bold')
 
 
-    def _plot_reward_evolution(self, ax, results, reward_type='reward_list'):
+    def _plot_reward_evolution(self, ax, results, reward_type='reward_list', scen_data='stochastic_data'):
         """
         DYNAMIC: Plot any metric evolution across experiments.
         reward_type: 'reward_list', 'efficiency_list', 'gap_list', 'creward_list'
@@ -1192,7 +1266,7 @@ class QuantumEvaluatorVisualizer:
         plot_count = 0
         
         # Auto-switch to cumulative reward for single experiment
-        if self.viz_data['stoch_data']['exp_num'] == 1:
+        if self.viz_data[scen_data] and self.viz_data[scen_data]['exp_num'] == 1:
             reward_type = 'creward_list'
         
         for model in models:
@@ -1221,7 +1295,7 @@ class QuantumEvaluatorVisualizer:
         }
         
         # Adjust title and xlabel based on single vs multi-experiment
-        if self.viz_data['stoch_data']['exp_num'] == 1:
+        if self.viz_data[scen_data]['exp_num'] == 1:
             title = 'Cumulative Reward Over Time (Single Experiment)'
             xlabel = 'Decision Frame'
             ylabel = 'Cumulative Reward'
@@ -1284,7 +1358,7 @@ class QuantumEvaluatorVisualizer:
                     f'{gap:.1f}%', ha='center', va='bottom', fontweight='bold', fontsize=9)
 
 
-    def _plot_robustness_comparison(self, ax, stoch_results, adv_results):
+    def _plot_robustness_comparison(self, ax, stoch_results, adv_results, scenario='Stochastic'):
         """Plot robustness comparison between stochastic and baseline environments."""
         if not stoch_results or not adv_results:
             ax.text(0.5, 0.5, 'Need both environments for comparison', 
@@ -1312,7 +1386,7 @@ class QuantumEvaluatorVisualizer:
         width = 0.38
         
         bars1 = ax.bar(x - width/2, stoch_rewards, width,
-            label='Stochastic', alpha=0.85, color=self.env_colors.get('stochastic', '#3498db'),
+            label=scenario.title(), alpha=0.85, color=self.env_colors.get('stochastic', '#3498db'),
             edgecolor='black', linewidth=1.2)
         bars2 = ax.bar(x + width/2, adv_rewards, width,
             label='Baseline/Adversarial', alpha=0.85, color=self.env_colors.get('adaptive', '#e67e22'),

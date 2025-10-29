@@ -13,7 +13,7 @@ class MultiRunEvaluator:
     """
     def __init__(self, configs=None, base_frames=4000, frame_step=2000, base_seed=12345, 
                  runs=None, attack_type=None, models=None, scenarios=None,
-                 attack_intensity=None, enable_progress=False):
+                 attack_intensity=None, enable_progress=False, capacity=None):
         """
         Initialize the multi-run evaluator.
         Args:
@@ -50,7 +50,7 @@ class MultiRunEvaluator:
         self.env_type = 'stochastic'
         self.update_configs(runs, models, attack_type, scenarios, attack_intensity)
         # self.capacity = (frame_step * self.configs.runs) + base_frames
-        self.capacity = base_frames
+        self.capacity = base_frames if capacity is None else (capacity/2)
         self.configs.capacity = self.capacity
 
         print("Multi-Run Evaluator Initialized")

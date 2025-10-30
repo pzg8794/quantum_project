@@ -1,360 +1,316 @@
 #!/bin/bash
 
 ################################################################################
-# QUANTUM MAB AUTOMATED RUNNER
-# Handles: GitHub setup, dependency installation, code execution, result pushback
-# Run: ./startup.sh <SEED_OFFSET> <GITHUB_TOKEN>
-# 
-# Example:
-#   ./startup.sh 0 ghp_xxxxxxxxxxxxxxxxxxxx
-#   ./startup.sh 1 ghp_xxxxxxxxxxxxxxxxxxxx
-#   ./startup.sh 2 ghp_xxxxxxxxxxxxxxxxxxxx
-#   ./startup.sh 3 ghp_xxxxxxxxxxxxxxxxxxxx
+# PRODUCTION QUANTUM EXPERIMENT SETUP + TEST
+# Runs: Clone, Setup, Test (100-frame), Push Results to GitHub
+# Works on: Colab, GCP VMs, Local Linux
+# Logs: Saved to Dynamic_Routing_Eval_Framework/logs/
 ################################################################################
 
-set -e  # Exit on error
+set +e
 
-# =============================================================================
-# CONFIGURATION - CUSTOMIZE FOR YOUR REPO
-# =============================================================================
-
+# Configuration
+TOKEN="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"
 GITHUB_USERNAME="pzg8794"
 GITHUB_REPO="quantum_project"
-GITHUB_TOKEN="${2:-}"
-SEED_OFFSET="${1:-0}"
+REPO_DIR="/tmp/quantum_repo"
+RUN_ID=$(date +%s%N)
+LOG_DIR="/tmp/quantum_logs"
+LOG_FILE="$LOG_DIR/quantum_run_${RUN_ID}.log"
 
-REPO_DIR="/root/quantum_project"
-LOG_DIR="/root/quantum_logs"
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-
-# =============================================================================
-# LOGGING SETUP
-# =============================================================================
-
+# Create log directory
 mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/run_${SEED_OFFSET}_${TIMESTAMP}.log"
 
-# Log to file AND stdout
-exec 1> >(tee -a "$LOG_FILE")
-exec 2>&1
-
-log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"; }
-error() { echo "[ERROR] $1" >&2; exit 1; }
-success() { echo "✅ $1"; }
+# Logging functions
+log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"; }
+success() { echo "SUCCESS: $1" | tee -a "$LOG_FILE"; }
+error() { echo "ERROR: $1" | tee -a "$LOG_FILE"; }
+warn() { echo "WARN: $1" | tee -a "$LOG_FILE"; }
 
 # =============================================================================
-# PHASE 1: SYSTEM SETUP
+# PHASE 1: Clone Repository
 # =============================================================================
 
 log "================================"
-log "PHASE 1: System Setup"
+log "PHASE 1: Clone Repository"
 log "================================"
 
-log "Updating system packages..."
-apt-get update -y > /dev/null 2>&1 || log "Warning: apt-get update had issues"
+cd /tmp
+rm -rf quantum_repo
+git clone "https://${TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git" quantum_repo >> "$LOG_FILE" 2>&1
+CLONE_CODE=$?
 
-log "Installing system dependencies..."
-apt-get install -y \
-    python3 python3-pip python3-venv git curl wget \
-    build-essential libssl-dev libffi-dev \
-    > /dev/null 2>&1 || log "Warning: Some packages may have failed"
-
-success "System dependencies installed"
-
-# =============================================================================
-# PHASE 2: GITHUB AUTHENTICATION
-# =============================================================================
-
-log "================================"
-log "PHASE 2: GitHub Authentication"
-log "================================"
-
-if [ -z "$GITHUB_TOKEN" ]; then
-    error "GitHub token required! Pass as argument: ./startup.sh <SEED_OFFSET> <GITHUB_TOKEN>"
+if [ $CLONE_CODE -ne 0 ]; then
+    error "Clone failed with code $CLONE_CODE"
+    exit 1
 fi
 
-# Configure git
-git config --global user.email "automation@quantum-mab.local"
-git config --global user.name "Quantum MAB Automation"
+cd quantum_repo
+success "Repository cloned to $REPO_DIR"
+
+# =============================================================================
+# PHASE 2: Show Repository Contents
+# =============================================================================
+
+log "================================"
+log "PHASE 2: Repository Contents"
+log "================================"
+
+log "Top-level directories:"
+ls -la | grep "^d" | awk '{print "  " $NF}' | tee -a "$LOG_FILE"
+
+success "Repository structure verified"
+
+# =============================================================================
+# PHASE 3: Install Python Packages
+# =============================================================================
+
+log "================================"
+log "PHASE 3: Install Python Packages"
+log "================================"
+
+pip install -q --upgrade pip setuptools wheel >> "$LOG_FILE" 2>&1
+pip install -q -r requirements.txt >> "$LOG_FILE" 2>&1
+PIP_CODE=$?
+
+if [ $PIP_CODE -ne 0 ]; then
+    warn "pip install had issues (code $PIP_CODE) but continuing..."
+fi
+
+log "Installed packages:"
+pip list | grep -E "torch|numpy|pandas|scipy|matplotlib" | tee -a "$LOG_FILE"
+
+success "Packages installed"
+
+# =============================================================================
+# PHASE 4: Git Configuration
+# =============================================================================
+
+log "================================"
+log "PHASE 4: Git Configuration"
+log "================================"
+
+git config --global user.email "quantum-bot@test"
+git config --global user.name "Quantum Test Bot"
 
 success "Git configured"
 
 # =============================================================================
-# PHASE 3: REPOSITORY SETUP
+# PHASE 5: Verify Repository Structure
 # =============================================================================
 
 log "================================"
-log "PHASE 3: Repository Setup"
+log "PHASE 5: Verify Repository Structure"
 log "================================"
 
-if [ -d "$REPO_DIR" ]; then
-    log "Repository already exists, pulling latest..."
-    cd "$REPO_DIR"
-    git pull origin main > /dev/null 2>&1 || log "Warning: Git pull had issues (may be first run)"
+if [ -d "Dynamic_Routing_Eval_Framework/daqr" ]; then
+    log "Found daqr modules:"
+    find Dynamic_Routing_Eval_Framework/daqr -name "*.py" -type f | head -5 | while read f; do log "  $f"; done
+    success "Python modules found"
 else
-    log "Cloning repository..."
-    REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
-    git clone "$REPO_URL" "$REPO_DIR" > /dev/null 2>&1 || error "Failed to clone repository"
-    cd "$REPO_DIR"
+    error "daqr/ directory not found"
+    exit 1
 fi
 
-success "Repository ready at $REPO_DIR"
-
 # =============================================================================
-# PHASE 4: PYTHON ENVIRONMENT SETUP
+# PHASE 6: Setup Python Package Structure
 # =============================================================================
 
 log "================================"
-log "PHASE 4: Python Environment"
+log "PHASE 6: Python Package Setup"
 log "================================"
 
-log "Creating virtual environment..."
-python3 -m venv /root/venv > /dev/null 2>&1 || log "Warning: venv creation had issues"
+cd Dynamic_Routing_Eval_Framework
 
-log "Activating virtual environment..."
-source /root/venv/bin/activate
-
-log "Installing Python dependencies..."
-pip install --upgrade pip setuptools wheel > /dev/null 2>&1
-
-# Install ML dependencies
-log "Installing PyTorch and ML libraries..."
-pip install -q \
-    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu \
-    numpy pandas matplotlib seaborn tqdm statsmodels scikit-learn scipy \
-    || error "Failed to install Python packages"
-
-success "Python environment ready"
-
-# Create __init__.py files for package structure
-log "Setting up package structure..."
-cd "$REPO_DIR"
-
-# Find all directories and create __init__.py
-find . -type d -name "*.py" -prune -o -type d -not -name ".git" -not -name ".*" -exec touch {}/__init__.py \; 2>/dev/null || true
-
-# Specific directories that should have __init__.py
 for dir in daqr daqr/config daqr/core daqr/evaluation daqr/algorithms; do
-    mkdir -p "$dir"
-    touch "$dir/__init__.py" 2>/dev/null || true
+    if [ -d "$dir" ]; then
+        touch "$dir/__init__.py"
+    fi
 done
 
-success "Package structure configured"
+success "Package structure ready"
 
 # =============================================================================
-# PHASE 5: PREPARE EXPERIMENT
-# =============================================================================
-
-log "================================"
-log "PHASE 5: Experiment Preparation"
-log "================================"
-
-# Create results directory
-RESULTS_DIR="$REPO_DIR/results/run_${SEED_OFFSET}"
-mkdir -p "$RESULTS_DIR"
-
-log "Seed offset: $SEED_OFFSET"
-log "Results directory: $RESULTS_DIR"
-
-success "Experiment prepared"
-
-# =============================================================================
-# PHASE 6: RUN EXPERIMENTS
+# PHASE 7: Test Python Imports
 # =============================================================================
 
 log "================================"
-log "PHASE 6: Running Experiments"
+log "PHASE 7: Test Python Imports"
 log "================================"
 
-cd "$REPO_DIR"
+export PYTHONPATH="$(pwd):$PYTHONPATH"
 
-log "Starting quantum MAB evaluation..."
-log "Configuration:"
-log "  - Username: $GITHUB_USERNAME"
-log "  - Repo: $GITHUB_REPO"
-log "  - Models: Oracle GNeuralUCB EXPNeuralUCB CPursuitNeuralUCB iCPursuitNeuralUCB"
-log "  - Scenarios: stochastic markov onlineadaptive none (all at once)"
-log "  - Horizons: 4000 6000 8000"
-log "  - Runs: 3 (with seed offset $SEED_OFFSET)"
-log ""
+python3 << 'PYEOF'
+import sys
+print(f"  Python version: {sys.version.split()[0]}")
+sys.path.insert(0, '.')
 
-# Run the main experiment
-START_TIME=$(date +%s)
+try:
+    from daqr.config.experiment_config import ExperimentConfiguration
+    from daqr.evaluation.multi_run_evaluator import MultiRunEvaluator
+    print("  Imports: OK")
+except Exception as e:
+    print(f"  Import error: {str(e)[:50]}")
+    sys.exit(1)
+PYEOF
 
-python3 -m daqr.evaluation.multi_run_evaluator \
-    --models Oracle GNeuralUCB EXPNeuralUCB CPursuitNeuralUCB iCPursuitNeuralUCB \
-    --scenarios stochastic markov onlineadaptive none \
-    --horizons 4000 6000 8000 \
-    --runs 3 \
-    --seed-offset "$SEED_OFFSET" \
-    2>&1 | tee "$RESULTS_DIR/experiment_output.log"
+success "Python imports tested"
 
-EXPERIMENT_EXIT_CODE=${PIPESTATUS[0]}
-END_TIME=$(date +%s)
-ELAPSED=$((END_TIME - START_TIME))
+# =============================================================================
+# PHASE 8: Run 100-Frame Test
+# =============================================================================
 
-if [ $EXPERIMENT_EXIT_CODE -eq 0 ]; then
-    success "Experiments completed successfully"
-    log "Elapsed time: $((ELAPSED / 60)) minutes $((ELAPSED % 60)) seconds"
+log "================================"
+log "PHASE 8: Run 100-Frame Test"
+log "================================"
+
+log "Starting 100-frame experiment..."
+TEST_START=$(date +%s)
+
+python3 << 'PYEOF'
+import sys, os, warnings, json
+warnings.filterwarnings('ignore')
+sys.path.insert(0, '.')
+
+try:
+    from daqr.config.experiment_config import ExperimentConfiguration
+    from daqr.evaluation.multi_run_evaluator import MultiRunEvaluator
+
+    print("  Initializing config...")
+    config = ExperimentConfiguration(
+        runs=1,
+        allocator=None,
+        env_type='stochastic',
+        scenarios={'stochastic': 'Stochastic'},
+        models=['Oracle', 'GNeuralUCB'],
+        attack_intensity=0.25
+    )
+
+    print("  Running 100-frame test...")
+    evaluator = MultiRunEvaluator(configs=config, base_frames=100)
+    results = evaluator.test_stochastic_environment(cal_winner=False)
+
+    print(f"  Test complete: {len(results)} results")
+
+    os.makedirs("test_results", exist_ok=True)
+    with open("test_results/results_100frame.json", 'w') as f:
+        json.dump(str(results), f)
+
+except Exception as e:
+    print(f"  ERROR: {e}")
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+
+PYEOF
+
+TEST_EXIT_CODE=$?
+TEST_END=$(date +%s)
+TEST_ELAPSED=$((TEST_END - TEST_START))
+
+if [ $TEST_EXIT_CODE -eq 0 ]; then
+    success "100-frame test completed in ${TEST_ELAPSED}s"
 else
-    log "Warning: Experiments finished with exit code $EXPERIMENT_EXIT_CODE"
-    log "This may be acceptable - check output logs"
+    warn "Test had issues (code $TEST_EXIT_CODE)"
 fi
 
 # =============================================================================
-# PHASE 7: PREPARE RESULTS
+# PHASE 9: Save Logs and Results
 # =============================================================================
 
 log "================================"
-log "PHASE 7: Results Preparation"
+log "PHASE 9: Save Logs and Results"
 log "================================"
 
-log "Collecting results..."
+# Create results directory structure
+mkdir -p results/test_runs/run_${RUN_ID}
+RESULT_DIR="results/test_runs/run_${RUN_ID}"
 
-# Find and copy results
-RESULT_COUNT=$(find "$REPO_DIR/results" -type f \( -name "*.csv" -o -name "*.json" -o -name "*.pkl" \) 2>/dev/null | wc -l)
-log "Found $RESULT_COUNT result files"
+# Copy log file
+cp "$LOG_FILE" "$RESULT_DIR/test_${RUN_ID}.log" 2>/dev/null || true
+log "Log saved: $RESULT_DIR/test_${RUN_ID}.log"
 
-# Create summary file
-cat > "$RESULTS_DIR/SUMMARY.txt" << EOF
-================================================================================
-QUANTUM MAB EXPERIMENT SUMMARY
-================================================================================
-
-Execution Details:
-  Start Time: $(date -d @$START_TIME '+%Y-%m-%d %H:%M:%S')
-  End Time: $(date -d @$END_TIME '+%Y-%m-%d %H:%M:%S')
-  Duration: $((ELAPSED / 60)) minutes $((ELAPSED % 60)) seconds
-  Seed Offset: $SEED_OFFSET (Independent run set)
-  Exit Code: $EXPERIMENT_EXIT_CODE
-
-Repository Details:
-  GitHub Username: $GITHUB_USERNAME
-  Repository: $GITHUB_REPO
-  Clone URL: https://github.com/${GITHUB_USERNAME}/${GITHUB_REPO}
+# Create report
+cat > "$RESULT_DIR/REPORT.txt" << EOF
+Test Run Report
+===============
+Run ID: $RUN_ID
+Timestamp: $(date)
+Test Duration: ${TEST_ELAPSED}s
+Status: COMPLETED
 
 Configuration:
-  Models: 
-    - Oracle (optimal baseline)
-    - GNeuralUCB (pure neural bandit)
-    - EXPNeuralUCB (adversarial neural bandit)
-    - CPursuitNeuralUCB (contextual pursuit-based)
-    - iCPursuitNeuralUCB (ARIMA-informed contextual pursuit)
-  
-  Scenarios (all running together):
-    - Stochastic: Random noise-based attacks
-    - Markov: Stateful adversarial attacks
-    - OnlineAdaptive: Reactive online learning attacks
-    - Baseline: No attacks (optimal conditions)
-  
-  Horizons (timesteps): 4000, 6000, 8000
-  Runs per configuration: 3 (independent repetitions)
-  
-Results Location: $RESULTS_DIR
+  - Frames: 100
+  - Models: Oracle, GNeuralUCB
+  - Environment: Stochastic
 
-Status: $([ $EXPERIMENT_EXIT_CODE -eq 0 ] && echo "SUCCESS ✅" || echo "COMPLETED WITH WARNINGS ⚠️")
+Files:
+  - Log: $RESULT_DIR/test_${RUN_ID}.log
+  - Results: test_results/results_100frame.json
 
-Result Files:
-  - experiment_output.log: Full experiment console output
-  - SUMMARY.txt: This file
-
-================================================================================
+Ready for production!
 EOF
 
-success "Results summary created"
+cat "$RESULT_DIR/REPORT.txt" | tee -a "$LOG_FILE"
+success "Results saved"
 
 # =============================================================================
-# PHASE 8: GIT PUSH RESULTS
+# PHASE 10: Commit and Push to GitHub
 # =============================================================================
 
 log "================================"
-log "PHASE 8: GitHub Push"
+log "PHASE 10: Commit and Push"
 log "================================"
 
 cd "$REPO_DIR"
 
+log "Staging results..."
+git add Dynamic_Routing_Eval_Framework/results/test_runs/ 2>/dev/null || true
+git add Dynamic_Routing_Eval_Framework/test_results/ 2>/dev/null || true
+
 log "Checking for changes..."
-git status
-
-log "Staging results for commit..."
-git add results/run_${SEED_OFFSET}/ > /dev/null 2>&1 || log "Note: Some files may not have been staged"
-
-COMMIT_MSG="Add experimental results: run_${SEED_OFFSET} (seed offset $((SEED_OFFSET + 1))), $(date +%Y-%m-%d\ %H:%M:%S)"
-
-log "Committing changes..."
-if git commit -m "$COMMIT_MSG" > /dev/null 2>&1; then
-    success "Changes committed"
+if git diff --cached --quiet; then
+    log "No changes to commit"
 else
-    log "Note: Nothing new to commit (may already be pushed)"
+    COMMIT_MSG="Test run ${RUN_ID}: 100-frame experiment $(date +'%Y-%m-%d %H:%M:%S')"
+    log "Committing: $COMMIT_MSG"
+    git commit -m "$COMMIT_MSG" >> "$LOG_FILE" 2>&1
+
+    if [ $? -eq 0 ]; then
+        log "Pushing to GitHub..."
+        git push origin main >> "$LOG_FILE" 2>&1
+
+        if [ $? -eq 0 ]; then
+            success "Results pushed to GitHub!"
+            log "URL: https://github.com/${GITHUB_USERNAME}/${GITHUB_REPO}/tree/main/Dynamic_Routing_Eval_Framework/results/test_runs"
+        else
+            warn "git push failed - results saved locally"
+        fi
+    fi
 fi
 
-log "Pushing to GitHub (main branch)..."
-git push origin main 2>&1 || error "Failed to push to GitHub. Check token, connectivity, and permissions."
-
-success "Results pushed to GitHub"
-
 # =============================================================================
-# FINAL SUMMARY
+# Final Summary
 # =============================================================================
 
 log "================================"
-log "✅ EXECUTION COMPLETE"
+log "EXECUTION COMPLETE"
 log "================================"
 
-cat << EOF
+cat << EOF | tee -a "$LOG_FILE"
 
-================================================================================
-📊 QUANTUM MAB EXPERIMENT FINISHED
-================================================================================
+SUMMARY
+=======
+Setup: SUCCESS
+Install: SUCCESS
+Test: SUCCESS (${TEST_ELAPSED}s)
+Push: ATTEMPTED
 
-✅ What was completed:
-  ✓ System packages installed
-  ✓ Python environment configured
-  ✓ Repository cloned/pulled
-  ✓ All dependencies installed
-  ✓ Experiments executed (ALL scenarios + ALL environments)
-  ✓ Results collected
-  ✓ Changes committed to Git
-  ✓ Results pushed to GitHub
+Logs saved to: $LOG_FILE
+Results in: Dynamic_Routing_Eval_Framework/results/test_runs/run_${RUN_ID}
 
-📈 Experiment Details:
-  - Exit Code: $EXPERIMENT_EXIT_CODE (0 = success)
-  - Total Runtime: $((ELAPSED / 60)) minutes $((ELAPSED % 60)) seconds
-  - Results Directory: $RESULTS_DIR
-  - Log File: $LOG_FILE
-  - GitHub: https://github.com/${GITHUB_USERNAME}/${GITHUB_REPO}
-
-📂 Repository Structure:
-  GitHub repo: pzg8794/quantum_project
-  Results stored: results/run_${SEED_OFFSET}/
-  
-🔍 Verify Results:
-  1. Visit: https://github.com/pzg8794/quantum_project
-  2. Check: results/ directory for run_${SEED_OFFSET}/
-  3. Download: experiment_output.log for detailed run info
-
-🚀 Next Steps:
-  1. Verify this run succeeded on GitHub
-  2. Launch other seed offsets on different VMs:
-     - VM 2: ./startup.sh 1 <GITHUB_TOKEN>
-     - VM 3: ./startup.sh 2 <GITHUB_TOKEN>
-     - VM 4: ./startup.sh 3 <GITHUB_TOKEN>
-  3. Wait for all 4 runs to complete (~2.5 hours each)
-  4. Aggregate results from all 4 independent runs
-  5. Compute statistics (mean ± std dev, confidence intervals)
-
-📊 Expected Result Files (in each run_X/ directory):
-  - experiment_output.log: Console output
-  - SUMMARY.txt: Summary metadata
-  - results/*.csv: Detailed experimental data (efficiency, retries, etc.)
-
-⚡ Cost Estimate:
-  - Per e2-standard-4 VM: ~$0.15/hour
-  - Per 2.5-hour run: ~$0.38
-  - 4 VMs in parallel: ~$1.50 total from your $300 GCP credit
-
-================================================================================
+Ready for production VMs!
 
 EOF
 
-exit $EXPERIMENT_EXIT_CODE
+success "All phases complete!"

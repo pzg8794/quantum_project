@@ -65,7 +65,8 @@ log "Staging Results"
 log "================================"
 
 log "Adding experiment results..."
-git add Dynamic_Routing_Eval_Framework/
+git add Dynamic_Routing_Eval_Framework/results/ 2>/dev/null || true
+git add Dynamic_Routing_Eval_Framework/experiment_results/ 2>/dev/null || true
 
 log "Files staged:"
 git diff --cached --name-only | tee -a "$LOG_FILE"

@@ -56,20 +56,20 @@ success "Python 3.11 installed"
 # PHASE 1: Clone Repository
 # =============================================================================
 
-log "================================"
-log "PHASE 1: Clone Repository"
-log "================================"
+# log "================================"
+# log "PHASE 1: Clone Repository"
+# log "================================"
 
-cd /tmp
-rm -rf quantum_repo
-git clone "https://${TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git" quantum_repo >> "$LOG_FILE" 2>&1
+# cd /tmp
+# rm -rf quantum_repo
+# git clone "https://${TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git" quantum_repo >> "$LOG_FILE" 2>&1
 
-if [ $? -ne 0 ]; then
-    error "Repository clone failed"
-fi
+# if [ $? -ne 0 ]; then
+#     error "Repository clone failed"
+# fi
 
-cd quantum_repo
-success "Repository cloned"
+# cd quantum_repo
+# success "Repository cloned"
 
 # =============================================================================
 # PHASE 2: Install Python Packages

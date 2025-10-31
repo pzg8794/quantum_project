@@ -31,7 +31,7 @@ export PYTHONPATH="$(pwd):$PYTHONPATH"
 cd Dynamic_Routing_Eval_Framework
 
 
-python3 << PYEOF # FIX: Use python3 for compatibility with GCP's Ubuntu 22.04 default
+python3 << 'PYEOF' # FIX: Use python3 for compatibility with GCP's Ubuntu 22.04 default
 import sys
 
 

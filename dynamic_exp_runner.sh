@@ -51,7 +51,34 @@ custom_config = ExperimentConfiguration(
     models=models, attack_intensity=FRAMEWORK_CONFIG['env_attrs']['intensity'])
 
 evaluator = MultiRunEvaluator(configs=custom_config, base_frames=FRAMEWORK_CONFIG['base_frames'], frame_step=FRAMEWORK_CONFIG['frame_step'])
-evaluator.run()
+
+print("\n✓ Framework Configuration:")
+print(f"  • Primary Environment: {FRAMEWORK_CONFIG['main_env'].upper()}")
+print(f"  • Evaluation Mode: {FRAMEWORK_CONFIG['eval_mod'].upper()}")
+print(f"  • Models to Test: {len(models)}")
+print("=" * 70)
+
+print(f"\n▶ Executing {evaluation_type.upper()} EVALUATION:")
+for scenario, description in test_scenarios.items():
+    print(f"  • {scenario.upper():<20} {description}")
+print("=" * 70)
+
+# Execute framework evaluation
+try:
+    print("\n⚙ Running Quantum MAB Models Evaluation...")
+    
+    comparison_results = evaluator.test_stochastic_environment(cal_winner=True)
+    evaluator.calculate_scenario_performance(scenario=FRAMEWORK_CONFIG['main_env'])
+    last_exp_comparison_results = evaluator.get_evaluation_results(FRAMEWORK_CONFIG['main_env'])
+    
+    print(f"\n✓ Quantum MAB Models Evaluation Framework - {evaluation_type.upper()} evaluation completed!")
+    
+except Exception as e:
+    print(f"\n❌ Evaluation error: {e}")
+    print("⚠ This may indicate missing framework components or configuration issues")
+    import traceback
+    traceback.print_exc()
+    
 print("${EXP_ID} complete")
 PYEOF
 

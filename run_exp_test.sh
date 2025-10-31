@@ -2,7 +2,7 @@
 set +e
 
 MODE=$1
-ALLOCATOR=$1
+ALLOCATOR=$2
 
 ./1_startup.sh
 ./dynamic_exp_runner.sh 100 1 100 12345 "$MODE" 0.25 "$ALLOCATOR"

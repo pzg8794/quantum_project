@@ -50,7 +50,7 @@ config = ExperimentConfiguration()
 models = config.NEURAL_MODELS
 # ADDED: Initialize variables from bash arguments
 base_frames = ${BASE_FRAMES}
-exp_id = ${EXP_ID}
+exp_id = str(${EXP_ID})
 
 # ==============================================================================
 # MODIFICATION BLOCK: Override settings for quick-test and test modes
@@ -252,6 +252,7 @@ except Exception as e:
     import traceback
     traceback.print_exc()
     
+print(f"{exp_id} complete")
 PYEOF
 
 

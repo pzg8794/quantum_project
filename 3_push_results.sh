@@ -68,11 +68,11 @@ log "================================"
 git add Dynamic_Routing_Eval_Framework/results/ 2>/dev/null || true
 git add Dynamic_Routing_Eval_Framework/experiment_results/ 2>/dev/null || true
 
-CHANGES=$(git diff --cached --name-only)
-if [ -z "$CHANGES" ]; then
-    warn "No changes to commit."
-    exit 0
-fi
+# CHANGES=$(git diff --cached --name-only)
+# if [ -z "$CHANGES" ]; then
+#     warn "No changes to commit."
+#     exit 0
+# fi
 
 log "Files staged:"
 echo "$CHANGES" | tee -a "$LOG_FILE"

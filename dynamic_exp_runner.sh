@@ -55,7 +55,7 @@ exp_id = str("${EXP_ID}")
 # ==============================================================================
 # MODIFICATION BLOCK: Override settings for quick-test and test modes
 # ==============================================================================
-if "quicktest" in exp_id:
+if "quick-test" in exp_id:
     base_frames = 100
     models = ["Oracle", "GNeuralUCB"]
     print("✓ QUICK-TEST mode detected. Overriding settings: frames=100, models=['Oracle', 'GNeuralUCB']")

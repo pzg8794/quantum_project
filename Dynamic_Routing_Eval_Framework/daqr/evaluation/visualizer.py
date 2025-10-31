@@ -1033,7 +1033,8 @@ class QuantumEvaluatorVisualizer:
             axes[1, 2].set_axis_off()
 
         plt.tight_layout()
-        plt.savefig(f'{scenario}_vs_{baseline if baseline else 'NA'}_comparison.png', dpi=300, bbox_inches='tight')
+        baseline = f'_vs_{baseline}' if baseline else ''
+        plt.savefig(f'{scenario}{baseline}_comparison.png', dpi=300, bbox_inches='tight')
         plt.show()
 
 

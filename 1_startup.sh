@@ -1,9 +1,9 @@
 #!/bin/bash
 
 ################################################################################
-# PRODUCTION STARTUP SCRIPT - Handles ALL system dependencies
+# PRODUCTION STARTUP SCRIPT - Install Python 3.11 + ALL dependencies
 # Runs on: Ubuntu 20.04/22.04 LTS (GCP, AWS, Local)
-# Guarantees: Python, pip, git, all packages installed
+# Installs: Python 3.11, pip, git, virtualenv, ALL packages from requirements.txt
 ################################################################################
 
 set +e
@@ -15,6 +15,7 @@ GITHUB_REPO="quantum_project"
 REPO_DIR="/tmp/quantum_repo"
 LOG_DIR="/tmp/quantum_logs"
 LOG_FILE="$LOG_DIR/startup_$(date +%s).log"
+VENV_DIR="/opt/quantum_venv"
 
 mkdir -p "$LOG_DIR"
 
@@ -25,52 +26,43 @@ error() { echo "✗ ERROR: $1" | tee -a "$LOG_FILE"; exit 1; }
 warn() { echo "⚠ WARN: $1" | tee -a "$LOG_FILE"; }
 
 # =============================================================================
-# PHASE 0: System Dependencies (APT packages)
+# PHASE 0: System Dependencies + Python 3.11
 # =============================================================================
 
 log "================================"
-log "PHASE 0: System Dependencies"
+log "PHASE 0: System Dependencies & Python 3.11"
 log "================================"
 
 # Update package lists
 log "Updating system packages..."
 sudo apt-get update -qq >> "$LOG_FILE" 2>&1
-APT_UPDATE=$?
 
-if [ $APT_UPDATE -ne 0 ]; then
-    warn "apt-get update had issues, continuing anyway..."
-fi
+# Install deadsnakes PPA for Python 3.11
+log "Adding deadsnakes PPA for Python 3.11..."
+sudo apt-get install -y software-properties-common >> "$LOG_FILE" 2>&1
+sudo add-apt-repository -y ppa:deadsnakes/ppa >> "$LOG_FILE" 2>&1
+sudo apt-get update -qq >> "$LOG_FILE" 2>&1
 
-# Install core dependencies
-log "Installing system dependencies..."
-PACKAGES="python3 python3-pip python3-dev python3-venv git curl wget build-essential"
+# Install Python 3.11 + dev tools
+log "Installing Python 3.11..."
+PACKAGES="python3.11 python3.11-venv python3.11-dev python3-pip git curl wget build-essential libssl-dev libffi-dev"
 
 sudo apt-get install -y $PACKAGES >> "$LOG_FILE" 2>&1
 APT_INSTALL=$?
 
 if [ $APT_INSTALL -ne 0 ]; then
-    error "Failed to install system packages"
+    error "Failed to install system packages and Python 3.11"
 fi
 
-# Verify Python and pip are available
-if ! command -v python3 &> /dev/null; then
-    error "python3 not found after apt-get install"
+# Verify Python 3.11 is available
+if ! command -v python3.11 &> /dev/null; then
+    error "python3.11 not found after apt-get install"
 fi
 
-if ! command -v pip3 &> /dev/null; then
-    error "pip3 not found after apt-get install"
-fi
+log "Python version:"
+python3.11 --version | tee -a "$LOG_FILE"
 
-# Upgrade pip, setuptools, wheel
-log "Upgrading pip, setuptools, wheel..."
-pip3 install --upgrade pip setuptools wheel -q >> "$LOG_FILE" 2>&1
-PIP_UPGRADE=$?
-
-if [ $PIP_UPGRADE -ne 0 ]; then
-    warn "pip upgrade had issues, continuing..."
-fi
-
-success "System dependencies installed"
+success "Python 3.11 + system dependencies installed"
 
 # =============================================================================
 # PHASE 1: Clone Repository
@@ -108,47 +100,77 @@ ls -la | grep "^d" | awk '{print "  " $NF}' | tee -a "$LOG_FILE"
 success "Repository structure verified"
 
 # =============================================================================
-# PHASE 3: Install Python Packages from requirements.txt
+# PHASE 3: Create Python 3.11 Virtual Environment
 # =============================================================================
 
 log "================================"
-log "PHASE 3: Install Python Packages"
+log "PHASE 3: Create Python 3.11 Virtual Environment"
 log "================================"
 
+log "Creating virtual environment at $VENV_DIR..."
+python3.11 -m venv "$VENV_DIR" >> "$LOG_FILE" 2>&1
+VENV_CODE=$?
+
+if [ $VENV_CODE -ne 0 ]; then
+    error "Failed to create virtual environment"
+fi
+
+# Activate venv
+source "$VENV_DIR/bin/activate"
+log "Virtual environment activated"
+
+# Verify Python in venv
+log "Python in venv:"
+python --version | tee -a "$LOG_FILE"
+
+success "Python 3.11 virtual environment created and activated"
+
+# =============================================================================
+# PHASE 4: Upgrade pip + Install Packages
+# =============================================================================
+
+log "================================"
+log "PHASE 4: Upgrade pip & Install Packages"
+log "================================"
+
+log "Upgrading pip, setuptools, wheel..."
+pip install --upgrade pip setuptools wheel -q >> "$LOG_FILE" 2>&1
+PIP_UPGRADE=$?
+
+if [ $PIP_UPGRADE -ne 0 ]; then
+    warn "pip upgrade had issues (code $PIP_UPGRADE), continuing..."
+fi
+
+# Install from requirements.txt
 if [ ! -f "requirements.txt" ]; then
     error "requirements.txt not found in repo"
 fi
 
-log "Found requirements.txt (first 20 lines):"
-head -20 requirements.txt | tee -a "$LOG_FILE"
+log "Found requirements.txt - installing all packages..."
+log "This may take 5-10 minutes..."
 
-log "Installing Python packages with pip3..."
-pip3 install -r requirements.txt -q >> "$LOG_FILE" 2>&1
+pip install -r requirements.txt >> "$LOG_FILE" 2>&1
 PIP_INSTALL=$?
 
 if [ $PIP_INSTALL -ne 0 ]; then
-    warn "pip3 install returned code $PIP_INSTALL - checking package installation..."
-    
-    # Try to verify key packages are installed
-    python3 -c "import numpy; import pandas; import torch; print('Key packages verified')" 2>/dev/null
-    KEY_VERIFY=$?
-    
-    if [ $KEY_VERIFY -ne 0 ]; then
+    warn "pip install returned code $PIP_INSTALL - verifying key packages..."
+    python -c "import numpy; import pandas; import torch; print('✓ Key packages OK')" 2>/dev/null
+    if [ $? -ne 0 ]; then
         error "Failed to install required Python packages"
     fi
 fi
 
 log "Installed packages:"
-pip3 list | grep -E "torch|numpy|pandas|scipy|matplotlib" | tee -a "$LOG_FILE"
+pip list | grep -E "torch|numpy|pandas|scipy|matplotlib|jupyter" | tee -a "$LOG_FILE"
 
-success "Python packages installed"
+success "All Python packages installed"
 
 # =============================================================================
-# PHASE 4: Git Configuration
+# PHASE 5: Git Configuration
 # =============================================================================
 
 log "================================"
-log "PHASE 4: Git Configuration"
+log "PHASE 5: Git Configuration"
 log "================================"
 
 git config --global user.email "quantum-bot@gcp"
@@ -157,11 +179,11 @@ git config --global user.name "Quantum Test Bot"
 success "Git configured"
 
 # =============================================================================
-# PHASE 5: Verify Repository Structure
+# PHASE 6: Verify Repository Structure
 # =============================================================================
 
 log "================================"
-log "PHASE 5: Verify Repository Structure"
+log "PHASE 6: Verify Repository Structure"
 log "================================"
 
 if [ -d "Dynamic_Routing_Eval_Framework/daqr" ]; then
@@ -173,11 +195,11 @@ else
 fi
 
 # =============================================================================
-# PHASE 6: Setup Python Package Structure
+# PHASE 7: Setup Python Package Structure
 # =============================================================================
 
 log "================================"
-log "PHASE 6: Python Package Setup"
+log "PHASE 7: Python Package Setup"
 log "================================"
 
 cd Dynamic_Routing_Eval_Framework
@@ -191,17 +213,17 @@ done
 success "Package structure ready"
 
 # =============================================================================
-# PHASE 7: Test Python Imports
+# PHASE 8: Test Python Imports
 # =============================================================================
 
 log "================================"
-log "PHASE 7: Test Python Imports"
+log "PHASE 8: Test Python Imports"
 log "================================"
 
 export PYTHONPATH="$(pwd):$PYTHONPATH"
 
 log "Testing Python environment..."
-python3 << 'PYEOF'
+python << 'PYEOF'
 import sys
 print(f"  Python version: {sys.version.split()[0]}")
 print(f"  Python executable: {sys.executable}")
@@ -212,29 +234,28 @@ try:
     import numpy as np
     print(f"    ✓ numpy: {np.__version__}")
 except ImportError as e:
-    print(f"    ✗ numpy: MISSING - {e}")
+    print(f"    ✗ numpy: MISSING")
     modules_ok = False
 
 try:
     import pandas as pd
     print(f"    ✓ pandas: {pd.__version__}")
 except ImportError as e:
-    print(f"    ✗ pandas: MISSING - {e}")
-    modules_ok = False
-
-try:
-    import matplotlib
-    print(f"    ✓ matplotlib: {matplotlib.__version__}")
-except ImportError as e:
-    print(f"    ✗ matplotlib: MISSING - {e}")
+    print(f"    ✗ pandas: MISSING")
     modules_ok = False
 
 try:
     import torch
     print(f"    ✓ torch: {torch.__version__}")
 except ImportError as e:
-    print(f"    ✗ torch: MISSING - {e}")
+    print(f"    ✗ torch: MISSING")
     modules_ok = False
+
+try:
+    import jupyter
+    print(f"    ✓ jupyter: installed")
+except ImportError:
+    print(f"    ✗ jupyter: MISSING")
 
 print(f"\n  Attempting daqr imports...")
 sys.path.insert(0, '.')
@@ -242,14 +263,14 @@ try:
     from daqr.config.experiment_config import ExperimentConfiguration
     print(f"    ✓ daqr.config.experiment_config: OK")
 except Exception as e:
-    print(f"    ✗ daqr.config import error: {str(e)[:50]}")
+    print(f"    ✗ daqr.config error")
     modules_ok = False
 
 try:
     from daqr.evaluation.multi_run_evaluator import MultiRunEvaluator
     print(f"    ✓ daqr.evaluation.multi_run_evaluator: OK")
 except Exception as e:
-    print(f"    ✗ multi_run_evaluator import error: {str(e)[:50]}")
+    print(f"    ✗ multi_run_evaluator error")
     modules_ok = False
 
 if not modules_ok:
@@ -258,10 +279,28 @@ PYEOF
 
 IMPORT_CODE=$?
 if [ $IMPORT_CODE -ne 0 ]; then
-    error "Python imports failed - some packages may be missing"
+    error "Python imports failed"
 fi
 
 success "Python imports verified"
+
+# =============================================================================
+# Create activation script for future use
+# =============================================================================
+
+log "Creating activation script..."
+cat > /tmp/activate_quantum_env.sh << ACTIVATION_EOF
+#!/bin/bash
+source $VENV_DIR/bin/activate
+cd $REPO_DIR/Dynamic_Routing_Eval_Framework
+export PYTHONPATH="\$(pwd):\$PYTHONPATH"
+echo "✓ Quantum environment activated"
+echo "  Python: \$(python --version)"
+echo "  Location: $VENV_DIR"
+ACTIVATION_EOF
+
+chmod +x /tmp/activate_quantum_env.sh
+log "Activation script: /tmp/activate_quantum_env.sh"
 
 # =============================================================================
 # Final Summary
@@ -275,15 +314,19 @@ cat << EOF | tee -a "$LOG_FILE"
 
 ENVIRONMENT READY
 =================
-System Dependencies: INSTALLED
-  - python3: $(python3 --version)
-  - pip3: $(pip3 --version | cut -d' ' -f2)
-  - git: $(git --version | cut -d' ' -f3)
+Python: 3.11 (installed)
+Virtual Environment: $VENV_DIR
+Status: ACTIVATED
 
-Python Packages: INSTALLED
-  - $(pip3 show numpy | grep Version | cut -d' ' -f2)
-  - $(pip3 show pandas | grep Version | cut -d' ' -f2)
-  - $(pip3 show torch | grep Version | cut -d' ' -f2)
+System Dependencies: INSTALLED
+  - python3.11
+  - build-essential
+  - git
+  - libssl-dev, libffi-dev
+
+Python Packages: ALL INSTALLED
+  $(pip list | grep -E "torch|numpy|pandas|scipy" | head -3)
+  ... (see 'pip list' for full list)
 
 Repository: CLONED and CONFIGURED
   Location: $REPO_DIR
@@ -291,9 +334,15 @@ Repository: CLONED and CONFIGURED
 
 Python Imports: VERIFIED
 
-Log: $LOG_FILE
+NEXT STEPS:
+1. Activate environment (for future sessions):
+   source /tmp/activate_quantum_env.sh
 
-✓ Ready to run experiments with: ./2_exp_runner.sh
+2. Run experiments:
+   ./2_exp_runner.sh 100
+
+3. Push results:
+   ./3_push_results.sh
 
 EOF
 

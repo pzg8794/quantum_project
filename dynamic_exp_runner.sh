@@ -22,11 +22,16 @@ cd Dynamic_Routing_Eval_Framework
 
 python3.11 << PYEOF
 import sys
+
+
+# 1
 sys.path.insert(0, '..')
 from daqr.core.qubit_allocator import *
 from daqr.config.experiment_config import *
 from daqr.evaluation.multi_run_evaluator import *
 
+
+# 2
 config = ExperimentConfiguration()
 models = config.NEURAL_MODELS
 
@@ -44,12 +49,37 @@ FRAMEWORK_CONFIG = {
                   'adversarial': ['markov', 'adaptive', 'onlineadaptive']}
 }
 
+
+# 3
+# Define evaluation scenarios based on framework focus
+ evaluation_type = "STOCHASTIC-FOCUSED"
+if FRAMEWORK_CONFIG['main_env'] == 'stochastic':
+    # Primary stochastic evaluation with optional comparison
+    test_scenarios = {
+        'stochastic': 'Stochastic Random Failures',
+        'markov': 'Markov Adversarial Attack',
+        'adaptive': 'Adaptive Adversarial Attack',
+        'onlineadaptive': 'Online Adaptive Attack',
+        'none': 'Baseline (Optimal Conditions)'  # For comparison
+    }
+    evaluation_type = "STOCHASTIC-FOCUSED"
+else:
+    # Fallback to stochastic vs adversarial for comparison
+    test_scenarios = {
+        'stochastic': 'Stochastic (Natural Network Failures)', 
+        'adaptive': 'Adversarial (Strategic Attacks)'
+    }
+    evaluation_type = "COMPARATIVE"
+
+
+# 4
 allocator = None
 custom_config = ExperimentConfiguration(
     runs=FRAMEWORK_CONFIG['exp_num'], allocator=allocator, 
     env_type=FRAMEWORK_CONFIG['main_env'], scenarios=FRAMEWORK_CONFIG['scenarios']['exp_focus'], 
     models=models, attack_intensity=FRAMEWORK_CONFIG['env_attrs']['intensity'])
 
+# 5
 evaluator = MultiRunEvaluator(configs=custom_config, base_frames=FRAMEWORK_CONFIG['base_frames'], frame_step=FRAMEWORK_CONFIG['frame_step'])
 
 print("\n✓ Framework Configuration:")
@@ -63,6 +93,8 @@ for scenario, description in test_scenarios.items():
     print(f"  • {scenario.upper():<20} {description}")
 print("=" * 70)
 
+
+# 6
 # Execute framework evaluation
 try:
     print("\n⚙ Running Quantum MAB Models Evaluation...")
@@ -78,7 +110,7 @@ except Exception as e:
     print("⚠ This may indicate missing framework components or configuration issues")
     import traceback
     traceback.print_exc()
-    
+
 print("${EXP_ID} complete")
 PYEOF
 

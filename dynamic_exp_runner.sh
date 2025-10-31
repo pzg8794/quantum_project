@@ -6,6 +6,8 @@ EXP_NUM=$2
 FRAME_STEP=$3
 BASE_SEED=$4
 EXP_ID=$5
+INTENSITY=$6
+ALLOCATOR=$7
 
 LOG_DIR="/tmp/quantum_logs"
 LOG_FILE="$LOG_DIR/${EXP_ID}_$(date +%s).log"
@@ -29,6 +31,7 @@ sys.path.insert(0, '..')
 from daqr.core.qubit_allocator import *
 from daqr.config.experiment_config import *
 from daqr.evaluation.multi_run_evaluator import *
+from daqr.evaluation.visualizer import QuantumEvaluatorVisualizer
 
 
 # 2
@@ -43,11 +46,14 @@ FRAMEWORK_CONFIG = {
     'routing_strategy': 'fixed', 'enable_routing_comparison': False,
     'alg_attrs': {'lambda_reg': 1.0, 'gamma': 0.1, 'network_width': 128,
                   'network_depth': 2, 'gradient_steps': 8, 'learning_rate': 1e-4},
-    'env_attrs': {'intensity': 0.25, 'base_seed': ${BASE_SEED}, 'reproducible': True},
+    'env_attrs': {'intensity': ${INTENSITY}, 'base_seed': ${BASE_SEED}, 'reproducible': True},
     'scenarios': {'exp_focus': ['stochastic'], 'stochastic_vs_baseline': ['none', 'stochastic'],
                   'comprehensive': ['none', 'stochastic', 'markov', 'adaptive'],
                   'adversarial': ['markov', 'adaptive', 'onlineadaptive']}
 }
+attack_intensity= FRAMEWORK_CONFIG['env_attrs']['intensity']
+current_experiments = (FRAMEWORK_CONFIG['exp_num'] if FRAMEWORK_CONFIG['test_mode'] 
+                       else FRAMEWORK_CONFIG['prod_experiments'])
 
 
 # 3
@@ -73,11 +79,9 @@ else:
 
 
 # 4
-allocator = None
+allocator = ${INTENSITY}
 custom_config = ExperimentConfiguration(
-    runs=FRAMEWORK_CONFIG['exp_num'], allocator=allocator, 
-    env_type=FRAMEWORK_CONFIG['main_env'], scenarios=FRAMEWORK_CONFIG['scenarios']['exp_focus'], 
-    models=models, attack_intensity=FRAMEWORK_CONFIG['env_attrs']['intensity'])
+    runs=current_experiments, allocator=allocator, env_type=FRAMEWORK_CONFIG['main_env'], scenarios=test_scenarios, models=models, attack_intensity=attack_intensity)
 
 # 5
 evaluator = MultiRunEvaluator(configs=custom_config, base_frames=FRAMEWORK_CONFIG['base_frames'], frame_step=FRAMEWORK_CONFIG['frame_step'])
@@ -111,6 +115,100 @@ except Exception as e:
     import traceback
     traceback.print_exc()
 
+
+# 7
+# @title Robustness Analysis and Quantification
+print("=" * 70)
+print("ROBUSTNESS ANALYSIS")
+print("=" * 70)
+
+try:
+    # Pretty print comparison results
+    import pprint
+    print("Comparison Results Summary:")
+    # pprint.pprint(comparison_results)
+
+    # Full comparison plot (all scenarios together)
+    viz = QuantumEvaluatorVisualizer(comparison_results, allocator=allocator)
+    viz.plot_stochastic_vs_adversarial_comparison()
+
+    # Get list of all scenarios
+    scenario_list = list(test_scenarios.keys())
+
+    # Plot each scenario individually
+    for scenario in scenario_list:
+        if scenario.lower() == 'stochastic': pass
+        print(f"\n📊 Generating plots for scenario: {scenario.upper()}")
+        evaluator.calculate_scenario_performance(scenario=scenario)
+
+        # Get ALL results for this scenario (all experiments)
+        all_scenario_results = evaluator.get_evaluation_results(scenario=scenario)
+        
+        # Just pass the scenario name - method auto-detects and plots it
+        viz.plot_scenarios_comparison(scenario=scenario)
+        
+        # # Also plot just the last experiment
+        # if len(all_scenario_results[scenario].keys()) > 1:
+        #     last_scenario_results = evaluator.get_evaluation_results(scenario=scenario,exp_id=-1)
+        #     if last_scenario_results: viz.plot_scenarios_comparison(last_scenario_results)
+
+    print("\n All scenario plots generated!")
+
+    
+    print("\n✓ Stochastic Analysis Generated:")
+    print("  → quantum_mab_models_stochastic_evaluation.png")
+    
+    # Use viz.get_viz_data() to access pre-computed averaged results
+    stoch_data = viz.get_viz_data(f'stochastic_data')
+    
+    if stoch_data and 'averaged' in stoch_data:
+        stoch_results = stoch_data['averaged']
+        
+        print("\n" + "=" * 70)
+        print("STOCHASTIC PERFORMANCE METRICS")
+        print("=" * 70)
+        
+        oracle_reward = stoch_results.get('oracle_reward', 1)
+        winner = stoch_results.get('winner', 'N/A')
+        
+        for alg in models:
+            if alg in stoch_results['results']:
+                model_data = stoch_results['results'][alg]
+                
+                # Use PRE-COMPUTED metrics
+                stoch_reward = model_data.get('final_reward', 0)
+                efficiency = model_data.get('efficiency', 0)
+                gap = model_data.get('gap', float('inf'))
+                
+                print(f"\n{alg}:")
+                print(f"  • Stochastic Performance: {stoch_reward:.3f}")
+                print(f"  • Oracle Efficiency: {efficiency:.1f}%")
+                print(f"  • Oracle Gap: {gap:.1f}%")
+                
+                if efficiency > 90:     classification = "EXCELLENT"
+                elif efficiency > 80:   classification = "GOOD"
+                elif efficiency > 70:   classification = "MODERATE"
+                else:                   classification = "NEEDS IMPROVEMENT"
+                
+                print(f"  • Classification: {classification}")
+                
+                if alg == winner:
+                    print(f"  ★ WINNER ★")
+        
+        print("\n" + "=" * 70)
+        print("STOCHASTIC ENVIRONMENT INSIGHTS")
+        print("=" * 70)
+        print("  • Natural quantum decoherence and network failures")
+        print("  • Performance metrics validate theoretical predictions")
+        print("  • Baseline for future adversarial robustness studies")
+    else:
+        print("⚠ No stochastic averaged results available")
+
+except Exception as e:
+    print(f"❌ Error in robustness analysis: {e}")
+    import traceback
+    traceback.print_exc()
+    
 print("${EXP_ID} complete")
 PYEOF
 

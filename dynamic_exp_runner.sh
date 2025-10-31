@@ -8,6 +8,7 @@ BASE_SEED=$4
 EXP_ID=$5
 INTENSITY=$6
 ALLOCATOR=$7
+SCENARIOS=$8
 
 LOG_DIR="/tmp/quantum_logs"
 LOG_FILE="$LOG_DIR/${EXP_ID}_$(date +%s).log"
@@ -51,6 +52,7 @@ FRAMEWORK_CONFIG = {
                   'comprehensive': ['none', 'stochastic', 'markov', 'adaptive'],
                   'adversarial': ['markov', 'adaptive', 'onlineadaptive']}
 }
+test_scenarios = ${SCENARIOS:-"None"}
 attack_intensity= FRAMEWORK_CONFIG['env_attrs']['intensity']
 current_experiments = (FRAMEWORK_CONFIG['exp_num'] if FRAMEWORK_CONFIG['test_mode'] 
                        else FRAMEWORK_CONFIG['prod_experiments'])
@@ -59,7 +61,7 @@ current_experiments = (FRAMEWORK_CONFIG['exp_num'] if FRAMEWORK_CONFIG['test_mod
 # 3
 # Define evaluation scenarios based on framework focus
 evaluation_type = "STOCHASTIC-FOCUSED"
-if FRAMEWORK_CONFIG['main_env'] == 'stochastic':
+if test_scenarios is None and FRAMEWORK_CONFIG['main_env'] == 'stochastic':
     # Primary stochastic evaluation with optional comparison
     test_scenarios = {
         'stochastic': 'Stochastic Random Failures',

@@ -46,7 +46,7 @@ FRAMEWORK_CONFIG = {
     'routing_strategy': 'fixed', 'enable_routing_comparison': False,
     'alg_attrs': {'lambda_reg': 1.0, 'gamma': 0.1, 'network_width': 128,
                   'network_depth': 2, 'gradient_steps': 8, 'learning_rate': 1e-4},
-    'env_attrs': {'intensity': ${INTENSITY}, 'base_seed': ${BASE_SEED}, 'reproducible': True},
+    'env_attrs': {'intensity': ${INTENSITY:- "0.25"}, 'base_seed': ${BASE_SEED}, 'reproducible': True},
     'scenarios': {'exp_focus': ['stochastic'], 'stochastic_vs_baseline': ['none', 'stochastic'],
                   'comprehensive': ['none', 'stochastic', 'markov', 'adaptive'],
                   'adversarial': ['markov', 'adaptive', 'onlineadaptive']}
@@ -79,7 +79,7 @@ else:
 
 
 # 4
-allocator = ${INTENSITY}
+allocator = ${ALLOCATOR:-"None"}  # Default to None if not provided
 custom_config = ExperimentConfiguration(
     runs=current_experiments, allocator=allocator, env_type=FRAMEWORK_CONFIG['main_env'], scenarios=test_scenarios, models=models, attack_intensity=attack_intensity)
 

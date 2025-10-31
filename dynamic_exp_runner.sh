@@ -1,6 +1,7 @@
 #!/bin/bash
 set +e
 
+
 BASE_FRAMES=$1
 EXP_NUM=$2
 FRAME_STEP=$3
@@ -10,21 +11,29 @@ INTENSITY=$6
 ALLOCATOR=$7
 SCENARIOS=$8
 
+
 LOG_DIR="/tmp/quantum_logs"
+mkdir -p "$LOG_DIR" # FIX: Ensure log directory exists before use
 LOG_FILE="$LOG_DIR/${EXP_ID}_$(date +%s).log"
+
 
 log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"; }
 error() { echo "✗ ERROR: $1" | tee -a "$LOG_FILE"; exit 1; }
 
+
 if [ ! -d "Dynamic_Routing_Eval_Framework" ]; then error "Run from quantum_project root"; fi
 
+
 log "Run: ${EXP_ID} | Frames: ${BASE_FRAMES} | Runs: ${EXP_NUM} | Step: ${FRAME_STEP} | Seed: ${BASE_SEED}"
+
 
 export PYTHONPATH="$(pwd):$PYTHONPATH"
 cd Dynamic_Routing_Eval_Framework
 
-python3.11 << PYEOF
+
+python3 << PYEOF # FIX: Use python3 for compatibility with GCP's Ubuntu 22.04 default
 import sys
+
 
 
 # 1
@@ -35,13 +44,29 @@ from daqr.evaluation.multi_run_evaluator import *
 from daqr.evaluation.visualizer import QuantumEvaluatorVisualizer
 
 
+
 # 2
 config = ExperimentConfiguration()
 models = config.NEURAL_MODELS
+# ADDED: Initialize variables from bash arguments
+base_frames = ${BASE_FRAMES}
 exp_id = "${EXP_ID}"
 
+# ==============================================================================
+# MODIFICATION BLOCK: Override settings for quick-test and test modes
+# ==============================================================================
+if "quick-test" in exp_id:
+    base_frames = 100
+    models = ["Oracle"]
+    print("✓ QUICK-TEST mode detected. Overriding settings: frames=100, models=['Oracle']")
+elif "test" in exp_id:
+    base_frames = 1000
+    print("✓ TEST mode detected. Overriding settings: frames=1000")
+# ==============================================================================
+
+
 FRAMEWORK_CONFIG = {
-    'test_mode': True, 'base_frames': ${BASE_FRAMES}, 'exp_num': ${EXP_NUM}, 
+    'test_mode': True, 'base_frames': base_frames, 'exp_num': ${EXP_NUM}, 
     'frame_step': ${FRAME_STEP}, 'models': models, 'prod_frames': 4000,
     'prod_experiments': 10, 'frame_steps': [], 'main_env': 'stochastic',
     'eval_mod': 'comprehensive', 'main_model': 'CEXPNeuralUCB',
@@ -57,17 +82,7 @@ test_scenarios = ${SCENARIOS:-"None"}
 attack_intensity= FRAMEWORK_CONFIG['env_attrs']['intensity']
 current_experiments = (FRAMEWORK_CONFIG['exp_num'] if FRAMEWORK_CONFIG['test_mode'] 
                        else FRAMEWORK_CONFIG['prod_experiments'])
-# ==============================================================================
-# MODIFICATION BLOCK: Override settings for quick-test and test modes
-# ==============================================================================
-if "quick-test" in exp_id:
-    base_frames = 100
-    models = ["Oracle"]
-    print("✓ QUICK-TEST mode detected. Overriding settings: frames=100, models=['Oracle', 'GNeuralUCB']")
-elif "test" in exp_id:
-    base_frames = 1000
-    print("✓ TEST mode detected. Overriding settings: frames=1000")
-# ==============================================================================
+
 
 
 # 3
@@ -92,13 +107,16 @@ else:
     evaluation_type = "COMPARATIVE"
 
 
+
 # 4
 allocator = ${ALLOCATOR:-"None"}  # Default to None if not provided
 custom_config = ExperimentConfiguration(
     runs=current_experiments, allocator=allocator, env_type=FRAMEWORK_CONFIG['main_env'], scenarios=test_scenarios, models=models, attack_intensity=attack_intensity)
 
+
 # 5
 evaluator = MultiRunEvaluator(configs=custom_config, base_frames=FRAMEWORK_CONFIG['base_frames'], frame_step=FRAMEWORK_CONFIG['frame_step'])
+
 
 print("\n✓ Framework Configuration:")
 print(f"  • Primary Environment: {FRAMEWORK_CONFIG['main_env'].upper()}")
@@ -106,10 +124,12 @@ print(f"  • Evaluation Mode: {FRAMEWORK_CONFIG['eval_mod'].upper()}")
 print(f"  • Models to Test: {len(models)}")
 print("=" * 70)
 
+
 print(f"\n▶ Executing {evaluation_type.upper()} EVALUATION:")
 for scenario, description in test_scenarios.items():
     print(f"  • {scenario.upper():<20} {description}")
 print("=" * 70)
+
 
 
 # 6
@@ -130,11 +150,13 @@ except Exception as e:
     traceback.print_exc()
 
 
+
 # 7
 # @title Robustness Analysis and Quantification
 print("=" * 70)
 print("ROBUSTNESS ANALYSIS")
 print("=" * 70)
+
 
 try:
     # Pretty print comparison results
@@ -142,18 +164,22 @@ try:
     print("Comparison Results Summary:")
     # pprint.pprint(comparison_results)
 
+
     # Full comparison plot (all scenarios together)
     viz = QuantumEvaluatorVisualizer(comparison_results, allocator=allocator)
     viz.plot_stochastic_vs_adversarial_comparison()
 
+
     # Get list of all scenarios
     scenario_list = list(test_scenarios.keys())
+
 
     # Plot each scenario individually
     for scenario in scenario_list:
         if scenario.lower() == 'stochastic': pass
         print(f"\n📊 Generating plots for scenario: {scenario.upper()}")
         evaluator.calculate_scenario_performance(scenario=scenario)
+
 
         # Get ALL results for this scenario (all experiments)
         all_scenario_results = evaluator.get_evaluation_results(scenario=scenario)
@@ -166,7 +192,9 @@ try:
         #     last_scenario_results = evaluator.get_evaluation_results(scenario=scenario,exp_id=-1)
         #     if last_scenario_results: viz.plot_scenarios_comparison(last_scenario_results)
 
+
     print("\n All scenario plots generated!")
+
 
     
     print("\n✓ Stochastic Analysis Generated:")
@@ -218,6 +246,7 @@ try:
     else:
         print("⚠ No stochastic averaged results available")
 
+
 except Exception as e:
     print(f"❌ Error in robustness analysis: {e}")
     import traceback
@@ -225,6 +254,7 @@ except Exception as e:
     
 print("${EXP_ID} complete")
 PYEOF
+
 
 if [ $? -ne 0 ]; then error "${EXP_ID} failed"; fi
 log "${EXP_ID} done"

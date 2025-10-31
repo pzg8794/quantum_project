@@ -252,7 +252,6 @@ except Exception as e:
     import traceback
     traceback.print_exc()
     
-print(f"{exp_id} complete")
 PYEOF
 
 

@@ -52,7 +52,7 @@ FRAMEWORK_CONFIG = {
 
 # 3
 # Define evaluation scenarios based on framework focus
- evaluation_type = "STOCHASTIC-FOCUSED"
+evaluation_type = "STOCHASTIC-FOCUSED"
 if FRAMEWORK_CONFIG['main_env'] == 'stochastic':
     # Primary stochastic evaluation with optional comparison
     test_scenarios = {

@@ -38,6 +38,7 @@ from daqr.evaluation.visualizer import QuantumEvaluatorVisualizer
 # 2
 config = ExperimentConfiguration()
 models = config.NEURAL_MODELS
+exp_id = "${EXP_ID}"
 
 FRAMEWORK_CONFIG = {
     'test_mode': True, 'base_frames': ${BASE_FRAMES}, 'exp_num': ${EXP_NUM}, 
@@ -56,6 +57,17 @@ test_scenarios = ${SCENARIOS:-"None"}
 attack_intensity= FRAMEWORK_CONFIG['env_attrs']['intensity']
 current_experiments = (FRAMEWORK_CONFIG['exp_num'] if FRAMEWORK_CONFIG['test_mode'] 
                        else FRAMEWORK_CONFIG['prod_experiments'])
+# ==============================================================================
+# MODIFICATION BLOCK: Override settings for quick-test and test modes
+# ==============================================================================
+if "quick-test" in exp_id:
+    base_frames = 100
+    models = ["Oracle"]
+    print("✓ QUICK-TEST mode detected. Overriding settings: frames=100, models=['Oracle', 'GNeuralUCB']")
+elif "test" in exp_id:
+    base_frames = 1000
+    print("✓ TEST mode detected. Overriding settings: frames=1000")
+# ==============================================================================
 
 
 # 3

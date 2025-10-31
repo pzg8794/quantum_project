@@ -57,8 +57,8 @@ exp_id = "${EXP_ID}"
 # ==============================================================================
 if "quick-test" in exp_id:
     base_frames = 100
-    models = ["Oracle"]
-    print("✓ QUICK-TEST mode detected. Overriding settings: frames=100, models=['Oracle']")
+    models = ["Oracle", "GNeuralUCB"]
+    print("✓ QUICK-TEST mode detected. Overriding settings: frames=100, models=['Oracle', 'GNeuralUCB']")
 elif "test" in exp_id:
     base_frames = 1000
     print("✓ TEST mode detected. Overriding settings: frames=1000")

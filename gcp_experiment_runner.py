@@ -84,28 +84,52 @@ class GCPExperimentRunner:
         print(" Timeout.")
         return False
 
-    def run_and_stream_experiment(self, vm_name: str, script_with_args: str):
+    def run_and_stream_experiment(self, vm_name: str, script_with_args: str, gcp: bool = True):
+        """
+        Runs the experiment on a remote VM and streams logs live.
+        If gcp=True (default), checks out the 'gcp-main' branch after cloning.
+        """
         print(f"--- Starting Experiment on {vm_name} ---")
+
+        # Base command sequence
         command_str = (
             "cd /tmp && "
             "rm -rf quantum_repo && "
             f"git clone --quiet {GIT_CLONE_URL} quantum_repo && "
             "cd quantum_repo && "
+        )
+
+        # Conditionally checkout GCP branch
+        if gcp:
+            command_str += "git checkout --quiet gcp-main && "
+
+        # Make scripts executable and run the provided script
+        command_str += (
             "chmod +x ./*.sh && "
             f"./{script_with_args}"
         )
-        ssh_cmd = ["gcloud", "compute", "ssh", vm_name, f"--zone={self.zone}", "--command", command_str]
+
+        # SSH execution
+        ssh_cmd = [
+            "gcloud", "compute", "ssh", vm_name,
+            f"--zone={self.zone}",
+            "--command", command_str
+        ]
+
         try:
             proc = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             for line in proc.stdout:
                 print(f"[{vm_name}] {line.strip()}")
             proc.wait()
+
             if proc.returncode == 0:
                 print(f"--- SUCCESS: Experiment on {vm_name} finished. ---")
             else:
                 print(f"--- ERROR: Experiment on {vm_name} failed. ---")
+
         except Exception as e:
             print(f"--- FATAL ERROR running experiment on {vm_name}: {e} ---")
+
 
     def cleanup_vms(self):
         if not self.vms_to_cleanup: return

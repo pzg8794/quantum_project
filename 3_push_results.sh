@@ -1,8 +1,8 @@
 #!/bin/bash
 
 ################################################################################
-# SCRIPT 3: PUSH RESULTS - Git Commit & Push to GitHub
-# Commits all local results and logs to GitHub
+# SCRIPT 3: PUSH RESULTS - Pull, Commit, Push to GitHub
+# Handles concurrent VM pushes safely
 ################################################################################
 
 set +e
@@ -13,7 +13,6 @@ LOG_FILE="$LOG_DIR/push_$(date +%s).log"
 
 mkdir -p "$LOG_DIR"
 
-# Logging functions
 log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"; }
 success() { echo "SUCCESS: $1" | tee -a "$LOG_FILE"; }
 error() { echo "ERROR: $1" | tee -a "$LOG_FILE"; }
@@ -36,6 +35,28 @@ cd "$REPO_DIR"
 success "Repository found"
 
 # =============================================================================
+# Pull Latest Changes (CRITICAL for parallel VMs)
+# =============================================================================
+
+log "================================"
+log "Pulling Latest Changes"
+log "================================"
+
+git pull origin main >> "$LOG_FILE" 2>&1
+PULL_CODE=$?
+
+if [ $PULL_CODE -ne 0 ]; then
+    warn "Pull had issues (code $PULL_CODE), attempting merge strategy"
+    git pull --rebase origin main >> "$LOG_FILE" 2>&1
+    if [ $? -ne 0 ]; then
+        error "Pull failed - cannot sync with remote"
+        exit 1
+    fi
+fi
+
+success "Synced with remote"
+
+# =============================================================================
 # Stage Results
 # =============================================================================
 
@@ -44,8 +65,7 @@ log "Staging Results"
 log "================================"
 
 log "Adding experiment results..."
-git add Dynamic_Routing_Eval_Framework/results/ 2>/dev/null || true
-git add Dynamic_Routing_Eval_Framework/experiment_results/ 2>/dev/null || true
+git add Dynamic_Routing_Eval_Framework/
 
 log "Files staged:"
 git diff --cached --name-only | tee -a "$LOG_FILE"
@@ -58,10 +78,10 @@ log "================================"
 log "Committing Results"
 log "================================"
 
-if git diff --cached --quiet; then
-    warn "No changes to commit"
-    exit 0
-fi
+# if git diff --cached --quiet; then
+#     warn "No changes to commit"
+#     exit 0
+# fi
 
 COMMIT_MSG="Experiment results - $(date +'%Y-%m-%d %H:%M:%S')"
 log "Committing: $COMMIT_MSG"
@@ -76,25 +96,37 @@ fi
 success "Results committed"
 
 # =============================================================================
-# Push to GitHub
+# Push to GitHub (with retry for race conditions)
 # =============================================================================
 
 log "================================"
 log "Pushing to GitHub"
 log "================================"
 
-git push origin main >> "$LOG_FILE" 2>&1
-PUSH_CODE=$?
+MAX_RETRIES=3
+RETRY_COUNT=0
 
-if [ $PUSH_CODE -eq 0 ]; then
-    success "Results pushed to GitHub!"
-    log "URL: https://github.com/pzg8794/quantum_project/tree/main/Dynamic_Routing_Eval_Framework/results"
-else
-    error "Push failed with code $PUSH_CODE"
-    log "Error output:"
-    git push origin main 2>&1 | tee -a "$LOG_FILE"
-    exit 1
-fi
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    git push origin main >> "$LOG_FILE" 2>&1
+    PUSH_CODE=$?
+    
+    if [ $PUSH_CODE -eq 0 ]; then
+        success "Results pushed to GitHub!"
+        log "URL: https://github.com/pzg8794/quantum_project/tree/main/Dynamic_Routing_Eval_Framework/results"
+        break
+    else
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+            warn "Push failed (attempt $RETRY_COUNT/$MAX_RETRIES), pulling and retrying..."
+            git pull --rebase origin main >> "$LOG_FILE" 2>&1
+            sleep 2
+        else
+            error "Push failed after $MAX_RETRIES attempts"
+            git push origin main 2>&1 | tee -a "$LOG_FILE"
+            exit 1
+        fi
+    fi
+done
 
 # =============================================================================
 # Summary

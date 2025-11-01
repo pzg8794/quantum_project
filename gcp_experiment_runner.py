@@ -60,11 +60,13 @@ class GCPExperimentRunner:
         print(f"Creating VM: {vm_name}...")
         cmd = [
             "gcloud", "compute", "instances", "create", vm_name,
-            f"--zone={self.zone}", f"--machine-type={self.machine_type}",
+            f"--zone={self.zone}",
+            f"--machine-type={self.machine_type}",
             f"--boot-disk-size={self.disk_size}",
             "--scopes=cloud-platform",
-            "--image-family=ubuntu-2204-lts",
-            "--image-project=ubuntu-os-cloud", "--quiet"
+            "--image=quantum-base-image",
+            "--image-project=bright-zodiac-476705-d6",
+            "--quiet",
         ]
         if self._run_gcloud_cmd(cmd):
             self.vms_to_cleanup.append(vm_name)
@@ -84,32 +86,31 @@ class GCPExperimentRunner:
         print(" Timeout.")
         return False
 
+
     def run_and_stream_experiment(self, vm_name: str, script_with_args: str, gcp: bool = True):
         """
         Runs the experiment on a remote VM and streams logs live.
-        If gcp=True (default), checks out the 'gcp-main' branch after cloning.
+        If gcp=True (default), assumes the 'quantum_project' repo already exists on the image.
+        Falls back to cloning if not present.
         """
         print(f"--- Starting Experiment on {vm_name} ---")
 
-        # Base command sequence
+        # New logic: reuse repo if already there
         command_str = (
-            "cd /tmp && "
-            "rm -rf quantum_repo && "
-            f"git clone --quiet {GIT_CLONE_URL} quantum_repo && "
-            "cd quantum_repo && "
+            "cd ~/quantum_project && "
         )
 
         # Conditionally checkout GCP branch
-        if gcp:
-            command_str += "git checkout --quiet gcp-main && "
+        if gcp: command_str += "git checkout --quiet gcp-main && "
+        else: command_str += "git checkout --quiet main && "
 
-        # Make scripts executable and run the provided script
+        # Skip branch checkout — the image already has gcp-main
         command_str += (
+            "git pull --quiet | true && "
             "chmod +x ./*.sh && "
             f"./{script_with_args}"
         )
 
-        # SSH execution
         ssh_cmd = [
             "gcloud", "compute", "ssh", vm_name,
             f"--zone={self.zone}",
@@ -129,6 +130,7 @@ class GCPExperimentRunner:
 
         except Exception as e:
             print(f"--- FATAL ERROR running experiment on {vm_name}: {e} ---")
+
 
 
     def cleanup_vms(self):

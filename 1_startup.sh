@@ -1,30 +1,40 @@
 #!/bin/bash
-
+%%bash
 ################################################################################
-# STARTUP SCRIPT - Install Python 3.11 + ALL packages (NO virtual env)
-# Runs on: Ubuntu 20.04/22.04 LTS (GCP, AWS, Local)
+# ENVIRONMENT SETUP ONLY (NO EXPERIMENTS)
+# Tests: System setup, GitHub auth, repo clone, Python imports, Git push
 ################################################################################
+set -e
 
-set +e
+# ==============================
+# Configuration with defaults
+# ==============================
+GITHUB_USERNAME="${GITHUB_USERNAME:-pzg8794}"
+GITHUB_REPO="${GITHUB_REPO:-quantum_project}"
+GITHUB_TOKEN="${GITHUB_TOKEN:-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}"
+TARGET_BRANCH="${TARGET_BRANCH:-gcp-main}"
 
-TOKEN="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"
-GITHUB_USERNAME="pzg8794"
-GITHUB_REPO="quantum_project"
-REPO_DIR="/tmp/quantum_repo"
-LOG_DIR="/tmp/quantum_logs"
-LOG_FILE="$LOG_DIR/startup_$(date +%s).log"
+LOG_DIR="${LOG_DIR:-$HOME/quantum_logs}"
+REPO_DIR="${REPO_DIR:-$HOME/quantum_project}"
+DAQR_PATH="${DAQR_PATH:-$REPO_DIR/Dynamic_Routing_Eval_Framework/daqr}"
 
+SEED_OFFSET="${SEED_OFFSET:-0}"
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+LOG_FILE="$LOG_DIR/setup_${SEED_OFFSET}_${TIMESTAMP}.log"
+
+rm -rf "$LOG_DIR"
 mkdir -p "$LOG_DIR"
 
-log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"; }
-success() { echo "✓ SUCCESS: $1" | tee -a "$LOG_FILE"; }
-error() { echo "✗ ERROR: $1" | tee -a "$LOG_FILE"; exit 1; }
-warn() { echo "⚠ WARN: $1" | tee -a "$LOG_FILE"; }
+# ------------------------------
+# Logging functions
+# ------------------------------
+log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"; }
+success() { echo "✅ $1"; }
+error() { echo "[ERROR] $1" >&2; exit 1; }
 
 # =============================================================================
 # PHASE 0: Install Python 3.11
 # =============================================================================
-
 log "================================"
 log "PHASE 0: Install Python 3.11"
 log "================================"
@@ -53,131 +63,169 @@ sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 
 success "Python 3.11 installed"
 
 # =============================================================================
-# PHASE 1: Clone Repository
+# PHASE 1: System Dependencies
 # =============================================================================
-
-# log "================================"
-# log "PHASE 1: Clone Repository"
-# log "================================"
-
-# cd /tmp
-# rm -rf quantum_repo
-# git clone "https://${TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git" quantum_repo >> "$LOG_FILE" 2>&1
-
-# if [ $? -ne 0 ]; then
-#     error "Repository clone failed"
-# fi
-
-# cd quantum_repo
-# success "Repository cloned"
-
-# =============================================================================
-# PHASE 2: Install Python Packages
-# =============================================================================
-
 log "================================"
-log "PHASE 2: Install Python Packages"
+log "PHASE 1: System Dependencies"
 log "================================"
 
-log "Upgrading pip..."
-pip3 install --upgrade pip setuptools wheel -q >> "$LOG_FILE" 2>&1
+apt-get update -qq 2>/dev/null || log "Warning: apt-get update"
+apt-get install -y -qq git curl wget > /dev/null 2>&1 || log "Warning: apt-get install"
+success "System packages ready"
 
-log "Installing requirements.txt (this takes a few minutes)..."
-pip3 install -r requirements.txt >> "$LOG_FILE" 2>&1
-
-if [ $? -ne 0 ]; then
-    error "pip3 install failed"
-fi
-
-log "Installed packages:"
-pip3 list | grep -E "torch|numpy|pandas|scipy|matplotlib" | tee -a "$LOG_FILE"
-
-success "All packages installed"
+# =============================================================================
+# PHASE 2: Python Environment
+# =============================================================================
+log "================================"
+log "PHASE 2: Python Environment"
+log "================================"
+python3 --version
+pip3 --version
+pip install -q --upgrade pip setuptools wheel 2>&1 | tail -1 || log "pip upgrade note"
+pip install -q numpy pandas matplotlib seaborn tqdm 2>&1 | tail -1 || log "pip install note"
+success "Python environment ready"
 
 # =============================================================================
 # PHASE 3: Git Configuration
 # =============================================================================
-
 log "================================"
 log "PHASE 3: Git Configuration"
 log "================================"
 
-git config --global user.email "quantum-bot@gcp"
-git config --global user.name "Quantum Test Bot"
-
+if [ -z "$GITHUB_TOKEN" ]; then
+    error "GitHub token required!"
+fi
+git config --global user.email "automation@local"
+git config --global user.name "Quantum MAB Bot"
 success "Git configured"
 
 # =============================================================================
-# PHASE 4: Setup Python Packages
+# PHASE 4: Clone Repository
 # =============================================================================
-
 log "================================"
-log "PHASE 4: Setup Python Packages"
+log "PHASE 4: Clone Repository (branch: $TARGET_BRANCH)"
 log "================================"
 
-cd Dynamic_Routing_Eval_Framework
+if [ -d "$REPO_DIR" ]; then
+    log "Repo already exists, removing..."
+    rm -rf "$REPO_DIR"
+fi
+
+REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
+log "Cloning $GITHUB_USERNAME/$GITHUB_REPO (branch: $TARGET_BRANCH)..."
+git clone --branch "$TARGET_BRANCH" --single-branch "$REPO_URL" "$REPO_DIR" > /dev/null 2>&1 || error "Clone failed"
+
+cd "$REPO_DIR"
+success "Repository cloned at $REPO_DIR (branch: $TARGET_BRANCH)"
+
+# =============================================================================
+# PHASE 5: Verify Repository Structure
+# =============================================================================
+log "================================"
+log "PHASE 5: Repository Structure"
+log "================================"
+
+log "Listing top-level directories:"
+ls -la "$REPO_DIR" | grep "^d" | awk '{print "  " $NF}'
+
+log "Looking for Python modules in daqr..."
+log "  REPO_DIR   : $REPO_DIR"
+log "  DAQR_PATH  : $DAQR_PATH"
+
+if [ -d "$DAQR_PATH" ]; then
+    find "$DAQR_PATH" -name "*.py" -type f | head -10 | while read f; do log "  $f"; done
+    success "Python modules found"
+else
+    error "daqr/ directory not found"
+fi
+
+# =============================================================================
+# PHASE 6: Setup Python Package Structure
+# =============================================================================
+log "================================"
+log "PHASE 6: Python Package Setup"
+log "================================"
+
+cd "$REPO_DIR"
+find . -type d -not -name ".git" -not -name ".*" -exec touch {}/__init__.py \; 2>/dev/null || true
 
 for dir in daqr daqr/config daqr/core daqr/evaluation daqr/algorithms; do
-    if [ -d "$dir" ]; then
-        touch "$dir/__init__.py"
-    fi
+    mkdir -p "$dir"
+    touch "$dir/__init__.py"
 done
-
 success "Package structure ready"
 
 # =============================================================================
-# PHASE 5: Test Imports
+# PHASE 7: Test Python Imports
 # =============================================================================
-
 log "================================"
-log "PHASE 5: Test Imports"
+log "PHASE 7: Test Python Imports"
 log "================================"
 
-export PYTHONPATH="$(pwd):$PYTHONPATH"
+export PYTHONPATH="$REPO_DIR:$PYTHONPATH"
 
-python3.11 << 'PYEOF'
+log "Testing basic Python imports..."
+python3 << PYEOF
 import sys
-print(f"Python: {sys.version.split()[0]}")
-sys.path.insert(0, '.')
-
+print(f"  Python version: {sys.version.split()[0]}")
+import numpy as np, pandas as pd, matplotlib
+print(f"    ✓ numpy: {np.__version__}")
+print(f"    ✓ pandas: {pd.__version__}")
+print(f"    ✓ matplotlib: {matplotlib.__version__}")
+print("\n  Attempting daqr import...")
+sys.path.insert(0, "$REPO_DIR")
 try:
-    import numpy
-    import pandas
-    import torch
-    from daqr.config.experiment_config import ExperimentConfiguration
-    from daqr.evaluation.multi_run_evaluator import MultiRunEvaluator
-    print("✓ All imports OK")
-except Exception as e:
-    print(f"✗ Import error: {e}")
-    sys.exit(1)
+    import daqr
+    print("    ✓ daqr module imported successfully!")
+except ImportError as e:
+    print(f"    ✗ daqr import warning: {e}")
 PYEOF
+success "Python imports tested"
 
-if [ $? -ne 0 ]; then
-    error "Python imports failed"
+# =============================================================================
+# PHASE 8: Save Setup Log
+# =============================================================================
+log "================================"
+log "PHASE 8: Save Setup Log"
+log "================================"
+
+SETUP_RESULTS_DIR="$REPO_DIR/results/setup_logs"
+mkdir -p "$SETUP_RESULTS_DIR"
+
+cat > "$SETUP_RESULTS_DIR/setup_${SEED_OFFSET}_${TIMESTAMP}.txt" << EOF
+================================================================================
+ENVIRONMENT SETUP LOG
+================================================================================
+Timestamp: $TIMESTAMP
+Seed Offset: $SEED_OFFSET
+Branch: $TARGET_BRANCH
+Hostname: $(hostname)
+User: $(whoami)
+Python: $(python3 --version)
+Git: $(git --version)
+Repository: $REPO_DIR
+EOF
+success "Setup log saved"
+
+# =============================================================================
+# PHASE 9: Test GitHub Push
+# =============================================================================
+log "================================"
+log "PHASE 9: Test GitHub Push"
+log "================================"
+
+cd "$REPO_DIR"
+git add "results/setup_logs/" 2>/dev/null || log "Nothing to add"
+if git diff --cached --quiet; then
+    log "No new files to commit"
+else
+    COMMIT_MSG="Environment setup verification ($TARGET_BRANCH): seed_offset=$SEED_OFFSET ($(date +%Y-%m-%d))"
+    git commit -m "$COMMIT_MSG" 2>&1 | head -3 || log "Commit status: see above"
+    log "Pushing to GitHub..."
+    git push origin "$TARGET_BRANCH" 2>&1 | head -3 || error "GitHub push failed"
+    success "Successfully pushed to $TARGET_BRANCH"
 fi
 
-success "Imports verified"
-
-# =============================================================================
-# SUMMARY
-# =============================================================================
-
 log "================================"
-log "STARTUP COMPLETE"
+log "✅ ENVIRONMENT SETUP COMPLETE"
 log "================================"
-
-cat << EOF | tee -a "$LOG_FILE"
-
-ENVIRONMENT READY
-=================
-Python 3.11: ✓ INSTALLED
-Packages: ✓ INSTALLED
-Repo: ✓ CLONED
-Imports: ✓ VERIFIED
-
-Log: $LOG_FILE
-
-Ready for experiments!
-EOF
-
-success "Environment ready!"

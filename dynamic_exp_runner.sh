@@ -14,7 +14,7 @@ SCENARIOS=$8
 
 LOG_DIR="${LOG_DIR:-$HOME/quantum_logs}"
 REPO_DIR="${REPO_DIR:-$HOME/quantum_project}"
-RES_DIR="${REPO_DIR:-$HOME/quantum_project/Dynamic_Routing_Eval_Framework/results}"
+RES_DIR="${RES_DIR:-$HOME/quantum_project/Dynamic_Routing_Eval_Framework/results}"
 
 mkdir -p "$LOG_DIR" # FIX: Ensure log directory exists before use
 LOG_FILE="$LOG_DIR/${EXP_ID}_$(date +%s).log"

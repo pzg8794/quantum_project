@@ -120,7 +120,21 @@ class GCPExperimentRunner:
         try:
             proc = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             for line in proc.stdout:
-                print(f"[{vm_name}] {line.strip()}")
+                line_stripped = line.strip()
+
+                # Filter tqdm progress lines
+                if "NEURAL Progress" in line_stripped:
+                    # Extract percentage
+                    import re
+                    match = re.search(r"(\d+)%\|", line_stripped)
+                    if match:
+                        percent = int(match.group(1))
+                        # Only print 0%, 50%, 100%
+                        if percent not in (0, 50, 100):
+                            continue
+
+                # Print everything else normally
+                print(f"[{vm_name}] {line_stripped}")
             proc.wait()
 
             if proc.returncode == 0:

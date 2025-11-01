@@ -83,7 +83,8 @@ git add Dynamic_Routing_Eval_Framework/results/ 2>/dev/null || true
 git add Dynamic_Routing_Eval_Framework/experiment_results/ 2>/dev/null || true
 
 log "Files staged:"
-git diff --cached --name-only | tee -a "$LOG_FILE"
+STAGED_COUNT=$(git diff --cached --name-only | wc -l)
+log "  → $STAGED_COUNT file(s) staged for commit"
 
 # =============================================================================
 # Commit

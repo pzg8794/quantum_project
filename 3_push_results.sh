@@ -7,8 +7,8 @@
 
 set +e
 
-REPO_DIR="${REPO_DIR:-$(pwd)/quantum_project}"
-LOG_DIR="${LOG_DIR:-quantum_logs}"
+REPO_DIR="${REPO_DIR:-$HOME/quantum_project}"
+LOG_DIR="${LOG_DIR:-$HOME/quantum_logs}"
 LOG_FILE="$LOG_DIR/push_$(date +%s).log"
 
 mkdir -p "$LOG_DIR"

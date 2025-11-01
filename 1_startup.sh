@@ -14,8 +14,8 @@ GITHUB_REPO="${GITHUB_REPO:-quantum_project}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-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}"
 TARGET_BRANCH="${TARGET_BRANCH:-gcp-main}"
 
-LOG_DIR="${LOG_DIR:-quantum_logs}"
-REPO_DIR="${REPO_DIR:-$(pwd)/quantum_project}"
+LOG_DIR="${LOG_DIR:-$HOME/quantum_logs}"
+REPO_DIR="${REPO_DIR:-$HOME/quantum_project}"
 DAQR_PATH="${DAQR_PATH:-$REPO_DIR/Dynamic_Routing_Eval_Framework/daqr}"
 
 SEED_OFFSET="${SEED_OFFSET:-0}"

@@ -38,14 +38,12 @@ python3 << PYEOF # FIX: Use python3 for compatibility with GCP's Ubuntu 22.04 de
 import sys
 
 
-
 # 1
 sys.path.insert(0, '..')
 from daqr.core.qubit_allocator import *
 from daqr.config.experiment_config import *
 from daqr.evaluation.multi_run_evaluator import *
 from daqr.evaluation.visualizer import QuantumEvaluatorVisualizer
-
 
 
 # 2

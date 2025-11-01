@@ -12,7 +12,10 @@ ALLOCATOR=$7
 SCENARIOS=$8
 
 
-LOG_DIR="/tmp/quantum_logs"
+LOG_DIR="${LOG_DIR:-$HOME/quantum_logs}"
+REPO_DIR="${REPO_DIR:-$HOME/quantum_project}"
+RES_DIR="${REPO_DIR:-$HOME/quantum_project/Dynamic_Routing_Eval_Framework/results}"
+
 mkdir -p "$LOG_DIR" # FIX: Ensure log directory exists before use
 LOG_FILE="$LOG_DIR/${EXP_ID}_$(date +%s).log"
 
@@ -51,6 +54,7 @@ models = config.NEURAL_MODELS
 # ADDED: Initialize variables from bash arguments
 base_frames = ${BASE_FRAMES}
 exp_id = str("${EXP_ID}")
+res_dir = ${RES_DIR}
 
 # ==============================================================================
 # MODIFICATION BLOCK: Override settings for quick-test and test modes
@@ -166,8 +170,9 @@ try:
 
 
     # Full comparison plot (all scenarios together)
-    viz = QuantumEvaluatorVisualizer(comparison_results, allocator=allocator)
+    viz = QuantumEvaluatorVisualizer(comparison_results, allocator=allocator, output_dir=res_dir)
     viz.plot_stochastic_vs_adversarial_comparison()
+    viz.save_all_evaluation_results()
 
 
     # Get list of all scenarios

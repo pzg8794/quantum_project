@@ -115,42 +115,21 @@ else:
 # Dynamic Allocator Selection (runtime argument or env)
 # ==========================================================
 arg = ${ALLOCATOR:-"None"}  # Default to None if not provided
-if arg == "thompson":
+allocator = None
+if arg.lower() == "thompson":
     allocator = ThompsonSamplingAllocator(
         total_qubits=35,
         num_routes=4,
         min_qubits_per_route=2
     )
-elif arg == "dynamic":
+elif arg.lower() == "dynamic":
     allocator = DynamicQubitAllocator(
         total_qubits=35,
         num_routes=4,
         min_qubits_per_route=2,
         exploration_bonus=2.0
     )
-elif arg == "random":
-    allocator = RandomQubitAllocator(
-        epsilon=1.0,
-        seed=42
-    )
-else:
-    allocator = None
-    print(f"[WARN] Unknown or missing allocator '{arg}'. Defaulting to None.")
-
-if arg == "thompson":
-    allocator = ThompsonSamplingAllocator(
-        total_qubits=35,
-        num_routes=4,
-        min_qubits_per_route=2
-    )
-elif arg == "dynamic":
-    allocator = DynamicQubitAllocator(
-        total_qubits=35,
-        num_routes=4,
-        min_qubits_per_route=2,
-        exploration_bonus=2.0
-    )
-elif arg == "random":
+elif arg.lower() == "random":
     allocator = RandomQubitAllocator(
         epsilon=1.0,
         seed=42

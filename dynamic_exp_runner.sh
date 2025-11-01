@@ -14,6 +14,8 @@ SCENARIOS=$8
 
 LOG_DIR="${LOG_DIR:-$HOME/quantum_logs}"
 REPO_DIR="${REPO_DIR:-$HOME/quantum_project}"
+RES_DIR="${REPO_DIR:-$HOME/quantum_project/Dynamic_Routing_Eval_Framework/results}"
+
 mkdir -p "$LOG_DIR" # FIX: Ensure log directory exists before use
 LOG_FILE="$LOG_DIR/${EXP_ID}_$(date +%s).log"
 
@@ -167,7 +169,7 @@ try:
 
 
     # Full comparison plot (all scenarios together)
-    viz = QuantumEvaluatorVisualizer(comparison_results, allocator=allocator)
+    viz = QuantumEvaluatorVisualizer(comparison_results, allocator=allocator, output_dir=res_dir)
     viz.plot_stochastic_vs_adversarial_comparison()
     viz.save_all_evaluation_results()
 

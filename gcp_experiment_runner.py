@@ -40,7 +40,7 @@ class GCPExperimentRunner:
         self.vms_to_cleanup = []
 
 
-        allocator_arg = "None" if self.allocator == "none" else self.allocator.capitalize()
+        allocator_arg = "None" if self.allocator == "none" else self.allocator.lower()
         
         if self.test_mode:
             self.experiments = [

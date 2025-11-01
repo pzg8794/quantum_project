@@ -49,6 +49,15 @@ success "System packages ready"
 log "================================"
 log "PHASE 2: Python Environment"
 log "================================"
+# Ensure pip3 exists (Compute Engine images may lack it)
+if ! command -v pip3 &> /dev/null; then
+    log "pip3 not found — installing..."
+    apt-get install -y python3-pip >> "$LOG_FILE" 2>&1
+    if [ $? -ne 0 ]; then
+        error "Failed to install pip3"
+    fi
+    success "pip3 installed"
+fi
 
 python3 --version
 pip3 --version

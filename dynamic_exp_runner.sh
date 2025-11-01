@@ -38,7 +38,6 @@ python3 << PYEOF # FIX: Use python3 for compatibility with GCP's Ubuntu 22.04 de
 import sys
 
 
-
 # 1
 sys.path.insert(0, '..')
 from daqr.core.qubit_allocator import *
@@ -47,13 +46,13 @@ from daqr.evaluation.multi_run_evaluator import *
 from daqr.evaluation.visualizer import QuantumEvaluatorVisualizer
 
 
-
 # 2
 config = ExperimentConfiguration()
 models = config.NEURAL_MODELS
 # ADDED: Initialize variables from bash arguments
 base_frames = ${BASE_FRAMES}
 exp_id = str("${EXP_ID}")
+res_dir = ${RES_DIR}
 
 # ==============================================================================
 # MODIFICATION BLOCK: Override settings for quick-test and test modes

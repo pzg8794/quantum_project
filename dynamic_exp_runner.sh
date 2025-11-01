@@ -52,7 +52,7 @@ models = config.NEURAL_MODELS
 # ADDED: Initialize variables from bash arguments
 base_frames = ${BASE_FRAMES}
 exp_id = str("${EXP_ID}")
-res_dir = ${RES_DIR}
+res_dir = "${RES_DIR}"
 
 # ==============================================================================
 # MODIFICATION BLOCK: Override settings for quick-test and test modes

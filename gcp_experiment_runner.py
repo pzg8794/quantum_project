@@ -20,11 +20,19 @@ class GCPExperimentRunner:
     """Manages the creation, execution, and cleanup of GCP experiments."""
     ALLOCATORS = ["none", "thompson", "dynamic", "random"]
 
+    # Zone mapping per allocator
+    ZONE_MAP = {
+        "none": "us-central1-a",
+        "thompson": "us-central1-b",
+        "dynamic": "us-east1-b",
+        "random": "us-west1-b"
+    }
+
     def __init__(self, allocator: str, zone: str = "us-central1-a",
                  machine_type: str = "n1-standard-4", disk_size: str = "50GB",
                  mode: str = "production"):
         self.allocator = allocator.lower()
-        self.zone = zone
+        self.zone = self.ZONE_MAP.get(self.allocator, zone)
         self.mode = mode.lower()
         self.disk_size = disk_size
         self.machine_type = machine_type
@@ -123,7 +131,7 @@ class GCPExperimentRunner:
                 line_stripped = line.strip()
 
                 # Filter tqdm progress lines
-                if "NEURAL Progress" in line_stripped:
+                if "Progress" in line_stripped:
                     # Extract percentage
                     import re
                     match = re.search(r"(\d+)%\|", line_stripped)
@@ -171,30 +179,154 @@ class GCPExperimentRunner:
             self.cleanup_vms()
 
     @classmethod
-    def run_all_allocators(cls, mode):
-        print(f"\n===== RUNNING ALL ALLOCATORS [{mode.upper().replace('-', ' ')}] =====")
-        
-        # For any test mode (--test or --quick-test), only run 'none' allocator to save time
-        allocators_to_run = cls.ALLOCATORS if mode.lower() == 'production' else ['none']
-        for allocator in allocators_to_run:
+    def run_all_allocators(cls, mode, exclude: list[str] = None):
+        """
+        Runs experiments for all allocators except those in `exclude`.
+        Each allocator runs 4 experiments (run_exp1.sh–run_exp4.sh).
+        """
+        exclude = [e.lower() for e in (exclude or [])]
+        all_allocators = [a for a in cls.ALLOCATORS if a not in exclude]
+
+        print(f"\n===== RUNNING ALLOCATORS [{mode.upper()}] =====")
+        print(f"Included: {', '.join(all_allocators)}")
+        if exclude:
+            print(f"Excluded: {', '.join(exclude)}")
+
+        all_runners = []
+
+        for allocator in all_allocators:
             runner = cls(allocator, mode=mode)
-            runner.run()
+
+            allocator_arg = "None" if allocator == "none" else allocator.capitalize()
+            # restore 4-experiment structure with allocator-tagged names
+            if runner.test_mode:
+                runner.experiments = [
+                    ExperimentConfig(f"test1-{allocator}", f"run_exp_test.sh {mode} {allocator_arg}")
+                ]
+            else:
+                runner.experiments = [
+                    ExperimentConfig(f"exp1-{allocator}", f"run_exp1.sh {allocator_arg}"),
+                    ExperimentConfig(f"exp2-{allocator}", f"run_exp2.sh {allocator_arg}"),
+                    ExperimentConfig(f"exp3-{allocator}", f"run_exp3.sh {allocator_arg}"),
+                    ExperimentConfig(f"exp4-{allocator}", f"run_exp4.sh {allocator_arg}"),
+                ]
+            all_runners.append(runner)
+
+        # create all vms for all allocators
+        for runner in all_runners:
+            for exp in runner.experiments:
+                runner.create_vm(exp.name)
+
+        # wait for ssh readiness
+        for runner in all_runners:
+            for exp in runner.experiments:
+                runner.wait_for_ssh(exp.name)
+
+        # run all experiments concurrently
+        threads = []
+        for runner in all_runners:
+            for exp in runner.experiments:
+                t = threading.Thread(
+                    target=runner.run_and_stream_experiment,
+                    args=(exp.name, exp.script_with_args)
+                )
+                threads.append(t)
+                t.start()
+
+        for t in threads:
+            t.join()
+
+        # cleanup all vms at the end
+        for runner in all_runners:
+            runner.cleanup_vms()
+
         print("\n===== ✓ ALL ALLOCATORS COMPLETE =====")
+
+    @classmethod
+    def run_all_allocators_sequential(cls, mode, exclude: list[str] = None):
+        """
+        Runs experiments for all allocators sequentially — one experiment per allocator at a time.
+        Each allocator still runs exp1–exp4, but only one round (expN) runs concurrently across allocators.
+        """
+        exclude = [e.lower() for e in (exclude or [])]
+        all_allocators = [a for a in cls.ALLOCATORS if a not in exclude]
+
+        print(f"\n===== RUNNING ALLOCATORS SEQUENTIALLY [{mode.upper()}] =====")
+        print(f"Included: {', '.join(all_allocators)}")
+        if exclude:
+            print(f"Excluded: {', '.join(exclude)}")
+
+        # Define the four rounds (exp1 → exp4)
+        rounds = [
+            ("exp1", "run_exp1.sh"),
+            ("exp2", "run_exp2.sh"),
+            ("exp3", "run_exp3.sh"),
+            ("exp4", "run_exp4.sh"),
+        ]
+
+        for round_name, script in rounds:
+            print(f"\n--- Starting Round: {round_name} ---\n")
+            runners = []
+            threads = []
+
+            # Create and launch one experiment per allocator for this round
+            for allocator in all_allocators:
+                allocator_arg = "None" if allocator == "none" else allocator.capitalize()
+                runner = cls(allocator, mode=mode)
+                exp_name = f"{round_name}-{allocator}"
+                script_with_args = f"{script} {allocator_arg}"
+
+                # Create VM
+                runner.create_vm(exp_name)
+                runner.wait_for_ssh(exp_name)
+
+                # Launch thread for experiment
+                t = threading.Thread(
+                    target=runner.run_and_stream_experiment,
+                    args=(exp_name, script_with_args)
+                )
+                threads.append(t)
+                runners.append(runner)
+                t.start()
+
+            # Wait for all allocators in this round to finish
+            for t in threads:
+                t.join()
+
+            # Cleanup all VMs from this round
+            for runner in runners:
+                runner.cleanup_vms()
+
+            print(f"\n✓ ROUND {round_name.upper()} COMPLETE for all allocators.\n")
+
+        print("\n===== ✓ ALL ROUNDS COMPLETE (Sequential Mode) =====")
 
 if __name__ == "__main__":
     mode = "production"
-    if "--quick-test" in sys.argv: mode = "quick-test" 
-    elif "--test" in sys.argv: mode = "test" 
-    
-    args = [arg for arg in sys.argv[1:] if arg not in ["--test", "--quick-test"]]
+    if "--quick-test" in sys.argv:
+        mode = "quick-test"
+    elif "--test" in sys.argv:
+        mode = "test"
+
+    # Parse exclude list (e.g., --exclude none,random)
+    exclude = []
+    if "--exclude" in sys.argv:
+        idx = sys.argv.index("--exclude")
+        if idx + 1 < len(sys.argv):
+            exclude = [x.strip().lower() for x in sys.argv[idx + 1].split(",")]
+
+    # Clean up args for allocator selection
+    args = [arg for arg in sys.argv[1:] if arg not in ["--test", "--quick-test", "--exclude"] and not arg.startswith(",")]
 
     if not args:
-        print("\nUsage:\n  python gcp_experiment_runner.py <allocator|--all> [--test] [--quick-test]\n")
+        print("\nUsage:\n  python gcp_experiment_runner.py <allocator|--all> [--test|--quick-test] [--exclude none,random]\n")
         sys.exit(1)
-    
+
     command = args[0]
-    if command == "--all":
-        GCPExperimentRunner.run_all_allocators(mode=mode)
+    if "--sequential" in sys.argv:
+        GCPExperimentRunner.run_all_allocators_sequential(mode=mode, exclude=exclude)
+    elif command == "--all":
+        GCPExperimentRunner.run_all_allocators(mode=mode, exclude=exclude)
     else:
         runner = GCPExperimentRunner(command, mode=mode)
         runner.run()

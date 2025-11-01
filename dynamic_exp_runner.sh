@@ -35,7 +35,7 @@ cd Dynamic_Routing_Eval_Framework
 
 
 python3 << PYEOF # FIX: Use python3 for compatibility with GCP's Ubuntu 22.04 default
-import sys
+import os, sys
 
 
 # 1
@@ -111,7 +111,32 @@ else:
 
 
 # 4
-allocator = ${ALLOCATOR:-"None"}  # Default to None if not provided
+# ==========================================================
+# Dynamic Allocator Selection (runtime argument or env)
+# ==========================================================
+arg = ${ALLOCATOR:-"None"}  # Default to None if not provided
+if arg == "thompson":
+    allocator = ThompsonSamplingAllocator(
+        total_qubits=35,
+        num_routes=4,
+        min_qubits_per_route=2
+    )
+elif arg == "dynamic":
+    allocator = DynamicQubitAllocator(
+        total_qubits=35,
+        num_routes=4,
+        min_qubits_per_route=2,
+        exploration_bonus=2.0
+    )
+elif arg == "random":
+    allocator = RandomQubitAllocator(
+        epsilon=1.0,
+        seed=42
+    )
+else:
+    allocator = None
+    print(f"[WARN] Unknown or missing allocator '{arg}'. Defaulting to None.")
+
 custom_config = ExperimentConfiguration(
     runs=current_experiments, allocator=allocator, env_type=FRAMEWORK_CONFIG['main_env'], scenarios=test_scenarios, models=models, attack_intensity=attack_intensity)
 

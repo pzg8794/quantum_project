@@ -231,7 +231,7 @@ class QuantumEvaluatorVisualizer:
         (experiment_dir / "plots").mkdir(parents=True, exist_ok=True)
         (experiment_dir / "metadata").mkdir(parents=True, exist_ok=True)
         
-        print(f"✓ Created: {experiment_dir}")
+        print(f"✓ Created: {experiment_dir.split('/')[-1]}")
         print(f"  └─ Category: {model_category}")
         
         return experiment_dir, model_category

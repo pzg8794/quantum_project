@@ -12,7 +12,8 @@ ALLOCATOR=$7
 SCENARIOS=$8
 
 
-LOG_DIR="/tmp/quantum_logs"
+LOG_DIR="${LOG_DIR:-$HOME/quantum_logs}"
+REPO_DIR="${REPO_DIR:-$HOME/quantum_project}"
 mkdir -p "$LOG_DIR" # FIX: Ensure log directory exists before use
 LOG_FILE="$LOG_DIR/${EXP_ID}_$(date +%s).log"
 
@@ -168,6 +169,7 @@ try:
     # Full comparison plot (all scenarios together)
     viz = QuantumEvaluatorVisualizer(comparison_results, allocator=allocator)
     viz.plot_stochastic_vs_adversarial_comparison()
+    viz.save_all_evaluation_results()
 
 
     # Get list of all scenarios

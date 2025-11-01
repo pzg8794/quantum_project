@@ -33,6 +33,36 @@ success() { echo "✅ $1"; }
 error() { echo "[ERROR] $1" >&2; exit 1; }
 
 # =============================================================================
+# PHASE 0: Install Python 3.11
+# =============================================================================
+log "================================"
+log "PHASE 0: Install Python 3.11"
+log "================================"
+
+log "Updating system..."
+sudo apt-get update -qq >> "$LOG_FILE" 2>&1
+
+log "Adding deadsnakes PPA..."
+sudo apt-get install -y software-properties-common >> "$LOG_FILE" 2>&1
+sudo add-apt-repository -y ppa:deadsnakes/ppa >> "$LOG_FILE" 2>&1
+sudo apt-get update -qq >> "$LOG_FILE" 2>&1
+
+log "Installing Python 3.11 + pip..."
+sudo apt-get install -y python3.11 python3.11-dev python3-pip git build-essential >> "$LOG_FILE" 2>&1
+
+if ! command -v python3.11 &> /dev/null; then
+    error "python3.11 not installed"
+fi
+
+log "Python version:"
+python3.11 --version | tee -a "$LOG_FILE"
+
+# Make python3.11 the default
+sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 >> "$LOG_FILE" 2>&1
+
+success "Python 3.11 installed"
+
+# =============================================================================
 # PHASE 1: System Dependencies
 # =============================================================================
 log "================================"
@@ -49,16 +79,6 @@ success "System packages ready"
 log "================================"
 log "PHASE 2: Python Environment"
 log "================================"
-# Ensure pip3 exists (Compute Engine images may lack it)
-if ! command -v pip3 &> /dev/null; then
-    log "pip3 not found — installing..."
-    apt-get install -y python3-pip >> "$LOG_FILE" 2>&1
-    if [ $? -ne 0 ]; then
-        error "Failed to install pip3"
-    fi
-    success "pip3 installed"
-fi
-
 python3 --version
 pip3 --version
 pip install -q --upgrade pip setuptools wheel 2>&1 | tail -1 || log "pip upgrade note"

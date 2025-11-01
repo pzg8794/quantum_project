@@ -114,7 +114,7 @@ else:
 # ==========================================================
 # Dynamic Allocator Selection (runtime argument or env)
 # ==========================================================
-arg = ${ALLOCATOR:-"None"}  # Default to None if not provided
+arg = "${ALLOCATOR:-None}"  # Default to None if not provided
 allocator = None
 if arg.lower() == "thompson":
     allocator = ThompsonSamplingAllocator(

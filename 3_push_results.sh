@@ -5,6 +5,10 @@
 # Handles concurrent VM pushes safely
 ################################################################################
 
+gcloud compute instances add-metadata "$(hostname)" \
+  --zone="$(curl -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/zone | awk -F/ '{print $4}')" \
+  --metadata=status=pushing --quiet
+
 set +e
 
 REPO_DIR="${REPO_DIR:-$HOME/quantum_project}"
@@ -160,3 +164,7 @@ GitHub: https://github.com/pzg8794/quantum_project/tree/${TARGET_BRANCH}
 EOF
 
 success "All results pushed!"
+
+gcloud compute instances add-metadata "$(hostname)" \
+  --zone="$(curl -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/zone | awk -F/ '{print $4}')" \
+  --metadata=status=done --quiet

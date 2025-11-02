@@ -295,7 +295,7 @@ class QuantumEvaluatorVisualizer:
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2, default=str)
         saved_paths['metadata'] = str(metadata_path)
-        print(f"✓ Metadata: {metadata_path}")
+        print(f"✓ Metadata: {str(metadata_path).split('/')[-1]}")
         
         # Save results in requested format
         if save_format in ['json', 'both']:
@@ -304,20 +304,20 @@ class QuantumEvaluatorVisualizer:
             with open(results_json_path, 'w') as f:
                 json.dump(json_safe_results, f, indent=2, default=str)
             saved_paths['json'] = str(results_json_path)
-            print(f"✓ JSON: {results_json_path}")
+            print(f"✓ JSON: {str(results_json_path).split('/')[-1]}")
         
         if save_format in ['pickle', 'both']:
             results_pickle_path = exp_dir / "results" / f"experiment_{experiment_id}_results.pkl"
             with open(results_pickle_path, 'wb') as f:
                 pickle.dump(results, f)
             saved_paths['pickle'] = str(results_pickle_path)
-            print(f"✓ Pickle: {results_pickle_path}")
+            print(f"✓ Pickle: {str(results_pickle_path).split('/')[-1]}")
         
         # Save human-readable summary
         summary_path = exp_dir / "results" / "experiment_summary.txt"
         self._write_experiment_summary(summary_path, environment_name, results, metadata)
         saved_paths['summary'] = str(summary_path)
-        print(f"✓ Summary: {summary_path}")
+        print(f"✓ Summary: {str(summary_path).split('/')[-1]}")
         
         return {
             'experiment_directory': str(exp_dir),

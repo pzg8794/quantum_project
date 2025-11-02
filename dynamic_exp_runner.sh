@@ -1,4 +1,8 @@
 #!/bin/bash
+gcloud compute instances add-metadata "$(hostname)" \
+  --zone="$(curl -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/zone | awk -F/ '{print $4}')" \
+  --metadata=status=testing --quiet
+  
 set +e
 
 

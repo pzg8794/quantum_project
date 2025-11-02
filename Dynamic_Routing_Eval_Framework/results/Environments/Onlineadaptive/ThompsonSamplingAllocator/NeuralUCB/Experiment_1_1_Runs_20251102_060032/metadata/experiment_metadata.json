@@ -1,0 +1,20 @@
+{
+  "environment": "onlineadaptive",
+  "experiment_id": 1,
+  "num_runs": 1,
+  "model_category": "NeuralUCB",
+  "models_tested": [
+    "Oracle",
+    "GNeuralUCB"
+  ],
+  "timestamp": "2025-11-02T06:00:35.364802",
+  "session_timestamp": "20251102_060032",
+  "session_id": "20251102_060032",
+  "framework_config": {},
+  "allocator_type": "ThompsonSamplingAllocator",
+  "allocator_config": {
+    "total_qubits": 35,
+    "num_routes": 4,
+    "min_qubits_per_route": 2
+  }
+}

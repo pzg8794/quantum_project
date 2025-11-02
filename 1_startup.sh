@@ -106,14 +106,16 @@ log "================================"
 log "PHASE 4: Clone Repository (branch: $TARGET_BRANCH)"
 log "================================"
 
-if [ -d "$REPO_DIR" ]; then
-    log "Repo already exists, removing..."
-    rm -rf "$REPO_DIR"
+if [ -d "$REPO_DIR/.git" ]; then
+    echo "Repository already exists at $REPO_DIR — skipping clone."
+    cd "$REPO_DIR" && git pull
+else
+    echo "🚀 Cloning repository..."
+    git clone "$REPO_URL" "$REPO_DIR"
+    REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
+    log "Cloning $GITHUB_USERNAME/$GITHUB_REPO (branch: $TARGET_BRANCH)..."
+    git clone --branch "$TARGET_BRANCH" --single-branch "$REPO_URL" "$REPO_DIR" > /dev/null 2>&1 || error "Clone failed"
 fi
-
-REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
-log "Cloning $GITHUB_USERNAME/$GITHUB_REPO (branch: $TARGET_BRANCH)..."
-git clone --branch "$TARGET_BRANCH" --single-branch "$REPO_URL" "$REPO_DIR" > /dev/null 2>&1 || error "Clone failed"
 
 cd "$REPO_DIR"
 success "Repository cloned at $REPO_DIR (branch: $TARGET_BRANCH)"

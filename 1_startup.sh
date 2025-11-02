@@ -1,10 +1,13 @@
 #!/bin/bash
-%%bash
+
 ################################################################################
 # ENVIRONMENT SETUP ONLY (NO EXPERIMENTS)
 # Tests: System setup, GitHub auth, repo clone, Python imports, Git push
 ################################################################################
 set -e
+
+# Remove the problematic fg command at line 2
+# Add non-interactive flags to prevent hanging
 
 # ==============================
 # Configuration with defaults
@@ -33,23 +36,26 @@ success() { echo "✅ $1"; }
 error() { echo "[ERROR] $1" >&2; exit 1; }
 
 # =============================================================================
-# PHASE 0: Install Python 3.11
+# PHASE 0: Install Python 3.11 (FIXED VERSION)
 # =============================================================================
 log "================================"
 log "PHASE 0: Install Python 3.11"
 log "================================"
 
 log "Updating system..."
-sudo apt-get update -qq >> "$LOG_FILE" 2>&1
+# Add timeout and non-interactive flags
+export DEBIAN_FRONTEND=noninteractive
+sudo -E apt-get update -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --timeout=300 >> "$LOG_FILE" 2>&1 || log "Warning: apt update timeout or error"
 
 log "Adding deadsnakes PPA..."
-sudo apt-get install -y software-properties-common >> "$LOG_FILE" 2>&1
-sudo add-apt-repository -y ppa:deadsnakes/ppa >> "$LOG_FILE" 2>&1
-sudo apt-get update -qq >> "$LOG_FILE" 2>&1
+sudo -E apt-get install -y software-properties-common >> "$LOG_FILE" 2>&1
+sudo -E add-apt-repository -y ppa:deadsnakes/ppa >> "$LOG_FILE" 2>&1
+sudo -E apt-get update -qq --timeout=300 >> "$LOG_FILE" 2>&1 || log "Warning: ppa update timeout"
 
 log "Installing Python 3.11 + pip..."
-sudo apt-get install -y python3.11 python3.11-dev python3-pip git build-essential >> "$LOG_FILE" 2>&1
+sudo -E apt-get install -y python3.11 python3.11-dev python3.11-venv python3-pip git build-essential >> "$LOG_FILE" 2>&1
 
+# Verify installation
 if ! command -v python3.11 &> /dev/null; then
     error "python3.11 not installed"
 fi
@@ -57,8 +63,8 @@ fi
 log "Python version:"
 python3.11 --version | tee -a "$LOG_FILE"
 
-# Make python3.11 the default
-sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 >> "$LOG_FILE" 2>&1
+# Make python3.11 the default (optional)
+sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 >> "$LOG_FILE" 2>&1 || log "Warning: alternatives not set"
 
 success "Python 3.11 installed"
 

@@ -101,11 +101,14 @@ class GCPExperimentRunner:
         If gcp=True (default), assumes the 'quantum_project' repo already exists on the image.
         Falls back to cloning if not present.
         """
+        shown_progress = set()  # add this near the top of the function before reading lines
         print(f"--- Starting Experiment on {vm_name} ---")
 
         # New logic: reuse repo if already there
         command_str = (
-            "cd ~/quantum_project && "
+            'mkdir -p ~/quantum_project/Dynamic_Routing_Eval_Framework/logs && '
+            'exec > >(tee -a ~/quantum_project/Dynamic_Routing_Eval_Framework/logs/{}_$(date +"%Y%m%d_%H%M%S").log) 2>&1 && '
+            'cd ~/quantum_project && '
         )
 
         # Conditionally checkout GCP branch
@@ -130,18 +133,20 @@ class GCPExperimentRunner:
             for line in proc.stdout:
                 line_stripped = line.strip()
 
-                # Filter tqdm progress lines
+                # Collapse tqdm spam: show each progress percentage only once
                 if "Progress" in line_stripped:
-                    # Extract percentage
                     import re
                     match = re.search(r"(\d+)%\|", line_stripped)
                     if match:
                         percent = int(match.group(1))
-                        # Only print 0%, 50%, 100%
+                        if percent in shown_progress:
+                            continue  # already shown
+                        shown_progress.add(percent)
+
+                        # optionally limit to a few key milestones
                         if percent not in (0, 50, 100):
                             continue
 
-                # Print everything else normally
                 print(f"[{vm_name}] {line_stripped}")
             proc.wait()
 

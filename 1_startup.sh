@@ -1,3 +1,4 @@
+%%bash
 #!/bin/bash
 
 ################################################################################
@@ -5,9 +6,6 @@
 # Tests: System setup, GitHub auth, repo clone, Python imports, Git push
 ################################################################################
 set -e
-
-# Remove the problematic fg command at line 2
-# Add non-interactive flags to prevent hanging
 
 # ==============================
 # Configuration with defaults
@@ -19,7 +17,8 @@ TARGET_BRANCH="${TARGET_BRANCH:-gcp-main}"
 
 LOG_DIR="${LOG_DIR:-$HOME/quantum_logs}"
 REPO_DIR="${REPO_DIR:-$HOME/quantum_project}"
-DAQR_PATH="${DAQR_PATH:-$REPO_DIR/Dynamic_Routing_Eval_Framework/daqr}"
+WORK_DIR="${WORK_DIR:-$REPO_DIR/Dynamic_Routing_Eval_Framework}"
+DAQR_PATH="${DAQR_PATH:-$WORK_DIR/daqr}"
 
 SEED_OFFSET="${SEED_OFFSET:-0}"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
@@ -36,26 +35,23 @@ success() { echo "✅ $1"; }
 error() { echo "[ERROR] $1" >&2; exit 1; }
 
 # =============================================================================
-# PHASE 0: Install Python 3.11 (FIXED VERSION)
+# PHASE 0: Install Python 3.11
 # =============================================================================
 log "================================"
 log "PHASE 0: Install Python 3.11"
 log "================================"
 
 log "Updating system..."
-# Add timeout and non-interactive flags
-export DEBIAN_FRONTEND=noninteractive
-sudo -E apt-get update -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --timeout=300 >> "$LOG_FILE" 2>&1 || log "Warning: apt update timeout or error"
+sudo apt-get update -qq >> "$LOG_FILE" 2>&1
 
 log "Adding deadsnakes PPA..."
-sudo -E apt-get install -y software-properties-common >> "$LOG_FILE" 2>&1
-sudo -E add-apt-repository -y ppa:deadsnakes/ppa >> "$LOG_FILE" 2>&1
-sudo -E apt-get update -qq --timeout=300 >> "$LOG_FILE" 2>&1 || log "Warning: ppa update timeout"
+sudo apt-get install -y software-properties-common >> "$LOG_FILE" 2>&1
+sudo add-apt-repository -y ppa:deadsnakes/ppa >> "$LOG_FILE" 2>&1
+sudo apt-get update -qq >> "$LOG_FILE" 2>&1
 
 log "Installing Python 3.11 + pip..."
-sudo -E apt-get install -y python3.11 python3.11-dev python3.11-venv python3-pip git build-essential >> "$LOG_FILE" 2>&1
+sudo apt-get install -y python3.11 python3.11-dev python3-pip git build-essential >> "$LOG_FILE" 2>&1
 
-# Verify installation
 if ! command -v python3.11 &> /dev/null; then
     error "python3.11 not installed"
 fi
@@ -63,8 +59,8 @@ fi
 log "Python version:"
 python3.11 --version | tee -a "$LOG_FILE"
 
-# Make python3.11 the default (optional)
-sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 >> "$LOG_FILE" 2>&1 || log "Warning: alternatives not set"
+# Make python3.11 the default
+sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 >> "$LOG_FILE" 2>&1
 
 success "Python 3.11 installed"
 
@@ -89,6 +85,10 @@ python3 --version
 pip3 --version
 pip install -q --upgrade pip setuptools wheel 2>&1 | tail -1 || log "pip upgrade note"
 pip install -q numpy pandas matplotlib seaborn tqdm 2>&1 | tail -1 || log "pip install note"
+
+if [ -f "$REPO_DIR/requirements.txt" ]; then
+    pip install -r "$REPO_DIR/requirements.txt" >> "$LOG_FILE" 2>&1 || log "Warning: requirements.txt not fully installed"
+fi
 success "Python environment ready"
 
 # =============================================================================
@@ -105,6 +105,7 @@ git config --global user.email "automation@local"
 git config --global user.name "Quantum MAB Bot"
 success "Git configured"
 
+
 # =============================================================================
 # PHASE 4: Clone Repository
 # =============================================================================
@@ -112,19 +113,24 @@ log "================================"
 log "PHASE 4: Clone Repository (branch: $TARGET_BRANCH)"
 log "================================"
 
-if [ -d "$REPO_DIR/.git" ]; then
-    echo "Repository already exists at $REPO_DIR — skipping clone."
-    git pull
-else
-    REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
-    log "Cloning $GITHUB_USERNAME/$GITHUB_REPO (branch: $TARGET_BRANCH)..."
-    git clone --branch "$TARGET_BRANCH" --single-branch "$REPO_URL" "$REPO_DIR" > /dev/null 2>&1 || error "Clone failed"
-    cd "$REPO_DIR"
-    success "Repository cloned at $REPO_DIR (branch: $TARGET_BRANCH)"
+# Always start from a safe directory before cleanup
+cd "$HOME"
+
+# Always start fresh: remove any existing repo directory
+if [ -d "$REPO_DIR" ]; then
+    log "🧹 Removing existing repository directory at $REPO_DIR"
+    rm -rf "$REPO_DIR"
 fi
 
+# Fresh clone every run
+REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
+log "🚀 Cloning $GITHUB_USERNAME/$GITHUB_REPO (branch: $TARGET_BRANCH)..."
+git clone --branch "$TARGET_BRANCH" --single-branch "$REPO_URL" "$REPO_DIR" || error "Clone failed"
+
 cd "$REPO_DIR"
-success "Repository cloned at $REPO_DIR (branch: $TARGET_BRANCH)"
+success "Repository cloned cleanly at $REPO_DIR (branch: $TARGET_BRANCH)"
+
+
 
 # =============================================================================
 # PHASE 5: Verify Repository Structure
@@ -154,13 +160,15 @@ log "================================"
 log "PHASE 6: Python Package Setup"
 log "================================"
 
-cd "$REPO_DIR"
-find . -type d -not -name ".git" -not -name ".*" -exec touch {}/__init__.py \; 2>/dev/null || true
-
-for dir in daqr daqr/config daqr/core daqr/evaluation daqr/algorithms; do
-    mkdir -p "$dir"
-    touch "$dir/__init__.py"
-done
+cd "$WORK_DIR"
+# only create if the expected structure doesn't exist yet
+if [ ! -d "$DAQR_PATH/core" ]; then
+    log "⚠️  daqr structure missing — creating placeholders."
+    mkdir -p daqr/{config,core,evaluation,algorithms}
+    find daqr -type d -exec touch {}/__init__.py \;
+else
+    log "✅ daqr structure already present — skipping creation."
+fi
 success "Package structure ready"
 
 # =============================================================================
@@ -170,7 +178,7 @@ log "================================"
 log "PHASE 7: Test Python Imports"
 log "================================"
 
-export PYTHONPATH="$REPO_DIR:$PYTHONPATH"
+export PYTHONPATH="$WORK_DIR:$PYTHONPATH"
 
 log "Testing basic Python imports..."
 python3 << PYEOF
@@ -181,7 +189,7 @@ print(f"    ✓ numpy: {np.__version__}")
 print(f"    ✓ pandas: {pd.__version__}")
 print(f"    ✓ matplotlib: {matplotlib.__version__}")
 print("\n  Attempting daqr import...")
-sys.path.insert(0, "$REPO_DIR")
+sys.path.insert(0, "$WORK_DIR")
 try:
     import daqr
     print("    ✓ daqr module imported successfully!")
@@ -197,7 +205,7 @@ log "================================"
 log "PHASE 8: Save Setup Log"
 log "================================"
 
-SETUP_RESULTS_DIR="$REPO_DIR/results/setup_logs"
+SETUP_RESULTS_DIR="$WORK_DIR/results/setup_logs"
 mkdir -p "$SETUP_RESULTS_DIR"
 
 cat > "$SETUP_RESULTS_DIR/setup_${SEED_OFFSET}_${TIMESTAMP}.txt" << EOF
@@ -222,7 +230,7 @@ log "================================"
 log "PHASE 9: Test GitHub Push"
 log "================================"
 
-cd "$REPO_DIR"
+cd "$WORK_DIR"
 git add "results/setup_logs/" 2>/dev/null || log "Nothing to add"
 if git diff --cached --quiet; then
     log "No new files to commit"

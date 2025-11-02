@@ -307,7 +307,7 @@ class GCPExperimentRunner:
             print(f"\nAn error occurred during the run: {e}")
         finally:
             # runner.cleanup_vms(require_done=True)
-            self.cleanup_vms()
+            self.wait_for_vms_and_cleanup(runner)
 
     @classmethod
     def run_all_allocators(cls, mode, exclude: list[str] = None):
@@ -368,9 +368,9 @@ class GCPExperimentRunner:
             t.join()
 
         # cleanup all vms at the end
-        # for runner in all_runners:
+        for runner in all_runners:
             # runner.cleanup_vms(require_done=True)
-        cls.cleanup_vms()
+            runner.cleanup_vms()
 
         print("\n===== ✓ ALL ALLOCATORS COMPLETE =====")
 
@@ -489,7 +489,9 @@ class GCPExperimentRunner:
                 t.join()
 
             # Cleanup all VMs from this round
-            cls.cleanup_vms()
+            for runner in runners:
+                # runner.cleanup_vms(require_done=True)
+                runner.cleanup_vms()
             print(f"\n✓ ROUND {round_name.upper()} COMPLETE for all allocators.\n")
 
         print("\n===== ✓ ALL ROUNDS COMPLETE (Sequential Mode) =====")

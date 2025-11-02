@@ -228,6 +228,49 @@ class GCPExperimentRunner:
         print(f"Failed to get status for {vm_name} after {max_retries} attempts.")
         return "ERROR"
 
+    def wait_for_vms_and_cleanup(manager, max_wait_minutes=15):
+        """
+        Waits for all VMs to report 'done' and then cleans them up.
+        """
+        print("\n--- Waiting for all VMs to finish experiments ---")
+        
+        start_time = time.time()
+        vms_to_wait_for = list(manager.vms_to_cleanup) # Get the initial list of VMs
+
+        while vms_to_wait_for:
+            # Check for timeout
+            elapsed_seconds = time.time() - start_time
+            if elapsed_seconds > max_wait_minutes * 60:
+                print(f"--- ERROR: Timeout reached after {max_wait_minutes} minutes. ---")
+                # Force cleanup of any remaining VMs regardless of status
+                manager.cleanup_vms(require_done=False) 
+                return
+
+            # Check the status of each remaining VM
+            finished_vms = []
+            for vm_name in vms_to_wait_for:
+                # This is your existing function to get status
+                status = manager._get_instance_status(vm_name) 
+                
+                if status.lower() == 'done':
+                    print(f"✔️ VM '{vm_name}' has finished.")
+                    finished_vms.append(vm_name)
+                else:
+                    print(f"⏳ VM '{vm_name}' is still working (status: {status})...")
+            
+            # Remove finished VMs from the waiting list
+            if finished_vms:
+                vms_to_wait_for = [vm for vm in vms_to_wait_for if vm not in finished_vms]
+
+            # If there are still VMs running, wait before polling again
+            if vms_to_wait_for:
+                print(f"--- {len(vms_to_wait_for)} VMs remaining. Waiting 30 seconds before next check. ---")
+                time.sleep(30)
+
+        print("\n--- All VMs have finished. Proceeding with cleanup. ---")
+        # Now that we've confirmed all VMs are done, this will work every time.
+        manager.cleanup_vms(require_done=True)
+        
     def cleanup_vms(self, require_done: bool = True):
         if not self.vms_to_cleanup:
             return
@@ -272,7 +315,8 @@ class GCPExperimentRunner:
         except Exception as e:
             print(f"\nAn error occurred during the run: {e}")
         finally:
-            runner.cleanup_all_instances(require_done=True)
+            # runner.cleanup_vms(require_done=True)
+            self.wait_for_vms_and_cleanup(runner)
 
     @classmethod
     def run_all_allocators(cls, mode, exclude: list[str] = None):
@@ -334,7 +378,8 @@ class GCPExperimentRunner:
 
         # cleanup all vms at the end
         for runner in all_runners:
-            runner.cleanup_all_instances(require_done=True)
+            # runner.cleanup_vms(require_done=True)
+            cls.wait_for_vms_and_cleanup(runner)
 
         print("\n===== ✓ ALL ALLOCATORS COMPLETE =====")
 
@@ -454,8 +499,8 @@ class GCPExperimentRunner:
 
             # Cleanup all VMs from this round
             for runner in runners:
-                runner.cleanup_all_instances(require_done=True)
-
+                # runner.cleanup_vms(require_done=True)
+                cls.wait_for_vms_and_cleanup(runner)
             print(f"\n✓ ROUND {round_name.upper()} COMPLETE for all allocators.\n")
 
         print("\n===== ✓ ALL ROUNDS COMPLETE (Sequential Mode) =====")

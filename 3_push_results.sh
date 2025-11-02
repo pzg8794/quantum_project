@@ -125,6 +125,7 @@ MAX_RETRIES=3
 RETRY_COUNT=0
 
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    git pull
     git push origin "$TARGET_BRANCH" >> "$LOG_FILE" 2>&1
     PUSH_CODE=$?
 

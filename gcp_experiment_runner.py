@@ -72,7 +72,7 @@ class GCPExperimentRunner:
             f"--machine-type={self.machine_type}",
             f"--boot-disk-size={self.disk_size}",
             "--scopes=cloud-platform",
-            "--image=quantum-base-image",
+            "--image=quantum-exp-base-img",
             "--image-project=bright-zodiac-476705-d6",
             "--quiet",
         ]
@@ -155,7 +155,7 @@ class GCPExperimentRunner:
                         shown_progress.add(percent)
 
                         # optionally limit to a few key milestones
-                        if percent not in (0, 50, 100):
+                        if percent not in (50, 75, 100):
                             continue
 
                 print(f"[{vm_name}] {line_stripped}")
@@ -170,20 +170,34 @@ class GCPExperimentRunner:
             print(f"--- FATAL ERROR running experiment on {vm_name}: {e} ---")
 
 
-    def _get_instance_status(self, vm_name: str) -> str:
-        """Return metadata status string or '' if missing."""
-        try:
-            r = subprocess.run(
-                [
-                    "gcloud", "compute", "instances", "describe", vm_name,
-                    f"--zone={self.zone}",
-                    "--format=value(metadata.items[?key=status].value)"
-                ],
-                check=True, capture_output=True, text=True
-            )
-            return r.stdout.strip()
-        except subprocess.CalledProcessError:
-            return ""
+    def _get_instance_status(self, vm_name: str, status="unknown") -> str:
+        """Return VM metadata 'status' value or 'unknown' if missing."""
+        while status=="unknown":
+            try:
+                # Corrected command to get the instance's lifecycle status
+                r = subprocess.run(
+                    [
+                        "gcloud", "compute", "instances", "describe", vm_name,
+                        f"--zone={self.zone}",
+                        "--format=get(status)"  # Correctly query the top-level 'status' field
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True
+                )
+
+                # Always check stderr for hidden errors
+                if r.returncode != 0:
+                    print(f"Error fetching status for {vm_name}:")
+                    print(r.stderr)
+                    status = "UNKNOWN"
+                else: status = r.stdout.strip()
+                print(f"The VM status is: {status}")
+                time.sleep(1)
+            except Exception as e:
+                print(f"[ERROR] Failed to get status for VM '{vm_name}': {e}")
+                break
+        return status
 
     def cleanup_vms(self, require_done: bool = True):
         if not self.vms_to_cleanup:
@@ -221,6 +235,7 @@ class GCPExperimentRunner:
                 raise RuntimeError("VM creation failed.")
             if not all(self.wait_for_ssh(exp.name) for exp in self.experiments):
                 raise RuntimeError("VM SSH readiness failed.")
+            
             threads = [threading.Thread(target=self.run_and_stream_experiment, args=(exp.name, exp.script_with_args)) for exp in self.experiments]
             for thread in threads: thread.start()
             for thread in threads: thread.join()
@@ -228,7 +243,7 @@ class GCPExperimentRunner:
         except Exception as e:
             print(f"\nAn error occurred during the run: {e}")
         finally:
-            self.cleanup_vms()
+            runner.cleanup_vms(require_done=True)
 
     @classmethod
     def run_all_allocators(cls, mode, exclude: list[str] = None):
@@ -290,9 +305,69 @@ class GCPExperimentRunner:
 
         # cleanup all vms at the end
         for runner in all_runners:
-            runner.cleanup_vms()
+            runner.cleanup_vms(require_done=True)
 
         print("\n===== ✓ ALL ALLOCATORS COMPLETE =====")
+
+
+    def cleanup_all_instances(self, require_done: bool = True):
+        """
+        Deletes all *running* experiment/test VMs across zones.
+        Skips base/template/image instances automatically.
+        """
+        print("\n🧹 Scanning for active experiment instances (status=RUNNING)...")
+
+        protected = ("base", "template", "image", "main")
+        try:
+            # list only running instances across all zones
+            list_cmd = [
+                "gcloud", "compute", "instances", "list",
+                "--project=bright-zodiac-476705-d6",
+                "--filter=status=RUNNING",
+                "--format=value(name,zone)"
+            ]
+            r = subprocess.run(list_cmd, check=True, capture_output=True, text=True)
+            lines = [l.strip() for l in r.stdout.splitlines() if l.strip()]
+
+            if not lines:
+                print("✅ No running instances found.")
+                return
+
+            to_delete = []
+            for line in lines:
+                name, zone = line.split()
+                lname = name.lower()
+
+                if any(p in lname for p in protected):
+                    print(f"🛑 Skipping protected instance: {name}")
+                    continue
+
+                if self.vms_to_cleanup and name not in self.vms_to_cleanup: continue
+                status = self._get_instance_status(name)
+                if name != "quantum-exp" and (not require_done or status.lower() == "done"):
+                    print(f"DELETING: {name} (metadata status={status})")
+                    to_delete.append((name, zone))
+                else:
+                    print(f"⏳ KEEPING: {name} (metadata status={status})")
+
+            if not to_delete:
+                print("No experiment VMs marked for deletion.")
+                return
+
+            print("\n🚀 Deleting selected instances...")
+            for name, zone in to_delete:
+                del_cmd = ["gcloud", "compute", "instances", "delete", name, f"--zone={zone}", "--quiet"]
+                try:
+                    subprocess.run(del_cmd, check=True, capture_output=True, text=True)
+                    print(f"Deleted {name}")
+                except subprocess.CalledProcessError as e:
+                    print(f"⚠️  Failed to delete {name}: {e.stderr.strip()}")
+
+            print("\n✨ Cleanup complete.")
+        except Exception as e:
+            print(f"[ERROR] Cleanup failed: {e}")
+
+
 
     @classmethod
     def run_all_allocators_sequential(cls, mode, exclude: list[str] = None):
@@ -347,7 +422,7 @@ class GCPExperimentRunner:
 
             # Cleanup all VMs from this round
             for runner in runners:
-                runner.cleanup_vms()
+                runner.cleanup_vms(require_done=True)
 
             print(f"\n✓ ROUND {round_name.upper()} COMPLETE for all allocators.\n")
 
@@ -370,10 +445,24 @@ if __name__ == "__main__":
     # Clean up args for allocator selection
     args = [arg for arg in sys.argv[1:] if arg not in ["--test", "--quick-test", "--exclude"] and not arg.startswith(",")]
 
-    if not args:
-        print("\nUsage:\n  python gcp_experiment_runner.py <allocator|--all> [--test|--quick-test] [--exclude none,random]\n")
+    # Display help
+    if not args and not ("--cleanup" in sys.argv or "--cleanup-all" in sys.argv):
+        print("""
+            Usage:
+            python gcp_experiment_runner.py <allocator|--all> [--test|--quick-test] [--exclude none,random]
+            python gcp_experiment_runner.py --cleanup        # deletes VMs with status=done
+            python gcp_experiment_runner.py --cleanup-all    # deletes all experiment VMs
+            """)
         sys.exit(1)
 
+    # Handle cleanup directly
+    if "--cleanup" in sys.argv or "--cleanup-all" in sys.argv:
+        require_done = "--cleanup" in sys.argv
+        runner = GCPExperimentRunner("none", mode="quick-test")
+        runner.cleanup_all_instances(require_done=require_done)
+        sys.exit(0)
+
+    # Normal experiment runs
     command = args[0]
     if "--sequential" in sys.argv:
         GCPExperimentRunner.run_all_allocators_sequential(mode=mode, exclude=exclude)

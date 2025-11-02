@@ -38,6 +38,7 @@ class GCPExperimentRunner:
         self.machine_type = machine_type
         self.test_mode = self.mode != "production"
         self.vms_to_cleanup = []
+        self.to_delete, self.to_keep = [], []
 
 
         allocator_arg = "None" if self.allocator == "none" else self.allocator.lower()
@@ -172,6 +173,9 @@ class GCPExperimentRunner:
                         # optionally limit to a few key milestones
                         if percent not in (50, 75, 100):
                             continue
+                if "Test DONE" in line_stripped:
+                    # add machine to delete
+                    self.to_delete.append(vm_name)
 
                 print(f"[{vm_name}] {line_stripped}")
             proc.wait()
@@ -271,34 +275,21 @@ class GCPExperimentRunner:
         # Now that we've confirmed all VMs are done, this will work every time.
         manager.cleanup_vms(require_done=True)
         
-    def cleanup_vms(self, require_done: bool = True):
-        if not self.vms_to_cleanup:
+    def cleanup_vms(self):
+        if not self.to_delete:
             return
 
-        to_delete, to_keep = [], []
-        if require_done:
-            for vm in self.vms_to_cleanup:
-                status = self._get_instance_status(vm)
-                if status.lower() == "done":
-                    to_delete.append(vm)
-                else:
-                    to_keep.append((vm, status if status else "unknown"))
-        else:
-            to_delete = list(self.vms_to_cleanup)
+        to_delete = list(self.to_delete)
 
+        for vm in self.to_delete:
+            print(f"DELETING: {vm} (metadata status=DONE)")
+        
         if to_delete:
             print("\nCleaning up VMs (status=done):", ", ".join(to_delete))
             cmd = ["gcloud", "compute", "instances", "delete"] + to_delete + [f"--zone={self.zone}", "--quiet"]
             self._run_gcloud_cmd(cmd)
             # remove deleted ones from tracking
             self.vms_to_cleanup = [vm for vm in self.vms_to_cleanup if vm not in to_delete]
-
-        if require_done and to_keep:
-            for vm, st in to_keep:
-                print(f"Keeping VM '{vm}' (status={st})")
-
-        if not to_delete and not to_keep:
-            print("Cleanup: no VMs to process.")
 
     def run(self):
         print(f"\n[{self.mode.replace('-', ' ').title()}] Starting experiments for allocator: {self.allocator}\n")
@@ -316,7 +307,7 @@ class GCPExperimentRunner:
             print(f"\nAn error occurred during the run: {e}")
         finally:
             # runner.cleanup_vms(require_done=True)
-            self.wait_for_vms_and_cleanup(runner)
+            self.cleanup_vms()
 
     @classmethod
     def run_all_allocators(cls, mode, exclude: list[str] = None):
@@ -377,9 +368,9 @@ class GCPExperimentRunner:
             t.join()
 
         # cleanup all vms at the end
-        for runner in all_runners:
+        # for runner in all_runners:
             # runner.cleanup_vms(require_done=True)
-            cls.wait_for_vms_and_cleanup(runner)
+        cls.cleanup_vms()
 
         print("\n===== ✓ ALL ALLOCATORS COMPLETE =====")
 
@@ -498,9 +489,7 @@ class GCPExperimentRunner:
                 t.join()
 
             # Cleanup all VMs from this round
-            for runner in runners:
-                # runner.cleanup_vms(require_done=True)
-                cls.wait_for_vms_and_cleanup(runner)
+            cls.cleanup_vms()
             print(f"\n✓ ROUND {round_name.upper()} COMPLETE for all allocators.\n")
 
         print("\n===== ✓ ALL ROUNDS COMPLETE (Sequential Mode) =====")

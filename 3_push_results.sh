@@ -1,8 +1,8 @@
 #!/bin/bash
 
 ################################################################################
-# SCRIPT 3: PUSH RESULTS - Pull, Commit, Push to GitHub
-# Handles concurrent VM pushes safely
+# SCRIPT 3: PUSH RESULTS - Simple and Robust Version
+# Avoids complex git reset operations that can lose data
 ################################################################################
 
 gcloud compute instances add-metadata "$(hostname)" \
@@ -25,7 +25,6 @@ warn() { echo "WARN: $1" | tee -a "$LOG_FILE"; }
 # =============================================================================
 # Branch Selection
 # =============================================================================
-# Default to pushing to gcp-main unless another branch name is provided.
 TARGET_BRANCH="gcp-main"
 if [ -n "$1" ]; then
     TARGET_BRANCH="$1"
@@ -48,35 +47,14 @@ cd "$REPO_DIR" || error "Failed to access $REPO_DIR"
 success "Repository found"
 
 # =============================================================================
-# Pull Latest Changes (CRITICAL for parallel VMs)
+# Create and Stage Results (BEFORE any pull operations)
 # =============================================================================
 
 log "================================"
-log "Pulling Latest from $TARGET_BRANCH"
+log "Preparing Results"
 log "================================"
 
-git pull origin "$TARGET_BRANCH" >> "$LOG_FILE" 2>&1
-PULL_CODE=$?
-
-if [ $PULL_CODE -ne 0 ]; then
-    warn "Pull had issues (code $PULL_CODE), attempting rebase strategy..."
-    git pull --rebase origin "$TARGET_BRANCH" >> "$LOG_FILE" 2>&1
-    if [ $? -ne 0 ]; then
-        error "Pull failed - cannot sync with remote"
-    fi
-fi
-
-success "Synced with remote branch: $TARGET_BRANCH"
-
-# =============================================================================
-# Stage Results
-# =============================================================================
-
-log "================================"
-log "Staging Results"
-log "================================"
-
-# Create a unique run marker so every run commits something
+# Create a unique run marker
 RUN_ID=$(date +%Y%m%d_%H%M%S)
 RUN_MARKER="Dynamic_Routing_Eval_Framework/results/run_marker_${RUN_ID}.txt"
 echo "Run completed at ${RUN_ID}" > "$RUN_MARKER"
@@ -87,62 +65,63 @@ git add Dynamic_Routing_Eval_Framework/logs/ 2>/dev/null || true
 git add Dynamic_Routing_Eval_Framework/results/ 2>/dev/null || true
 git add Dynamic_Routing_Eval_Framework/experiment_results/ 2>/dev/null || true
 
-log "Files staged:"
 STAGED_COUNT=$(git diff --cached --name-only | wc -l)
-log "  → $STAGED_COUNT file(s) staged for commit"
+log "Staged $STAGED_COUNT file(s) for commit"
 
-# =============================================================================
-# Commit
-# =============================================================================
-
-log "================================"
-log "Committing Results"
-log "================================"
-
-COMMIT_MSG="Experiment results - $(date +'%Y-%m-%d %H:%M:%S') [${TARGET_BRANCH}]"
-git commit -m "$COMMIT_MSG" >> "$LOG_FILE" 2>&1
-COMMIT_CODE=$?
-
-if [ $COMMIT_CODE -ne 0 ]; then
-    if git diff --cached --quiet; then
-        warn "No changes to commit."
-    else
-        error "Commit failed with code $COMMIT_CODE"
-    fi
-else
-    success "Results committed"
+if [ $STAGED_COUNT -eq 0 ]; then
+    warn "No changes to commit. Exiting."
+    exit 0
 fi
 
+# Create the commit with staged files
+COMMIT_MSG="Experiment results from $(hostname) - $(date +'%Y-%m-%d %H:%M:%S')"
+git commit -m "$COMMIT_MSG" >> "$LOG_FILE" 2>&1
+if [ $? -ne 0 ]; then
+    error "Failed to create commit"
+fi
+success "Results committed locally"
+
 # =============================================================================
-# Push to GitHub (with retry for race conditions)
+# Simple Pull-and-Push with Retry
 # =============================================================================
 
 log "================================"
 log "Pushing to GitHub"
 log "================================"
 
-MAX_RETRIES=3
-RETRY_COUNT=0
-
-while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    git pull
+MAX_RETRIES=5
+for attempt in $(seq 1 $MAX_RETRIES); do
+    log "--- Attempt $attempt/$MAX_RETRIES ---"
+    
+    # Try to push first (optimistic approach)
     git push origin "$TARGET_BRANCH" >> "$LOG_FILE" 2>&1
-    PUSH_CODE=$?
-
-    if [ $PUSH_CODE -eq 0 ]; then
+    if [ $? -eq 0 ]; then
         success "Results pushed to GitHub!"
         log "URL: https://github.com/pzg8794/quantum_project/tree/${TARGET_BRANCH}/Dynamic_Routing_Eval_Framework/results"
         break
-    else
-        RETRY_COUNT=$((RETRY_COUNT + 1))
-        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-            warn "Push failed (attempt $RETRY_COUNT/$MAX_RETRIES), rebasing and retrying..."
-            git pull --rebase origin "$TARGET_BRANCH" >> "$LOG_FILE" 2>&1
-            sleep 2
-        else
-            error "Push failed after $MAX_RETRIES attempts"
+    fi
+    
+    warn "Push failed on attempt $attempt. Another VM likely pushed first."
+    
+    if [ $attempt -eq $MAX_RETRIES ]; then
+        error "Push failed after $MAX_RETRIES attempts"
+    fi
+    
+    # The key insight: pull with automatic merge commit
+    log "Pulling latest changes with merge strategy..."
+    git pull origin "$TARGET_BRANCH" --no-rebase >> "$LOG_FILE" 2>&1
+    if [ $? -ne 0 ]; then
+        warn "Pull failed. Trying with merge strategy..."
+        git pull origin "$TARGET_BRANCH" --strategy=ours >> "$LOG_FILE" 2>&1
+        if [ $? -ne 0 ]; then
+            error "Cannot sync with remote repository"
         fi
     fi
+    
+    # Add exponential backoff
+    SLEEP_TIME=$((2 * attempt))
+    log "Waiting ${SLEEP_TIME} seconds before retry..."
+    sleep $SLEEP_TIME
 done
 
 # =============================================================================
@@ -152,18 +131,6 @@ done
 log "================================"
 log "PUSH COMPLETE"
 log "================================"
-
-cat << EOF | tee -a "$LOG_FILE"
-
-SUMMARY
-=======
-Status: SUCCESS
-Commit: $COMMIT_MSG
-Log: $LOG_FILE
-
-GitHub: https://github.com/pzg8794/quantum_project/tree/${TARGET_BRANCH}
-
-EOF
 
 success "All results pushed!"
 

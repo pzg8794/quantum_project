@@ -101,12 +101,16 @@ git config --global user.email "automation@local"
 git config --global user.name "Quantum MAB Bot"
 success "Git configured"
 
+
 # =============================================================================
 # PHASE 4: Clone Repository
 # =============================================================================
 log "================================"
 log "PHASE 4: Clone Repository (branch: $TARGET_BRANCH)"
 log "================================"
+
+# Always start from a safe directory before cleanup
+cd "$HOME"
 
 # Always start fresh: remove any existing repo directory
 if [ -d "$REPO_DIR" ]; then
@@ -121,6 +125,7 @@ git clone --branch "$TARGET_BRANCH" --single-branch "$REPO_URL" "$REPO_DIR" || e
 
 cd "$REPO_DIR"
 success "Repository cloned cleanly at $REPO_DIR (branch: $TARGET_BRANCH)"
+
 
 
 # =============================================================================

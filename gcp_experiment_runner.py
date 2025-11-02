@@ -72,7 +72,7 @@ class GCPExperimentRunner:
             f"--machine-type={self.machine_type}",
             f"--boot-disk-size={self.disk_size}",
             "--scopes=cloud-platform",
-            "--image=quantum-base-image",
+            "--image=quantum-exp-base",
             "--image-project=bright-zodiac-476705-d6",
             "--quiet",
         ]

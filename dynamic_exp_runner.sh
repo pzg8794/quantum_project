@@ -1,4 +1,8 @@
 #!/bin/bash
+gcloud compute instances add-metadata "$(hostname)" \
+  --zone="$(curl -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/zone | awk -F/ '{print $4}')" \
+  --metadata=status=testing --quiet
+  
 set +e
 
 
@@ -114,7 +118,7 @@ else:
 # ==========================================================
 # Dynamic Allocator Selection (runtime argument or env)
 # ==========================================================
-arg = "${ALLOCATOR:-None}" # Default to None if not provided
+arg = "${ALLOCATOR:-None}"  # Default to None if not provided
 allocator = None
 if arg.lower() == "thompson":
     allocator = ThompsonSamplingAllocator(

@@ -103,6 +103,17 @@ class GCPExperimentRunner:
         """
         shown_progress = set()  # add this near the top of the function before reading lines
         print(f"--- Starting Experiment on {vm_name} ---")
+            # 1) Mark VM as starting (LOCAL call, not inside the SSH command)
+        try:
+            subprocess.run(
+                [
+                    "gcloud", "compute", "instances", "add-metadata", vm_name,
+                    f"--zone={self.zone}", "--metadata=status=starting", "--quiet"
+                ],
+                check=False, text=True
+            )
+        except Exception as e:
+            print(f"[{vm_name}] WARN: failed to set metadata to 'starting': {e}")
 
         # New logic: reuse repo if already there
         command_str = (
@@ -159,13 +170,49 @@ class GCPExperimentRunner:
             print(f"--- FATAL ERROR running experiment on {vm_name}: {e} ---")
 
 
+    def _get_instance_status(self, vm_name: str) -> str:
+        """Return metadata status string or '' if missing."""
+        try:
+            r = subprocess.run(
+                [
+                    "gcloud", "compute", "instances", "describe", vm_name,
+                    f"--zone={self.zone}",
+                    "--format=value(metadata.items[?key=status].value)"
+                ],
+                check=True, capture_output=True, text=True
+            )
+            return r.stdout.strip()
+        except subprocess.CalledProcessError:
+            return ""
 
-    def cleanup_vms(self):
-        if not self.vms_to_cleanup: return
-        print("\nCleaning up VMs...")
-        cmd = ["gcloud", "compute", "instances", "delete"] + self.vms_to_cleanup + [f"--zone={self.zone}", "--quiet"]
-        self._run_gcloud_cmd(cmd)
-        print("Cleanup complete.")
+    def cleanup_vms(self, require_done: bool = True):
+        if not self.vms_to_cleanup:
+            return
+
+        to_delete, to_keep = [], []
+        if require_done:
+            for vm in self.vms_to_cleanup:
+                status = self._get_instance_status(vm)
+                if status.lower() == "done":
+                    to_delete.append(vm)
+                else:
+                    to_keep.append((vm, status if status else "unknown"))
+        else:
+            to_delete = list(self.vms_to_cleanup)
+
+        if to_delete:
+            print("\nCleaning up VMs (status=done):", ", ".join(to_delete))
+            cmd = ["gcloud", "compute", "instances", "delete"] + to_delete + [f"--zone={self.zone}", "--quiet"]
+            self._run_gcloud_cmd(cmd)
+            # remove deleted ones from tracking
+            self.vms_to_cleanup = [vm for vm in self.vms_to_cleanup if vm not in to_delete]
+
+        if require_done and to_keep:
+            for vm, st in to_keep:
+                print(f"Keeping VM '{vm}' (status={st})")
+
+        if not to_delete and not to_keep:
+            print("Cleanup: no VMs to process.")
 
     def run(self):
         print(f"\n[{self.mode.replace('-', ' ').title()}] Starting experiments for allocator: {self.allocator}\n")

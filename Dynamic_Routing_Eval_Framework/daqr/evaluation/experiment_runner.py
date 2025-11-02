@@ -91,6 +91,7 @@ class QuantumExperimentRunner:
         if self.environment is None:
             # Safety: build env if caller forgot; prefer explicit build in run_experiment
             self._build_environment_once(frame_count=frame_count, qubit_cap=qubit_cap)
+        if self.configs.capacity > frame_count: self.configs.capacity = frame_count
 
         config = self.algorithm_configs[algorithm_name]
         env_info = self.environment.get_environment_info()

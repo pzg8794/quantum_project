@@ -83,6 +83,7 @@ echo "Run completed at ${RUN_ID}" > "$RUN_MARKER"
 log "Created unique run marker: $RUN_MARKER"
 
 # Stage experiment outputs
+git add Dynamic_Routing_Eval_Framework/logs/ 2>/dev/null || true
 git add Dynamic_Routing_Eval_Framework/results/ 2>/dev/null || true
 git add Dynamic_Routing_Eval_Framework/experiment_results/ 2>/dev/null || true
 

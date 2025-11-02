@@ -114,25 +114,40 @@ class GCPExperimentRunner:
             )
         except Exception as e:
             print(f"[{vm_name}] WARN: failed to set metadata to 'starting': {e}")
+            
+        # Use $HOME for reliability instead of ~.
+        # The shell on the remote VM will expand $HOME to the correct user's home directory.
+        log_dir = f'$HOME/quantum_project/Dynamic_Routing_Eval_Framework/logs'
+        log_file = f'{log_dir}/{vm_name}_$(date +"%Y%m%d_%H%M%S").log'
 
-        # New logic: reuse repo if already there
-        command_str = (
-            'mkdir -p ~/quantum_project/Dynamic_Routing_Eval_Framework/logs && '
-            f'exec > >(tee -a ~/quantum_project/Dynamic_Routing_Eval_Framework/logs/{vm_name}_$(date +"%Y%m%d_%H%M%S").log) 2>&1 && '
-            'cd ~/quantum_project && '
-        )
-
-        # Conditionally checkout GCP branch
-        if gcp: command_str += "git checkout --quiet gcp-main && "
-        else: command_str += "git checkout --quiet main && "
-
-        # Skip branch checkout — the image already has gcp-main
-        command_str += (
-            "git pull --quiet | true && "
-            "chmod +x ./*.sh && "
-            f"./{script_with_args}"
-        )
-
+        # Build the command string with robust error handling
+        command_str = f"""
+            set -e
+            
+            # 1. Announce what we are doing for easier debugging.
+            echo "--- Remote script started. Preparing log directory: {log_dir}"
+            
+            # 2. Create the log directory. Exit if this fails.
+            mkdir -p "{log_dir}"
+            
+            # 3. Start tee to capture all subsequent output to the log file.
+            # The ( ... ) creates a subshell.
+            (
+                cd "$HOME/quantum_project"
+                
+                echo '--- Remote log started at $(date) ---'
+                
+                git checkout --quiet {"gcp-main" if gcp else "main"}
+                
+                git pull --quiet
+                
+                chmod +x ./*.sh
+                
+                ./{script_with_args}
+            ) | tee -a "{log_file}"
+        """
+        
+        # Pass the command to SSH
         ssh_cmd = [
             "gcloud", "compute", "ssh", vm_name,
             f"--zone={self.zone}",
@@ -170,34 +185,48 @@ class GCPExperimentRunner:
             print(f"--- FATAL ERROR running experiment on {vm_name}: {e} ---")
 
 
-    def _get_instance_status(self, vm_name: str, status="unknown") -> str:
-        """Return VM metadata 'status' value or 'unknown' if missing."""
-        while status=="unknown":
+    def _get_instance_status(self, vm_name: str, max_retries: int = 3) -> str:
+        """
+        Return VM metadata 'status' value. Retries on empty or failed attempts.
+        Returns the status string (e.g., 'RUNNING') or 'ERROR' if it fails after retries.
+        """
+        
+        for attempt in range(max_retries):
             try:
-                # Corrected command to get the instance's lifecycle status
                 r = subprocess.run(
                     [
                         "gcloud", "compute", "instances", "describe", vm_name,
                         f"--zone={self.zone}",
-                        "--format=get(status)"  # Correctly query the top-level 'status' field
+                        "--format=get(status)"
                     ],
                     check=False,
                     capture_output=True,
                     text=True
                 )
 
-                # Always check stderr for hidden errors
+                # Case 1: The command failed
                 if r.returncode != 0:
-                    print(f"Error fetching status for {vm_name}:")
-                    print(r.stderr)
-                    status = "UNKNOWN"
-                else: status = r.stdout.strip()
-                print(f"The VM status is: {status}")
-                time.sleep(1)
+                    print(f"Attempt {attempt + 1}/{max_retries}: Error fetching status for {vm_name}. Stderr: {r.stderr.strip()}")
+                    time.sleep(3) # Wait longer after an error
+                    continue # Go to the next attempt
+
+                # Case 2: The command succeeded, but returned an empty string
+                retrieved_status = r.stdout.strip()
+                if not retrieved_status:
+                    print(f"Attempt {attempt + 1}/{max_retries}: Status for {vm_name} is empty. Retrying...")
+                    time.sleep(3)
+                    continue # Go to the next attempt
+                
+                # Case 3: Success! We got a status.
+                print(f"Successfully retrieved status for {vm_name}: '{retrieved_status}'")
+                return retrieved_status
+
             except Exception as e:
-                print(f"[ERROR] Failed to get status for VM '{vm_name}': {e}")
-                break
-        return status
+                print(f"[CRITICAL ERROR] Exception in _get_instance_status for '{vm_name}': {e}")
+                return "ERROR" # Return immediately on a critical code failure
+                
+        print(f"Failed to get status for {vm_name} after {max_retries} attempts.")
+        return "ERROR"
 
     def cleanup_vms(self, require_done: bool = True):
         if not self.vms_to_cleanup:
@@ -243,7 +272,7 @@ class GCPExperimentRunner:
         except Exception as e:
             print(f"\nAn error occurred during the run: {e}")
         finally:
-            runner.cleanup_vms(require_done=True)
+            runner.cleanup_all_instances(require_done=True)
 
     @classmethod
     def run_all_allocators(cls, mode, exclude: list[str] = None):
@@ -305,7 +334,7 @@ class GCPExperimentRunner:
 
         # cleanup all vms at the end
         for runner in all_runners:
-            runner.cleanup_vms(require_done=True)
+            runner.cleanup_all_instances(require_done=True)
 
         print("\n===== ✓ ALL ALLOCATORS COMPLETE =====")
 
@@ -384,12 +413,15 @@ class GCPExperimentRunner:
             print(f"Excluded: {', '.join(exclude)}")
 
         # Define the four rounds (exp1 → exp4)
-        rounds = [
-            ("exp1", "run_exp1.sh"),
-            ("exp2", "run_exp2.sh"),
-            ("exp3", "run_exp3.sh"),
-            ("exp4", "run_exp4.sh"),
-        ]
+        if "test" in mode:
+            rounds = [("exp-test", f"run_exp_test.sh  {mode}")]
+        else:
+            rounds = [
+                ("exp1", "run_exp1.sh"),
+                ("exp2", "run_exp2.sh"),
+                ("exp3", "run_exp3.sh"),
+                ("exp4", "run_exp4.sh"),
+            ]
 
         for round_name, script in rounds:
             print(f"\n--- Starting Round: {round_name} ---\n")
@@ -422,7 +454,7 @@ class GCPExperimentRunner:
 
             # Cleanup all VMs from this round
             for runner in runners:
-                runner.cleanup_vms(require_done=True)
+                runner.cleanup_all_instances(require_done=True)
 
             print(f"\n✓ ROUND {round_name.upper()} COMPLETE for all allocators.\n")
 

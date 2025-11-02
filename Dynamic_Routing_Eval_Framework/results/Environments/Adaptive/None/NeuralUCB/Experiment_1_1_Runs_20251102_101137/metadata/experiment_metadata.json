@@ -1,0 +1,16 @@
+{
+  "environment": "adaptive",
+  "experiment_id": 1,
+  "num_runs": 1,
+  "model_category": "NeuralUCB",
+  "models_tested": [
+    "Oracle",
+    "GNeuralUCB"
+  ],
+  "timestamp": "2025-11-02T10:11:40.109988",
+  "session_timestamp": "20251102_101137",
+  "session_id": "20251102_101137",
+  "framework_config": {},
+  "allocator_type": "None",
+  "allocator_config": {}
+}

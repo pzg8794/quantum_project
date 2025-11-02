@@ -1,3 +1,4 @@
+%%bash
 #!/bin/bash
 
 ################################################################################
@@ -16,7 +17,8 @@ TARGET_BRANCH="${TARGET_BRANCH:-gcp-main}"
 
 LOG_DIR="${LOG_DIR:-$HOME/quantum_logs}"
 REPO_DIR="${REPO_DIR:-$HOME/quantum_project}"
-DAQR_PATH="${DAQR_PATH:-$REPO_DIR/Dynamic_Routing_Eval_Framework/daqr}"
+WORK_DIR="${WORK_DIR:-$REPO_DIR/Dynamic_Routing_Eval_Framework}"
+DAQR_PATH="${DAQR_PATH:-$WORK_DIR/daqr}"
 
 SEED_OFFSET="${SEED_OFFSET:-0}"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
@@ -106,19 +108,20 @@ log "================================"
 log "PHASE 4: Clone Repository (branch: $TARGET_BRANCH)"
 log "================================"
 
-if [ -d "$REPO_DIR/.git" ]; then
-    echo "Repository already exists at $REPO_DIR — skipping clone."
-    git pull
-else
-    REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
-    log "Cloning $GITHUB_USERNAME/$GITHUB_REPO (branch: $TARGET_BRANCH)..."
-    git clone --branch "$TARGET_BRANCH" --single-branch "$REPO_URL" "$REPO_DIR" > /dev/null 2>&1 || error "Clone failed"
-    cd "$REPO_DIR"
-    success "Repository cloned at $REPO_DIR (branch: $TARGET_BRANCH)"
+# Always start fresh: remove any existing repo directory
+if [ -d "$REPO_DIR" ]; then
+    log "🧹 Removing existing repository directory at $REPO_DIR"
+    rm -rf "$REPO_DIR"
 fi
 
+# Fresh clone every run
+REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
+log "🚀 Cloning $GITHUB_USERNAME/$GITHUB_REPO (branch: $TARGET_BRANCH)..."
+git clone --branch "$TARGET_BRANCH" --single-branch "$REPO_URL" "$REPO_DIR" || error "Clone failed"
+
 cd "$REPO_DIR"
-success "Repository cloned at $REPO_DIR (branch: $TARGET_BRANCH)"
+success "Repository cloned cleanly at $REPO_DIR (branch: $TARGET_BRANCH)"
+
 
 # =============================================================================
 # PHASE 5: Verify Repository Structure
@@ -148,13 +151,15 @@ log "================================"
 log "PHASE 6: Python Package Setup"
 log "================================"
 
-cd "$REPO_DIR"
-find . -type d -not -name ".git" -not -name ".*" -exec touch {}/__init__.py \; 2>/dev/null || true
-
-for dir in daqr daqr/config daqr/core daqr/evaluation daqr/algorithms; do
-    mkdir -p "$dir"
-    touch "$dir/__init__.py"
-done
+cd "$WORK_DIR"
+# only create if the expected structure doesn't exist yet
+if [ ! -d "$DAQR_PATH/core" ]; then
+    log "⚠️  daqr structure missing — creating placeholders."
+    mkdir -p daqr/{config,core,evaluation,algorithms}
+    find daqr -type d -exec touch {}/__init__.py \;
+else
+    log "✅ daqr structure already present — skipping creation."
+fi
 success "Package structure ready"
 
 # =============================================================================
@@ -164,7 +169,7 @@ log "================================"
 log "PHASE 7: Test Python Imports"
 log "================================"
 
-export PYTHONPATH="$REPO_DIR:$PYTHONPATH"
+export PYTHONPATH="$WORK_DIR:$PYTHONPATH"
 
 log "Testing basic Python imports..."
 python3 << PYEOF
@@ -175,7 +180,7 @@ print(f"    ✓ numpy: {np.__version__}")
 print(f"    ✓ pandas: {pd.__version__}")
 print(f"    ✓ matplotlib: {matplotlib.__version__}")
 print("\n  Attempting daqr import...")
-sys.path.insert(0, "$REPO_DIR")
+sys.path.insert(0, "$WORK_DIR")
 try:
     import daqr
     print("    ✓ daqr module imported successfully!")
@@ -191,7 +196,7 @@ log "================================"
 log "PHASE 8: Save Setup Log"
 log "================================"
 
-SETUP_RESULTS_DIR="$REPO_DIR/results/setup_logs"
+SETUP_RESULTS_DIR="$WORK_DIR/results/setup_logs"
 mkdir -p "$SETUP_RESULTS_DIR"
 
 cat > "$SETUP_RESULTS_DIR/setup_${SEED_OFFSET}_${TIMESTAMP}.txt" << EOF
@@ -216,7 +221,7 @@ log "================================"
 log "PHASE 9: Test GitHub Push"
 log "================================"
 
-cd "$REPO_DIR"
+cd "$WORK_DIR"
 git add "results/setup_logs/" 2>/dev/null || log "Nothing to add"
 if git diff --cached --quiet; then
     log "No new files to commit"

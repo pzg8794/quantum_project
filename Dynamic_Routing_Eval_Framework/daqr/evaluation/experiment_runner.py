@@ -61,8 +61,8 @@ class QuantumExperimentRunner:
         # Build and store the environment
         self.environment = self.configs.get_environment()
         
-        print(f"\nEXPERIMENT: Envinment (Env): {str(self.environment)}, Attack:{str(self.environment.attack)}, AttackRate:{self.environment.attack_rate}, Frames:{self.environment.frame_length}, Seed: {self.experiment_seed}, Cap={self.configs.capacity} x Scale={self.configs.scale}")
-        print("="*120)
+        print(f"\nEXPERIMENT: Envinment (Env): {str(self.environment)}, Attack:{str(self.environment.attack)}, AttackRate:{self.environment.attack_rate}, Frames: {self.environment.frame_length}, Cap={self.configs.capacity} x Scale={self.configs.scale}, Seed: {self.experiment_seed}")
+        print("="*125)
 
 
     def run_step_wise_oracle(self, env_info, model, frame_count=4000, algorithm_name='Oracle'):
@@ -182,7 +182,7 @@ class QuantumExperimentRunner:
 
         if qubit_cap is None:
             # Strongly prefer caller to pass allocator-derived qubit_cap
-            if self.configs.allocator is not None and not self.configs.allocator.has_allocated:
+            if self.configs.allocator is not None and not self.configs.allocator.has_allocated():
                 qubit_cap = tuple(self.configs.allocator.allocate(timestep=0, route_stats={}, verbose=False))
             else: qubit_cap = (8, 10, 8, 9)  # legacy fallback to avoid breaking runs
 
@@ -241,8 +241,8 @@ class QuantumExperimentRunner:
             under_thr= failed_attempts.get('under_threshold', 0)
             print(f"Total Retries={total}, Failed={failed}, Under Threshold={under_thr}, Threshold={threshold}")
             print(f"{alg_name}: Reward={final_reward:.2f}, Efficiency={efficiency:.1f}%")
-        
-        print(f"\n🏆 Winner: {self.winner} (Gap: {results.get(self.winner, {}).get('gap', 100):.1f}%) [Env: {str(self.environment)}, Attack:{str(self.environment.attack)}, Frames: {self.environment.frame_length}, Cap={self.configs.capacity} x Scale={self.configs.scale}]")
+
+        print(f"\n🏆 Winner: {self.winner} (Gap: {results.get(self.winner, {}).get('gap', 100):.1f}%) [Env: {str(self.environment)}, Attack:{str(self.environment.attack)}, AttackRate:{self.environment.attack_rate}, Frames: {self.environment.frame_length}, Cap={self.configs.capacity} x Scale={self.configs.scale}]")
         return {'results': results, 'winner': self.winner}
 
     def cleanup(self, verbose=False, cooldown_seconds=1):

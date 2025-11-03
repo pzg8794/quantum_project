@@ -521,3 +521,34 @@ Running iCPursuitNeuralUCB...
 ✓ CMAB(Pursuit) initialized with learning_rate=0.1
 ✓ ARIMA prediction enabled at frame 50
 ✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=3, Failed=0, Under Threshold=3, Threshold=0.712
+iCPursuitNeuralUCB: Reward=856.60, Efficiency=24.4%
+
+🏆 Winner: GNeuralUCB (Gap: 56.0%)
+Experiment 1 completed successfully in environment none
+EXPERIMENT 2: 6000 frames
+----------------------------------------
+[RandomAllocator ε=1.000] timestep=1 mode=random → allocation=(3, 7, 4, 21)
+
+EXPERIMENT: Frames=6000, Attack='none', Capacity=4000, Scale=2
+==================================================
+[RandomAllocator ε=1.000] timestep=0 mode=random → allocation=(13, 7, 8, 7)
+🔄 Dynamic Allocation (Initial): (13, 7, 8, 7)
+🔬 Environment: QuantumEnvironment | Frames: 6000 | Seed: 12705
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=5245.72, Efficiency=97.9%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=5089.00, Efficiency=95.0%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=5287.76, Efficiency=98.7%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1

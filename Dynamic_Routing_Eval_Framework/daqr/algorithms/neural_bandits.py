@@ -44,9 +44,9 @@ random.seed(42)
 
 # Device Configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"PyTorch version: {torch.__version__}")
-print(f"NumPy version: {np.__version__}")
-print(f"Using device: {device}")
+# print(f"PyTorch version: {torch.__version__}")
+# print(f"NumPy version: {np.__version__}")
+# print(f"Using device: {device}")
 
 # =============================================================================
 # Enhanced Common Interface for All Models

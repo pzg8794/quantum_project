@@ -237,7 +237,7 @@ class QuantumExperimentRunner:
             print(f"Total Retries={total}, Failed={failed}, Under Threshold={under_thr}, Threshold={threshold}")
             print(f"{alg_name}: Reward={final_reward:.2f}, Efficiency={efficiency:.1f}%")
 
-        print(f"\n🏆 Winner: {self.winner} (Gap: {results.get(self.winner, {}).get('gap', 100):.1f}%)")
+        print(f"\n🏆 Winner: {self.winner} (Gap: {results.get(self.winner, {}).get('gap', 100):.1f}%) [Env: {str(self.environment)}, Attack:{str(self.environment._attack_mask)}, Frames: {self.environment.frame_length}, Seed: {self.experiment_seed}]")
         return {'results': results, 'winner': self.winner}
 
     def cleanup(self, verbose=False, cooldown_seconds=1):

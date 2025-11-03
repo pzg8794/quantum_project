@@ -388,7 +388,7 @@ class GCPExperimentRunner:
 
 
     @classmethod
-    def run_all_allocators_sequential(cls, mode, exclude: list[str] = None):
+    def run_all_allocators_sequential(cls, mode, exclude: list[str] = None, max_workers=8):
         """
         Runs experiments for all allocators sequentially — one experiment per allocator at a time.
         Each allocator still runs exp1–exp4, but only one round (expN) runs concurrently across allocators.
@@ -426,7 +426,7 @@ class GCPExperimentRunner:
                     if runner.wait_for_ssh(exp_name):
                         runner.run_and_stream_experiment(exp_name, script_with_args)
 
-            with ThreadPoolExecutor(max_workers=2) as executor:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 for allocator in all_allocators:
                     executor.submit(run_task, allocator)
             print(f"\n✓ ROUND {round_name.upper()} COMPLETE for all allocators.\n")

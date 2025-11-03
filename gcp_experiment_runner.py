@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """GCP Experiment Runner - Final version with quick-test mode and dynamic command generation."""
-
+from concurrent.futures import ThreadPoolExecutor
+import re
 import sys
 import time
 import subprocess
@@ -162,7 +163,6 @@ class GCPExperimentRunner:
 
                 # Collapse tqdm spam: show each progress percentage only once
                 if "Progress" in line_stripped:
-                    import re
                     match = re.search(r"(\d+)%\|", line_stripped)
                     if match:
                         percent = int(match.group(1))
@@ -187,6 +187,10 @@ class GCPExperimentRunner:
 
         except Exception as e:
             print(f"--- FATAL ERROR running experiment on {vm_name}: {e} ---")
+        
+        finally:
+            # delete vm if done
+            self.cleanup_vm()
 
 
     def _get_instance_status(self, vm_name: str, max_retries: int = 3) -> str:
@@ -231,51 +235,8 @@ class GCPExperimentRunner:
                 
         print(f"Failed to get status for {vm_name} after {max_retries} attempts.")
         return "ERROR"
-
-    def wait_for_vms_and_cleanup(manager, max_wait_minutes=15):
-        """
-        Waits for all VMs to report 'done' and then cleans them up.
-        """
-        print("\n--- Waiting for all VMs to finish experiments ---")
         
-        start_time = time.time()
-        vms_to_wait_for = list(manager.vms_to_cleanup) # Get the initial list of VMs
-
-        while vms_to_wait_for:
-            # Check for timeout
-            elapsed_seconds = time.time() - start_time
-            if elapsed_seconds > max_wait_minutes * 60:
-                print(f"--- ERROR: Timeout reached after {max_wait_minutes} minutes. ---")
-                # Force cleanup of any remaining VMs regardless of status
-                manager.cleanup_vms(require_done=False) 
-                return
-
-            # Check the status of each remaining VM
-            finished_vms = []
-            for vm_name in vms_to_wait_for:
-                # This is your existing function to get status
-                status = manager._get_instance_status(vm_name) 
-                
-                if status.lower() == 'done':
-                    print(f"✔️ VM '{vm_name}' has finished.")
-                    finished_vms.append(vm_name)
-                else:
-                    print(f"⏳ VM '{vm_name}' is still working (status: {status})...")
-            
-            # Remove finished VMs from the waiting list
-            if finished_vms:
-                vms_to_wait_for = [vm for vm in vms_to_wait_for if vm not in finished_vms]
-
-            # If there are still VMs running, wait before polling again
-            if vms_to_wait_for:
-                print(f"--- {len(vms_to_wait_for)} VMs remaining. Waiting 30 seconds before next check. ---")
-                time.sleep(30)
-
-        print("\n--- All VMs have finished. Proceeding with cleanup. ---")
-        # Now that we've confirmed all VMs are done, this will work every time.
-        manager.cleanup_vms(require_done=True)
-        
-    def cleanup_vms(self):
+    def cleanup_vm(self):
         if not self.to_delete:
             return
 
@@ -288,8 +249,6 @@ class GCPExperimentRunner:
             print("\nCleaning up VMs (status=done):", ", ".join(to_delete))
             cmd = ["gcloud", "compute", "instances", "delete"] + to_delete + [f"--zone={self.zone}", "--quiet"]
             self._run_gcloud_cmd(cmd)
-            # remove deleted ones from tracking
-            self.vms_to_cleanup = [vm for vm in self.vms_to_cleanup if vm not in to_delete]
 
     def run(self):
         print(f"\n[{self.mode.replace('-', ' ').title()}] Starting experiments for allocator: {self.allocator}\n")
@@ -306,8 +265,7 @@ class GCPExperimentRunner:
         except Exception as e:
             print(f"\nAn error occurred during the run: {e}")
         finally:
-            # runner.cleanup_vms(require_done=True)
-            self.wait_for_vms_and_cleanup(runner)
+            pass
 
     @classmethod
     def run_all_allocators(cls, mode, exclude: list[str] = None):
@@ -366,11 +324,6 @@ class GCPExperimentRunner:
 
         for t in threads:
             t.join()
-
-        # cleanup all vms at the end
-        for runner in all_runners:
-            # runner.cleanup_vms(require_done=True)
-            runner.cleanup_vms()
 
         print("\n===== ✓ ALL ALLOCATORS COMPLETE =====")
 
@@ -460,38 +413,22 @@ class GCPExperimentRunner:
             ]
 
         for round_name, script in rounds:
-            print(f"\n--- Starting Round: {round_name} ---\n")
-            runners = []
-            threads = []
+            print(f"\n--- Starting Round: {round_name} ---")
 
-            # Create and launch one experiment per allocator for this round
-            for allocator in all_allocators:
+            def run_task(allocator):
                 allocator_arg = "None" if allocator == "none" else allocator.capitalize()
                 runner = cls(allocator, mode=mode)
                 exp_name = f"{round_name}-{allocator}"
                 script_with_args = f"{script} {allocator_arg}"
 
-                # Create VM
-                runner.create_vm(exp_name)
-                runner.wait_for_ssh(exp_name)
+                # Moved inside
+                if runner.create_vm(exp_name):
+                    if runner.wait_for_ssh(exp_name):
+                        runner.run_and_stream_experiment(exp_name, script_with_args)
 
-                # Launch thread for experiment
-                t = threading.Thread(
-                    target=runner.run_and_stream_experiment,
-                    args=(exp_name, script_with_args)
-                )
-                threads.append(t)
-                runners.append(runner)
-                t.start()
-
-            # Wait for all allocators in this round to finish
-            for t in threads:
-                t.join()
-
-            # Cleanup all VMs from this round
-            for runner in runners:
-                # runner.cleanup_vms(require_done=True)
-                runner.cleanup_vms()
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                for allocator in all_allocators:
+                    executor.submit(run_task, allocator)
             print(f"\n✓ ROUND {round_name.upper()} COMPLETE for all allocators.\n")
 
         print("\n===== ✓ ALL ROUNDS COMPLETE (Sequential Mode) =====")

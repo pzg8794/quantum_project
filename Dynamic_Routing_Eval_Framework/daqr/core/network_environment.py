@@ -8,6 +8,9 @@ from abc import ABC, abstractmethod
 # ---------------------------------------------------------------------
 class AttackStrategy(ABC):
     """Contract: produce an (T x P) attack mask; 1 = no-attack, 0 = attack."""
+    def __init__(self, attack_rate: float = 0.25):
+        self.attack_rate = float(attack_rate)
+
     @abstractmethod
     def generate(self,
                  rng: np.random.Generator,
@@ -27,23 +30,30 @@ class AttackStrategy(ABC):
             (T x P) np.ndarray[int] with 1=no-attack, 0=attack
         """
 
+    def __repr__(self):
+        return self.__class__.__name__.replace("Attack", "")
+
 class NoAttack(AttackStrategy):
+    def __init__(self, attack_rate: float = 0.0):
+        super().__init__(attack_rate)
+
     def generate(self, rng, frame_length, num_paths, selection_trace=None):
         return np.ones((frame_length, num_paths), dtype=int)
 
 class RandomAttack(AttackStrategy):
     def __init__(self, attack_rate: float = 0.25):
-        self.attack_rate = float(attack_rate)
+        super().__init__(attack_rate)
+
     def generate(self, rng, frame_length, num_paths, selection_trace=None):
         mask = rng.random((frame_length, num_paths)) >= self.attack_rate
         return mask.astype(int)
 
 class MarkovAttack(AttackStrategy):
     def __init__(self, transition=None, init=None, k_attacks: int = 1, attack_rate: float = 1.0):
+        super().__init__(attack_rate)
         self.transition = transition  # (P x P) row-stochastic
         self.init = init              # (P,) distribution
         self.k_attacks = int(k_attacks)
-        self.attack_rate = float(attack_rate)
 
     def _default_T(self, P):
         if P == 4:
@@ -111,9 +121,10 @@ class AdaptiveAttack(AttackStrategy):
     """
 
     def __init__(self, memory_window: int = 50, attack_rate: float = 1.0, sticky_p: float = 0.7):
-        self.memory_window = int(max(1, memory_window))
+        super().__init__(attack_rate)
         self.attack_rate = float(np.clip(attack_rate, 0.0, 1.0))
         self.sticky_p = float(np.clip(sticky_p, 0.0, 1.0))
+        self.memory_window = int(max(1, memory_window))
 
     def generate(
         self,
@@ -297,18 +308,19 @@ class QuantumEnvironment:
     Handles network topology, contexts (qubit allocations), and reward calculations.
     This class represents a "no attack" baseline scenario by default.
     """
-    def __init__(self, qubit_capacities=(8, 10, 8, 9), frame_length=4000, 
-                seed=None, entanglement_success_factor=3000, attack_rate: float = 0.25, allocator=None):
+    def __init__(self, attack, qubit_capacities=(8, 10, 8, 9), frame_length=4000, 
+                seed=None, entanglement_success_factor=3000, allocator=None):
         # Add allocator support
+        self.attack = attack
         self.allocator = allocator
-        self.attack_rate = attack_rate
+        self.attack_rate = attack.attack_rate
 
         # Use allocator for initial allocation if provided
         if self.allocator:
-            # Initial call with timestep=0 and empty stats
+            # Initial call with timestep=0 and empty stats, Reallocating
             initial_stats = {i: {'success_rate': 0.5, 'pulls': 0, 'successes': 0, 'failures': 0} 
                             for i in range(len(qubit_capacities))}
-            self.qubit_capacities = self.allocator.allocate(timestep=0, route_stats=initial_stats)
+            self.qubit_capacities = self.allocator.allocate(timestep=0, route_stats=initial_stats, verbose=False)
             print(f"🔄 Dynamic Allocation (Initial): {self.qubit_capacities}")
         else:
             self.qubit_capacities = tuple(qubit_capacities)
@@ -495,7 +507,8 @@ class QuantumEnvironment:
         self.cleanup()
 
     def __repr__(self):
-        return self.__class__.__name__
+        env = self.__class__.__name__.replace("QuantumEnvironment", "")
+        return env if env else "Baseline (None)"
 
 
 # =============================================================================
@@ -509,20 +522,16 @@ class StochasticQuantumEnvironment(QuantumEnvironment):
     It inherits all properties from QuantumEnvironment and overrides the
     attack generation logic.
     """
-    def __init__(self,
+    def __init__(self, attack,
                  qubit_capacities=(8, 10, 8, 9),
                  frame_length=4000,
-                 attack_rate: float = 0.25,
                 seed: int | None = None,
                 allocator=None):  
         
-        super().__init__(qubit_capacities=qubit_capacities, frame_length=frame_length, seed=seed, allocator=allocator)
-        self.attack_rate = float(attack_rate)
+        super().__init__(attack, qubit_capacities=qubit_capacities, frame_length=frame_length, seed=seed, allocator=allocator)
 
         # Generate the stochastic attack mask once upon initialization
-        self._attack_mask = RandomAttack(attack_rate=self.attack_rate).generate(
-            self.rng, self.frame_length, self.num_paths
-        )
+        self._attack_mask = self.attack.generate(self.rng, self.frame_length, self.num_paths)
         self._attack_mask.setflags(write=False) # Make it read-only
 
     def generate_attack_pattern(self) -> np.ndarray:
@@ -580,8 +589,8 @@ class AdversarialQuantumEnvironment(QuantumEnvironment):
                  frame_length=4000,
                  attack: AttackStrategy | None = None,
                  seed: int | None = None, allocator=None):
-        super().__init__(qubit_capacities=qubit_capacities, frame_length=frame_length, seed=seed, allocator=allocator)
-        self.attack: AttackStrategy = attack or NoAttack()
+        super().__init__(attack, qubit_capacities=qubit_capacities, frame_length=frame_length, seed=seed, allocator=allocator)
+        self.attack: AttackStrategy = self.attack or NoAttack()
 
         # Generate the attack pattern once using the provided strategy
         self.attack_pattern = self.attack.generate(

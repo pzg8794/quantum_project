@@ -1,0 +1,23 @@
+{
+  "environment": "stochastic",
+  "experiment_id": 1,
+  "num_runs": 2,
+  "model_category": "Hybrid",
+  "models_tested": [
+    "Oracle",
+    "GNeuralUCB",
+    "EXPNeuralUCB",
+    "CPursuitNeuralUCB",
+    "iCPursuitNeuralUCB"
+  ],
+  "timestamp": "2025-11-03T10:23:26.997733",
+  "session_timestamp": "20251103_102320",
+  "session_id": "20251103_102320",
+  "framework_config": {},
+  "allocator_type": "ThompsonSamplingAllocator",
+  "allocator_config": {
+    "total_qubits": 35,
+    "num_routes": 4,
+    "min_qubits_per_route": 2
+  }
+}

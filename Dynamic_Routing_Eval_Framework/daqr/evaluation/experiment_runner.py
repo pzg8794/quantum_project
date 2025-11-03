@@ -62,7 +62,7 @@ class QuantumExperimentRunner:
         self.environment = self.configs.get_environment()
         
         print(f"\nEXPERIMENT: Envinment (Env): {str(self.environment)}, Attack:{str(self.environment.attack)}, AttackRate:{self.environment.attack_rate}, Frames: {self.environment.frame_length}, Cap={self.configs.capacity} x Scale={self.configs.scale}, Seed: {self.experiment_seed}")
-        print("="*120)
+        print("="*125)
 
 
     def run_step_wise_oracle(self, env_info, model, frame_count=4000, algorithm_name='Oracle'):

@@ -1,0 +1,19 @@
+{
+  "environment": "onlineadaptive",
+  "experiment_id": 2,
+  "num_runs": 2,
+  "model_category": "Hybrid",
+  "models_tested": [
+    "Oracle",
+    "GNeuralUCB",
+    "EXPNeuralUCB",
+    "CPursuitNeuralUCB",
+    "iCPursuitNeuralUCB"
+  ],
+  "timestamp": "2025-10-30T12:37:52.659320",
+  "session_timestamp": "20251030_123743",
+  "session_id": "20251030_123743",
+  "framework_config": {},
+  "allocator_type": "None",
+  "allocator_config": {}
+}

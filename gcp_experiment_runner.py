@@ -426,7 +426,7 @@ class GCPExperimentRunner:
                     if runner.wait_for_ssh(exp_name):
                         runner.run_and_stream_experiment(exp_name, script_with_args)
 
-            with ThreadPoolExecutor(max_workers=8) as executor:
+            with ThreadPoolExecutor(max_workers=2) as executor:
                 for allocator in all_allocators:
                     executor.submit(run_task, allocator)
             print(f"\n✓ ROUND {round_name.upper()} COMPLETE for all allocators.\n")

@@ -27,6 +27,9 @@ class AttackStrategy(ABC):
             (T x P) np.ndarray[int] with 1=no-attack, 0=attack
         """
 
+    def __repr__(self):
+        return self.__class__.__name__
+
 class NoAttack(AttackStrategy):
     def generate(self, rng, frame_length, num_paths, selection_trace=None):
         return np.ones((frame_length, num_paths), dtype=int)

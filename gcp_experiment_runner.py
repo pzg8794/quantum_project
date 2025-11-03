@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """GCP Experiment Runner - Final version with quick-test mode and dynamic command generation."""
-
+from concurrent.futures import ThreadPoolExecutor
+import re
 import sys
 import time
 import subprocess
@@ -38,6 +39,7 @@ class GCPExperimentRunner:
         self.machine_type = machine_type
         self.test_mode = self.mode != "production"
         self.vms_to_cleanup = []
+        self.to_delete, self.to_keep = [], []
 
 
         allocator_arg = "None" if self.allocator == "none" else self.allocator.lower()
@@ -114,25 +116,40 @@ class GCPExperimentRunner:
             )
         except Exception as e:
             print(f"[{vm_name}] WARN: failed to set metadata to 'starting': {e}")
+            
+        # Use $HOME for reliability instead of ~.
+        # The shell on the remote VM will expand $HOME to the correct user's home directory.
+        log_dir = f'$HOME/quantum_project/Dynamic_Routing_Eval_Framework/logs'
+        log_file = f'{log_dir}/{vm_name}_$(date +"%Y%m%d_%H%M%S").log'
 
-        # New logic: reuse repo if already there
-        command_str = (
-            'mkdir -p ~/quantum_project/Dynamic_Routing_Eval_Framework/logs && '
-            f'exec > >(tee -a ~/quantum_project/Dynamic_Routing_Eval_Framework/logs/{vm_name}_$(date +"%Y%m%d_%H%M%S").log) 2>&1 && '
-            'cd ~/quantum_project && '
-        )
-
-        # Conditionally checkout GCP branch
-        if gcp: command_str += "git checkout --quiet gcp-main && "
-        else: command_str += "git checkout --quiet main && "
-
-        # Skip branch checkout — the image already has gcp-main
-        command_str += (
-            "git pull --quiet | true && "
-            "chmod +x ./*.sh && "
-            f"./{script_with_args}"
-        )
-
+        # Build the command string with robust error handling
+        command_str = f"""
+            set -e
+            
+            # 1. Announce what we are doing for easier debugging.
+            echo "--- Remote script started. Preparing log directory: {log_dir}"
+            
+            # 2. Create the log directory. Exit if this fails.
+            mkdir -p "{log_dir}"
+            
+            # 3. Start tee to capture all subsequent output to the log file.
+            # The ( ... ) creates a subshell.
+            (
+                cd "$HOME/quantum_project"
+                
+                echo '--- Remote log started at $(date) ---'
+                
+                git checkout --quiet {"gcp-main" if gcp else "main"}
+                
+                git pull --quiet
+                
+                chmod +x ./*.sh
+                
+                ./{script_with_args}
+            ) | tee -a "{log_file}"
+        """
+        
+        # Pass the command to SSH
         ssh_cmd = [
             "gcloud", "compute", "ssh", vm_name,
             f"--zone={self.zone}",
@@ -146,7 +163,6 @@ class GCPExperimentRunner:
 
                 # Collapse tqdm spam: show each progress percentage only once
                 if "Progress" in line_stripped:
-                    import re
                     match = re.search(r"(\d+)%\|", line_stripped)
                     if match:
                         percent = int(match.group(1))
@@ -157,6 +173,9 @@ class GCPExperimentRunner:
                         # optionally limit to a few key milestones
                         if percent not in (50, 75, 100):
                             continue
+                if "Test DONE" in line_stripped:
+                    # add machine to delete
+                    self.to_delete.append(vm_name)
 
                 print(f"[{vm_name}] {line_stripped}")
             proc.wait()
@@ -168,65 +187,68 @@ class GCPExperimentRunner:
 
         except Exception as e:
             print(f"--- FATAL ERROR running experiment on {vm_name}: {e} ---")
+        
+        finally:
+            # delete vm if done
+            self.cleanup_vm()
 
 
-    def _get_instance_status(self, vm_name: str, status="unknown") -> str:
-        """Return VM metadata 'status' value or 'unknown' if missing."""
-        while status=="unknown":
+    def _get_instance_status(self, vm_name: str, max_retries: int = 3) -> str:
+        """
+        Return VM metadata 'status' value. Retries on empty or failed attempts.
+        Returns the status string (e.g., 'RUNNING') or 'ERROR' if it fails after retries.
+        """
+        
+        for attempt in range(max_retries):
             try:
-                # Corrected command to get the instance's lifecycle status
                 r = subprocess.run(
                     [
                         "gcloud", "compute", "instances", "describe", vm_name,
                         f"--zone={self.zone}",
-                        "--format=get(status)"  # Correctly query the top-level 'status' field
+                        "--format=get(status)"
                     ],
                     check=False,
                     capture_output=True,
                     text=True
                 )
 
-                # Always check stderr for hidden errors
+                # Case 1: The command failed
                 if r.returncode != 0:
-                    print(f"Error fetching status for {vm_name}:")
-                    print(r.stderr)
-                    status = "UNKNOWN"
-                else: status = r.stdout.strip()
-                print(f"The VM status is: {status}")
-                time.sleep(1)
-            except Exception as e:
-                print(f"[ERROR] Failed to get status for VM '{vm_name}': {e}")
-                break
-        return status
+                    print(f"Attempt {attempt + 1}/{max_retries}: Error fetching status for {vm_name}. Stderr: {r.stderr.strip()}")
+                    time.sleep(3) # Wait longer after an error
+                    continue # Go to the next attempt
 
-    def cleanup_vms(self, require_done: bool = True):
-        if not self.vms_to_cleanup:
+                # Case 2: The command succeeded, but returned an empty string
+                retrieved_status = r.stdout.strip()
+                if not retrieved_status:
+                    print(f"Attempt {attempt + 1}/{max_retries}: Status for {vm_name} is empty. Retrying...")
+                    time.sleep(3)
+                    continue # Go to the next attempt
+                
+                # Case 3: Success! We got a status.
+                print(f"Successfully retrieved status for {vm_name}: '{retrieved_status}'")
+                return retrieved_status
+
+            except Exception as e:
+                print(f"[CRITICAL ERROR] Exception in _get_instance_status for '{vm_name}': {e}")
+                return "ERROR" # Return immediately on a critical code failure
+                
+        print(f"Failed to get status for {vm_name} after {max_retries} attempts.")
+        return "ERROR"
+        
+    def cleanup_vm(self):
+        if not self.to_delete:
             return
 
-        to_delete, to_keep = [], []
-        if require_done:
-            for vm in self.vms_to_cleanup:
-                status = self._get_instance_status(vm)
-                if status.lower() == "done":
-                    to_delete.append(vm)
-                else:
-                    to_keep.append((vm, status if status else "unknown"))
-        else:
-            to_delete = list(self.vms_to_cleanup)
+        to_delete = list(self.to_delete)
 
+        for vm in self.to_delete:
+            print(f"DELETING: {vm} (metadata status=DONE)")
+        
         if to_delete:
             print("\nCleaning up VMs (status=done):", ", ".join(to_delete))
             cmd = ["gcloud", "compute", "instances", "delete"] + to_delete + [f"--zone={self.zone}", "--quiet"]
             self._run_gcloud_cmd(cmd)
-            # remove deleted ones from tracking
-            self.vms_to_cleanup = [vm for vm in self.vms_to_cleanup if vm not in to_delete]
-
-        if require_done and to_keep:
-            for vm, st in to_keep:
-                print(f"Keeping VM '{vm}' (status={st})")
-
-        if not to_delete and not to_keep:
-            print("Cleanup: no VMs to process.")
 
     def run(self):
         print(f"\n[{self.mode.replace('-', ' ').title()}] Starting experiments for allocator: {self.allocator}\n")
@@ -243,7 +265,7 @@ class GCPExperimentRunner:
         except Exception as e:
             print(f"\nAn error occurred during the run: {e}")
         finally:
-            runner.cleanup_vms(require_done=True)
+            pass
 
     @classmethod
     def run_all_allocators(cls, mode, exclude: list[str] = None):
@@ -302,10 +324,6 @@ class GCPExperimentRunner:
 
         for t in threads:
             t.join()
-
-        # cleanup all vms at the end
-        for runner in all_runners:
-            runner.cleanup_vms(require_done=True)
 
         print("\n===== ✓ ALL ALLOCATORS COMPLETE =====")
 
@@ -370,7 +388,7 @@ class GCPExperimentRunner:
 
 
     @classmethod
-    def run_all_allocators_sequential(cls, mode, exclude: list[str] = None):
+    def run_all_allocators_sequential(cls, mode, exclude: list[str] = None, max_workers=8):
         """
         Runs experiments for all allocators sequentially — one experiment per allocator at a time.
         Each allocator still runs exp1–exp4, but only one round (expN) runs concurrently across allocators.
@@ -384,46 +402,33 @@ class GCPExperimentRunner:
             print(f"Excluded: {', '.join(exclude)}")
 
         # Define the four rounds (exp1 → exp4)
-        rounds = [
-            ("exp1", "run_exp1.sh"),
-            ("exp2", "run_exp2.sh"),
-            ("exp3", "run_exp3.sh"),
-            ("exp4", "run_exp4.sh"),
-        ]
+        if "test" in mode:
+            rounds = [("exp-test", f"run_exp_test.sh  {mode}")]
+        else:
+            rounds = [
+                ("exp1", "run_exp1.sh"),
+                ("exp2", "run_exp2.sh"),
+                ("exp3", "run_exp3.sh"),
+                ("exp4", "run_exp4.sh"),
+            ]
 
         for round_name, script in rounds:
-            print(f"\n--- Starting Round: {round_name} ---\n")
-            runners = []
-            threads = []
+            print(f"\n--- Starting Round: {round_name} ---")
 
-            # Create and launch one experiment per allocator for this round
-            for allocator in all_allocators:
+            def run_task(allocator):
                 allocator_arg = "None" if allocator == "none" else allocator.capitalize()
                 runner = cls(allocator, mode=mode)
                 exp_name = f"{round_name}-{allocator}"
                 script_with_args = f"{script} {allocator_arg}"
 
-                # Create VM
-                runner.create_vm(exp_name)
-                runner.wait_for_ssh(exp_name)
+                # Moved inside
+                if runner.create_vm(exp_name):
+                    if runner.wait_for_ssh(exp_name):
+                        runner.run_and_stream_experiment(exp_name, script_with_args)
 
-                # Launch thread for experiment
-                t = threading.Thread(
-                    target=runner.run_and_stream_experiment,
-                    args=(exp_name, script_with_args)
-                )
-                threads.append(t)
-                runners.append(runner)
-                t.start()
-
-            # Wait for all allocators in this round to finish
-            for t in threads:
-                t.join()
-
-            # Cleanup all VMs from this round
-            for runner in runners:
-                runner.cleanup_vms(require_done=True)
-
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                for allocator in all_allocators:
+                    executor.submit(run_task, allocator)
             print(f"\n✓ ROUND {round_name.upper()} COMPLETE for all allocators.\n")
 
         print("\n===== ✓ ALL ROUNDS COMPLETE (Sequential Mode) =====")

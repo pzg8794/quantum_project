@@ -48,6 +48,7 @@ class QuantumEvaluatorVisualizer:
         self.output_dir = output_dir or '../results'
         self.output_dir = Path(self.output_dir)
         self.session_id = self.session_timestamp
+        self.exp_dir = None
     
 
 
@@ -265,7 +266,7 @@ class QuantumEvaluatorVisualizer:
                 num_runs = 1
         
         # Create directory with auto-detected category
-        exp_dir, detected_category = self._create_experiment_directory(
+        self.exp_dir, detected_category = self._create_experiment_directory(
             environment_name, 
             experiment_id, 
             num_runs,
@@ -291,7 +292,7 @@ class QuantumEvaluatorVisualizer:
         saved_paths = {}
         
         # Save metadata
-        metadata_path = exp_dir / "metadata" / "experiment_metadata.json"
+        metadata_path = self.exp_dir / "metadata" / "experiment_metadata.json"
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2, default=str)
         saved_paths['metadata'] = str(metadata_path)
@@ -300,27 +301,27 @@ class QuantumEvaluatorVisualizer:
         # Save results in requested format
         if save_format in ['json', 'both']:
             json_safe_results = self._make_json_safe(results)
-            results_json_path = exp_dir / "results" / f"experiment_{experiment_id}_results.json"
+            results_json_path = self.exp_dir / "results" / f"experiment_{experiment_id}_results.json"
             with open(results_json_path, 'w') as f:
                 json.dump(json_safe_results, f, indent=2, default=str)
             saved_paths['json'] = str(results_json_path)
             print(f"✓ JSON: {str(results_json_path).split('/')[-1]}")
         
         if save_format in ['pickle', 'both']:
-            results_pickle_path = exp_dir / "results" / f"experiment_{experiment_id}_results.pkl"
+            results_pickle_path = self.exp_dir / "results" / f"experiment_{experiment_id}_results.pkl"
             with open(results_pickle_path, 'wb') as f:
                 pickle.dump(results, f)
             saved_paths['pickle'] = str(results_pickle_path)
             print(f"✓ Pickle: {str(results_pickle_path).split('/')[-1]}")
         
         # Save human-readable summary
-        summary_path = exp_dir / "results" / "experiment_summary.txt"
+        summary_path = self.exp_dir / "results" / "experiment_summary.txt"
         self._write_experiment_summary(summary_path, environment_name, results, metadata)
         saved_paths['summary'] = str(summary_path)
         print(f"✓ Summary: {str(summary_path).split('/')[-1]}")
         
         return {
-            'experiment_directory': str(exp_dir),
+            'experiment_directory': str(self.exp_dir),
             'model_category': detected_category,
             'files': saved_paths
         }
@@ -1032,9 +1033,31 @@ class QuantumEvaluatorVisualizer:
                         ha='center', va='center', transform=axes[1, 2].transAxes)
             axes[1, 2].set_axis_off()
 
+
+        # --- Build comparison results directory ---
+        allocator_type = str(self.allocator) if self.allocator else "None"
+        model_category = self._detect_model_category(
+            list(scenario_results['results'].keys()) if scenario_results else []
+        )
+
+        # Create unified "comparison" directory under /results
+        exp_dir = (
+            self.output_dir /
+            "comparison" /
+            allocator_type /
+            model_category
+        )
+        exp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Use timestamped filename for traceability
+        baseline_suffix = f"_vs_{baseline}" if baseline else ""
+        timestamp = self.session_timestamp
+        plot_filename = f"{allocator_type}_{scenario}{baseline_suffix}_{timestamp}.png"
+        plot_path = exp_dir / plot_filename
+
         plt.tight_layout()
-        baseline = f'_vs_{baseline}' if baseline else ''
-        plt.savefig(f'{scenario}{baseline}_comparison.png', dpi=300, bbox_inches='tight')
+        plt.savefig(plot_path, dpi=300, bbox_inches="tight")
+        print(f"✓ Comparison plot saved as: {str(plot_path).split('/')[-1]}")
         plt.show()
 
 

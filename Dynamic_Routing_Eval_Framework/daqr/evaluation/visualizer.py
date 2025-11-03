@@ -1083,14 +1083,18 @@ class QuantumEvaluatorVisualizer:
                 self.viz_data[scenario_data] = self._extract_primary_results('random', eval_results)
             stoch_data = self.viz_data[scenario_data]
         
+        baseline = ''
         if baseline_data is None:
             # Get baseline/none data
-            self.viz_data['baseline_data'] = self._extract_primary_results('none', eval_results)
-            if not self.viz_data['baseline_data']:
-                self.viz_data['baseline_data'] = self._extract_primary_results('baseline', eval_results)
-            if not self.viz_data['baseline_data']:
-                self.viz_data['baseline_data'] = self._extract_primary_results('no_attack', eval_results)
-            baseline_data = self.viz_data['baseline_data']
+            baseline = 'baseline'
+            baseline_data = f'{baseline}_data'
+            # Get baseline/none data
+            self.viz_data[baseline_data] = self._extract_primary_results('none', eval_results)
+            if not self.viz_data[baseline_data]:
+                self.viz_data[baseline_data] = self._extract_primary_results('baseline', eval_results)
+            if not self.viz_data[baseline_data]:
+                self.viz_data[baseline_data] = self._extract_primary_results('no_attack', eval_results)
+            baseline_data = self.viz_data[baseline_data]
 
         # Extract averaged results (already computed by framework)
         stoch_results = stoch_data['averaged'] if stoch_data else None
@@ -1123,10 +1127,31 @@ class QuantumEvaluatorVisualizer:
                         ha='center', va='center', transform=axes[1, 2].transAxes)
             axes[1, 2].set_axis_off()
 
-        plt.tight_layout()
-        plt.savefig('stochastic_vs_baseline_comparison.png', dpi=300, bbox_inches='tight')
-        plt.show()
+        # --- Build comparison results directory ---
+        allocator_type = str(self.allocator) if self.allocator else "None"
+        model_category = self._detect_model_category(
+            list(stoch_results['results'].keys()) if stoch_results else []
+        )
 
+        # Create unified "comparison" directory under /results
+        exp_dir = (
+            self.output_dir /
+            "comparison" /
+            allocator_type /
+            model_category
+        )
+        exp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Use timestamped filename for traceability
+        baseline_suffix = f"_vs_{baseline}_comparison" if baseline else ""
+        timestamp = self.session_timestamp
+        plot_filename = f"{allocator_type}_{scenario}{baseline_suffix}_{timestamp}.png"
+        plot_path = exp_dir / plot_filename
+
+        plt.tight_layout()
+        plt.savefig(plot_path, dpi=300, bbox_inches="tight")
+        print(f"✓ Comparison plot saved as: {str(plot_path).split('/')[-1]}")
+        plt.show()
 
     def _plot_single_environment_summary(self, ax, stochresults, environment_name):
         """Plot single environment summary using pre-computed winner and efficiency."""

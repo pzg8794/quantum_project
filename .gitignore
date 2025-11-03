@@ -38,11 +38,8 @@ quantum_project/results/*
 quantum_project/logs/*
 
 # But keep result metadata & scripts
-!Dynamic_Routing_Eval_Framework/results/**/*.json
-!Dynamic_Routing_Eval_Framework/results/**/*.pkl
-!Dynamic_Routing_Eval_Framework/results/**/*.txt
-!Dynamic_Routing_Eval_Framework/logs/**/*.txt
-
+!Dynamic_Routing_Eval_Framework/results/*
+!Dynamic_Routing_Eval_Framework/logs/*
 # ===========================================
 # EDITOR / OS JUNK
 # ===========================================

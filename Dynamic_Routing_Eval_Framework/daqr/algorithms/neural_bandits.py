@@ -136,7 +136,7 @@ class EXPNeuralUCB(QuantumModel):
         # Neural UCB components (hybrid + neural modes)
         if self.mode in ['hybrid', 'neural']:
             self.neuralucb_list = []
-            cap = self.capacity*2
+            cap = self.capacity
             # cap = self.capacity*2 if self.mode=='hybrid' else self.capacity
             self.neuralucb_list.append(NeuralUCB(2, len(self.X_n[0]), self.beta, lamb=1, capacity=cap)) # P1:2D
             self.neuralucb_list.append(NeuralUCB(2, len(self.X_n[1]), self.beta, lamb=1, capacity=cap)) # P2:2D

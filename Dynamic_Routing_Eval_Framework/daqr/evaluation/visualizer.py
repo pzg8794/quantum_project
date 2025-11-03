@@ -1057,7 +1057,7 @@ class QuantumEvaluatorVisualizer:
 
         plt.tight_layout()
         plt.savefig(plot_path, dpi=300, bbox_inches="tight")
-        print(f"✓ Comparison plot saved to: {plot_path}")
+        print(f"✓ Comparison plot saved as: {str(plot_path).split('/')[-1]}")
         plt.show()
 
 

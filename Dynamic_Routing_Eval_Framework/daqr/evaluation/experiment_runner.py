@@ -106,9 +106,9 @@ class QuantumExperimentRunner:
 
         enable_progress = self.enable_progress
         results = {'final_reward': 0.0}
+        total_reward, attempts = 0.0, 0
 
         try:
-            total_reward, attempts = 0.0, 0
             while total_reward <= 0.0:
                 model_kwargs['verbose'] = enable_progress
                 
@@ -125,7 +125,7 @@ class QuantumExperimentRunner:
                         frame_number=frame_count,
                         **model_kwargs,
                     )
-                    model.set_capacity(self.configs.capacity)
+                    model.set_capacity(self.configs.capacity*self.configs.scale)
 
                 if enable_progress: self.validate_quantum_model(model)
                 try:
@@ -152,8 +152,9 @@ class QuantumExperimentRunner:
                         'model_results': model.get_results(),
                         'retries':attempts
                     }
+                except Exception as e: 
                     attempts +=1
-                except Exception as e: print(f"❌ Runtime error in {algorithm_name}: {e}")
+                    print(f"❌ Runtime error in {algorithm_name}: {e}")
                 finally:
                     del model
                     gc.collect()
@@ -183,7 +184,7 @@ class QuantumExperimentRunner:
                 qubit_cap = tuple(self.configs.allocator.allocate(timestep=0, route_stats={}))
             else: qubit_cap = (8, 10, 8, 9)  # legacy fallback to avoid breaking runs
 
-        print(f"\nEXPERIMENT: Frames={frame_count}, Attack='{self.configs.attack_type}'")
+        print(f"\nEXPERIMENT: Frames={frame_count}, Attack='{self.configs.attack_type}', Capacity={self.configs.capacity}, Scale={self.configs.scale}")
         print("="*50)
 
         # Build the environment ONCE per experiment, then reuse across all models
@@ -217,6 +218,7 @@ class QuantumExperimentRunner:
 
                 if threshold < failed_attempts['threshold']: 
                     failed_attempts['under_threshold'] += 1 if threshold > 0 else 0
+                    failed_attempts['failed'] += 1 if threshold == 0 else 0
                     failed_attempts['total'] += 1
 
                 results[alg_name].update({'failed_attempts':failed_attempts})

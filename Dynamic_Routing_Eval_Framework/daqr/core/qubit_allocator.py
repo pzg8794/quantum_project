@@ -12,14 +12,20 @@ class QubitAllocator:
     """Fixed allocation baseline - maintains static allocation"""
     
     def __init__(self, total_qubits: int = 35, num_routes: int = 4, min_qubits_per_route: int = 1):
-        self.total_qubits = total_qubits
+        self.allocated = False
         self.num_routes = num_routes
+        self.total_qubits = total_qubits
         self.min_qubits_per_route = min_qubits_per_route
     
-    def allocate(self, timestep: int, route_stats: Dict[int, Dict]) -> Tuple[int, ...]:
+    def has_allocated(self):
+        return self.allocated
+
+    def allocate(self, timestep: int, route_stats: Dict[int, Dict], verbose=True) -> Tuple[int, ...]:
         """Returns tuple of qubits per route."""
+        self.allocated = True
         allocation = (8, 10, 8, 9)
-        print(f"[FixedAllocator] timestep={timestep} → allocation={allocation}")
+        if verbose:
+            print(f"[FixedAllocator] timestep={timestep} → allocation={allocation}")
         return allocation
     
     def get_config(self):
@@ -75,7 +81,7 @@ class RandomQubitAllocator(QubitAllocator):
         self.rng = np.random.RandomState(seed)
         self.allocation_history = []
     
-    def allocate(self, timestep: int, route_stats: Dict[int, Dict]) -> Tuple[int, ...]:
+    def allocate(self, timestep: int, route_stats: Dict[int, Dict], verbose=True) -> Tuple[int, ...]:
         """
         Allocate with epsilon-controlled randomness.
         Mixes baseline allocation with random allocation based on epsilon.
@@ -95,7 +101,8 @@ class RandomQubitAllocator(QubitAllocator):
             mode = "baseline"
         
         self.allocation_history.append((timestep, allocation, mode))
-        print(f"[RandomAllocator ε={self.epsilon:.3f}] timestep={timestep} mode={mode} → allocation={allocation}")
+        if verbose:
+            print(f"[RandomAllocator ε={self.epsilon:.3f}] timestep={timestep} mode={mode} → allocation={allocation}")
         return allocation
     
     def _random_allocate(self) -> Tuple[int, ...]:
@@ -150,7 +157,7 @@ class DynamicQubitAllocator(QubitAllocator):
         self.exploration_bonus = exploration_bonus
         self.allocation_history = []
     
-    def allocate(self, timestep: int, route_stats: Dict[int, Dict]) -> Tuple[int, ...]:
+    def allocate(self, timestep: int, route_stats: Dict[int, Dict], verbose=True) -> Tuple[int, ...]:
         """Allocate qubits proportional to UCB scores."""
         if not route_stats or timestep == 0:
             base = self.total_qubits // self.num_routes
@@ -159,7 +166,8 @@ class DynamicQubitAllocator(QubitAllocator):
             for i in range(remainder):
                 allocation[i] += 1
             result = tuple(allocation)
-            print(f"[DynamicUCBAllocator] timestep={timestep} (initial) → allocation={result}")
+            if verbose:
+                print(f"[DynamicUCBAllocator] timestep={timestep} (initial) → allocation={result}")
             return result
         
         # Calculate UCB scores
@@ -193,7 +201,8 @@ class DynamicQubitAllocator(QubitAllocator):
         
         result = tuple(allocation)
         self.allocation_history.append((timestep, result))
-        print(f"[DynamicUCBAllocator] timestep={timestep} → allocation={result}")
+        if verbose:
+            print(f"[DynamicUCBAllocator] timestep={timestep} → allocation={result}")
         return result
 
 
@@ -210,7 +219,7 @@ class ThompsonSamplingAllocator(QubitAllocator):
         self.beta = [1] * num_routes
         self.allocation_history = []
     
-    def allocate(self, timestep: int, route_stats: Dict[int, Dict]) -> Tuple[int, ...]:
+    def allocate(self, timestep: int, route_stats: Dict[int, Dict], verbose=True) -> Tuple[int, ...]:
         """Allocate based on Thompson Sampling."""
         if not route_stats or timestep == 0:
             base = self.total_qubits // self.num_routes
@@ -219,7 +228,8 @@ class ThompsonSamplingAllocator(QubitAllocator):
             for i in range(remainder):
                 allocation[i] += 1
             result = tuple(allocation)
-            print(f"[ThompsonAllocator] timestep={timestep} (initial) → allocation={result}")
+            if verbose:
+                print(f"[ThompsonAllocator] timestep={timestep} (initial) → allocation={result}")
             return result
         
         samples = []
@@ -247,5 +257,6 @@ class ThompsonSamplingAllocator(QubitAllocator):
         
         result = tuple(allocation)
         self.allocation_history.append((timestep, result))
-        print(f"[ThompsonAllocator] timestep={timestep} → allocation={result}")
+        if verbose:
+            print(f"[ThompsonAllocator] timestep={timestep} → allocation={result}")
         return result

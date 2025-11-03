@@ -1,8 +1,7 @@
 #!/bin/bash
 
 ################################################################################
-# SCRIPT 3: PUSH RESULTS - Simple and Robust Version
-# Avoids complex git reset operations that can lose data
+# SCRIPT 3: PUSH RESULTS - Handles Python Cache Files and Race Conditions
 ################################################################################
 
 gcloud compute instances add-metadata "$(hostname)" \
@@ -47,6 +46,19 @@ cd "$REPO_DIR" || error "Failed to access $REPO_DIR"
 success "Repository found"
 
 # =============================================================================
+# Clean Python Cache Files (CRITICAL FIX)
+# =============================================================================
+
+log "================================"
+log "Cleaning Python Cache Files"
+log "================================"
+
+# Remove all Python bytecode files and cache directories
+find . -type f -name "*.pyc" -delete 2>/dev/null
+find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
+log "Python cache files cleaned"
+
+# =============================================================================
 # Create and Stage Results (BEFORE any pull operations)
 # =============================================================================
 
@@ -60,7 +72,7 @@ RUN_MARKER="Dynamic_Routing_Eval_Framework/results/run_marker_${RUN_ID}.txt"
 echo "Run completed at ${RUN_ID}" > "$RUN_MARKER"
 log "Created unique run marker: $RUN_MARKER"
 
-# Stage experiment outputs
+# Stage experiment outputs (but NOT Python cache files)
 git add Dynamic_Routing_Eval_Framework/logs/ 2>/dev/null || true
 git add Dynamic_Routing_Eval_Framework/results/ 2>/dev/null || true
 git add Dynamic_Routing_Eval_Framework/experiment_results/ 2>/dev/null || true
@@ -107,7 +119,12 @@ for attempt in $(seq 1 $MAX_RETRIES); do
         error "Push failed after $MAX_RETRIES attempts"
     fi
     
-    # The key insight: pull with automatic merge commit
+    # Clean cache files again before pulling (they might have been regenerated)
+    log "Cleaning cache files before pull..."
+    find . -type f -name "*.pyc" -delete 2>/dev/null
+    find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
+    
+    # Pull with automatic merge commit
     log "Pulling latest changes with merge strategy..."
     git pull origin "$TARGET_BRANCH" --no-rebase >> "$LOG_FILE" 2>&1
     if [ $? -ne 0 ]; then

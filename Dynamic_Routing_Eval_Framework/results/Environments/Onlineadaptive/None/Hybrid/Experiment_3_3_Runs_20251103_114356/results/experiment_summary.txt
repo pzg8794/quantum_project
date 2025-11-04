@@ -1,0 +1,43 @@
+======================================================================
+QUANTUM MAB MODELS EVALUATION - EXPERIMENT SUMMARY
+======================================================================
+
+Environment: ONLINEADAPTIVE
+Model Category: Hybrid
+Experiment ID: 3
+Number of Runs: 3
+Timestamp: 2025-11-03T11:44:05.163956
+Session: 20251103_114356
+
+----------------------------------------------------------------------
+MODEL PERFORMANCE
+----------------------------------------------------------------------
+
+Oracle:
+  Reward: 5483.132208
+  Efficiency: 0.00%
+  Gap: 0.00%
+
+GNeuralUCB:
+  Reward: 4796.495795
+  Efficiency: 87.48%
+  Gap: 12.52%
+
+EXPNeuralUCB:
+  Reward: 4249.426190
+  Efficiency: 77.50%
+  Gap: 22.50%
+
+CPursuitNeuralUCB:
+  Reward: 4381.846859
+  Efficiency: 79.92%
+  Gap: 20.08%
+
+iCPursuitNeuralUCB:
+  Reward: 4326.212881
+  Efficiency: 78.90%
+  Gap: 21.10%
+
+======================================================================
+WINNER: GNeuralUCB
+======================================================================

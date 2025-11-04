@@ -1,0 +1,1033 @@
+--- Remote log started at $(date) ---
+[2025-11-03 02:26:00] Run: Exp1 | Frames: 4000 | Runs: 3 | Step: 2000 | Seed: 12345
+PyTorch version: 2.8.0+cu128
+NumPy version: 1.26.4
+Using device: cpu
+PyTorch version: 2.8.0+cu128
+NumPy version: 1.26.4
+Using device: cpu
+PyTorch version: 2.8.0+cu128
+NumPy version: 1.26.4
+Using device: cpu
+Multi-Run Evaluator Initialized
+Environment Type: None
+Frame Range: 4000 -> 8000 (step: 2000)
+
+✓ Framework Configuration:
+  • Primary Environment: STOCHASTIC
+  • Evaluation Mode: COMPREHENSIVE
+  • Models to Test: 5
+======================================================================
+
+▶ Executing STOCHASTIC-FOCUSED EVALUATION:
+  • STOCHASTIC           Stochastic Random Failures
+  • MARKOV               Markov Adversarial Attack
+  • ADAPTIVE             Adaptive Adversarial Attack
+  • ONLINEADAPTIVE       Online Adaptive Attack
+  • NONE                 Baseline (Optimal Conditions)
+======================================================================
+
+⚙ Running Quantum MAB Models Evaluation...
+======================================================================
+SCENARIOS MODEL EVALUATION
+======================================================================
+Testing algorithm performance against:
+	• Stochastic:  	Natural quantum decoherence and network failures
+	• Baseline:    	Optimal conditions for validation
+======================================================================
+Models to Test:             	Oracle, GNeuralUCB, EXPNeuralUCB, CPursuitNeuralUCB, iCPursuitNeuralUCB
+Test Scenarios:             	Stochastic Random Failures, Markov Adversarial Attack, Adaptive Adversarial Attack, Online Adaptive Attack, Baseline (Optimal Conditions)
+Experiments per Scenario:   	3
+======================================================================
+TESTING ENVIRONMENT SCENARIO: STOCHASTIC RANDOM FAILURES
+==================================================
+
+STARTING EXPERIMENTS: STOCHASTIC
+Category: Stochastic (Natural Random Failures)
+============================================================
+EXPERIMENT 1: 4000 frames
+----------------------------------------
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+
+EXPERIMENT: Frames=4000, Attack='stochastic', Capacity=4000, Scale=2
+==================================================
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+🔄 Dynamic Allocation (Initial): (9, 9, 9, 8)
+🔬 Environment: StochasticQuantumEnvironment | Frames: 4000 | Seed: 19442
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=1913.60, Efficiency=65.1%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=2613.10, Efficiency=88.9%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=2758.21, Efficiency=93.8%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.712
+iCPursuitNeuralUCB: Reward=2694.98, Efficiency=91.7%
+
+🏆 Winner: CPursuitNeuralUCB (Gap: 6.2%)
+Experiment 1 completed successfully in environment stochastic
+EXPERIMENT 2: 6000 frames
+----------------------------------------
+[DynamicUCBAllocator] timestep=1 (initial) → allocation=(9, 9, 9, 8)
+
+EXPERIMENT: Frames=6000, Attack='stochastic', Capacity=4000, Scale=2
+==================================================
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+🔄 Dynamic Allocation (Initial): (9, 9, 9, 8)
+🔬 Environment: StochasticQuantumEnvironment | Frames: 6000 | Seed: 13646
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=4040.84, Efficiency=91.5%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=3868.74, Efficiency=87.6%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=4132.68, Efficiency=93.6%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.712
+iCPursuitNeuralUCB: Reward=4137.97, Efficiency=93.7%
+
+🏆 Winner: iCPursuitNeuralUCB (Gap: 6.3%)
+Experiment 2 completed successfully in environment stochastic
+EXPERIMENT 3: 8000 frames
+----------------------------------------
+[DynamicUCBAllocator] timestep=2 (initial) → allocation=(9, 9, 9, 8)
+
+EXPERIMENT: Frames=8000, Attack='stochastic', Capacity=4000, Scale=2
+==================================================
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+🔄 Dynamic Allocation (Initial): (9, 9, 9, 8)
+🔬 Environment: StochasticQuantumEnvironment | Frames: 8000 | Seed: 13642
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=3952.18, Efficiency=67.1%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=3957.70, Efficiency=67.2%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=5586.26, Efficiency=94.8%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.712
+iCPursuitNeuralUCB: Reward=5585.62, Efficiency=94.8%
+
+🏆 Winner: CPursuitNeuralUCB (Gap: 5.2%)
+Experiment 3 completed successfully in environment stochastic
+Total experiment time: 3815.7s
+Experiments completed for stochastic
+TESTING ENVIRONMENT SCENARIO: MARKOV ADVERSARIAL ATTACK
+==================================================
+
+STARTING EXPERIMENTS: MARKOV
+Category: Structured (Markov Chain Based)
+============================================================
+EXPERIMENT 1: 4000 frames
+----------------------------------------
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+
+EXPERIMENT: Frames=4000, Attack='markov', Capacity=4000, Scale=2
+==================================================
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+🔄 Dynamic Allocation (Initial): (9, 9, 9, 8)
+🔬 Environment: AdversarialQuantumEnvironment | Frames: 4000 | Seed: 16635
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=2171.76, Efficiency=74.1%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=2168.27, Efficiency=73.9%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=2720.31, Efficiency=92.8%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.712
+iCPursuitNeuralUCB: Reward=2700.90, Efficiency=92.1%
+
+🏆 Winner: CPursuitNeuralUCB (Gap: 7.2%)
+Experiment 1 completed successfully in environment markov
+EXPERIMENT 2: 6000 frames
+----------------------------------------
+[DynamicUCBAllocator] timestep=1 (initial) → allocation=(9, 9, 9, 8)
+
+EXPERIMENT: Frames=6000, Attack='markov', Capacity=4000, Scale=2
+==================================================
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+🔄 Dynamic Allocation (Initial): (9, 9, 9, 8)
+🔬 Environment: AdversarialQuantumEnvironment | Frames: 6000 | Seed: 17118
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=3015.49, Efficiency=68.6%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=3915.74, Efficiency=89.1%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=4074.28, Efficiency=92.7%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.712
+iCPursuitNeuralUCB: Reward=4068.83, Efficiency=92.6%
+
+🏆 Winner: CPursuitNeuralUCB (Gap: 7.3%)
+Experiment 2 completed successfully in environment markov
+EXPERIMENT 3: 8000 frames
+----------------------------------------
+[DynamicUCBAllocator] timestep=2 (initial) → allocation=(9, 9, 9, 8)
+
+EXPERIMENT: Frames=8000, Attack='markov', Capacity=4000, Scale=2
+==================================================
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+🔄 Dynamic Allocation (Initial): (9, 9, 9, 8)
+🔬 Environment: AdversarialQuantumEnvironment | Frames: 8000 | Seed: 15754
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=4793.71, Efficiency=81.7%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=5213.39, Efficiency=88.9%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=5444.71, Efficiency=92.8%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.712
+iCPursuitNeuralUCB: Reward=5434.86, Efficiency=92.6%
+
+🏆 Winner: CPursuitNeuralUCB (Gap: 7.2%)
+Experiment 3 completed successfully in environment markov
+Total experiment time: 4051.9s
+Experiments completed for markov
+TESTING ENVIRONMENT SCENARIO: ADAPTIVE ADVERSARIAL ATTACK
+==================================================
+
+STARTING EXPERIMENTS: ADAPTIVE
+Category: Adaptive (Reactive Strategic)
+============================================================
+EXPERIMENT 1: 4000 frames
+----------------------------------------
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+
+EXPERIMENT: Frames=4000, Attack='adaptive', Capacity=4000, Scale=2
+==================================================
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+🔄 Dynamic Allocation (Initial): (9, 9, 9, 8)
+🔬 Environment: AdversarialQuantumEnvironment | Frames: 4000 | Seed: 15803
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=2722.50, Efficiency=92.3%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=2407.53, Efficiency=81.6%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=2654.31, Efficiency=90.0%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=3, Failed=0, Under Threshold=3, Threshold=0.712
+iCPursuitNeuralUCB: Reward=1948.76, Efficiency=66.1%
+
+🏆 Winner: GNeuralUCB (Gap: 7.7%)
+Experiment 1 completed successfully in environment adaptive
+EXPERIMENT 2: 6000 frames
+----------------------------------------
+[DynamicUCBAllocator] timestep=1 (initial) → allocation=(9, 9, 9, 8)
+
+EXPERIMENT: Frames=6000, Attack='adaptive', Capacity=4000, Scale=2
+==================================================
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+🔄 Dynamic Allocation (Initial): (9, 9, 9, 8)
+🔬 Environment: AdversarialQuantumEnvironment | Frames: 6000 | Seed: 15327
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=4060.32, Efficiency=91.8%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=2921.26, Efficiency=66.1%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=4169.03, Efficiency=94.3%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.712
+iCPursuitNeuralUCB: Reward=4196.86, Efficiency=94.9%
+
+🏆 Winner: iCPursuitNeuralUCB (Gap: 5.1%)
+Experiment 2 completed successfully in environment adaptive
+EXPERIMENT 3: 8000 frames
+----------------------------------------
+[DynamicUCBAllocator] timestep=2 (initial) → allocation=(9, 9, 9, 8)
+
+EXPERIMENT: Frames=8000, Attack='adaptive', Capacity=4000, Scale=2
+==================================================
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+🔄 Dynamic Allocation (Initial): (9, 9, 9, 8)
+🔬 Environment: AdversarialQuantumEnvironment | Frames: 8000 | Seed: 12998
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=5638.78, Efficiency=95.3%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=5601.96, Efficiency=94.7%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=5622.01, Efficiency=95.0%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=3, Failed=0, Under Threshold=3, Threshold=0.712
+iCPursuitNeuralUCB: Reward=4000.80, Efficiency=67.6%
+
+🏆 Winner: GNeuralUCB (Gap: 4.7%)
+Experiment 3 completed successfully in environment adaptive
+Total experiment time: 14756.0s
+Experiments completed for adaptive
+TESTING ENVIRONMENT SCENARIO: ONLINE ADAPTIVE ATTACK
+==================================================
+
+STARTING EXPERIMENTS: ONLINEADAPTIVE
+Category: Online Adaptive (Real-time Strategic)
+============================================================
+EXPERIMENT 1: 4000 frames
+----------------------------------------
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+
+EXPERIMENT: Frames=4000, Attack='onlineadaptive', Capacity=4000, Scale=2
+==================================================
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+🔄 Dynamic Allocation (Initial): (9, 9, 9, 8)
+🔬 Environment: AdversarialQuantumEnvironment | Frames: 4000 | Seed: 17513
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=2590.05, Efficiency=86.9%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=2741.32, Efficiency=92.0%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=2794.93, Efficiency=93.8%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.712
+iCPursuitNeuralUCB: Reward=2616.10, Efficiency=87.8%
+
+🏆 Winner: CPursuitNeuralUCB (Gap: 6.2%)
+Experiment 1 completed successfully in environment onlineadaptive
+EXPERIMENT 2: 6000 frames
+----------------------------------------
+[DynamicUCBAllocator] timestep=1 (initial) → allocation=(9, 9, 9, 8)
+
+EXPERIMENT: Frames=6000, Attack='onlineadaptive', Capacity=4000, Scale=2
+==================================================
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+🔄 Dynamic Allocation (Initial): (9, 9, 9, 8)
+🔬 Environment: AdversarialQuantumEnvironment | Frames: 6000 | Seed: 12628
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=3000.30, Efficiency=67.2%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=2882.22, Efficiency=64.5%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=4391.94, Efficiency=98.3%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.712
+iCPursuitNeuralUCB: Reward=4375.99, Efficiency=98.0%
+
+🏆 Winner: CPursuitNeuralUCB (Gap: 1.7%)
+Experiment 2 completed successfully in environment onlineadaptive
+EXPERIMENT 3: 8000 frames
+----------------------------------------
+[DynamicUCBAllocator] timestep=2 (initial) → allocation=(9, 9, 9, 8)
+
+EXPERIMENT: Frames=8000, Attack='onlineadaptive', Capacity=4000, Scale=2
+==================================================
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+🔄 Dynamic Allocation (Initial): (9, 9, 9, 8)
+🔬 Environment: AdversarialQuantumEnvironment | Frames: 8000 | Seed: 18402
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=5875.97, Efficiency=98.5%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=5607.45, Efficiency=94.0%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=5896.19, Efficiency=98.8%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.712
+iCPursuitNeuralUCB: Reward=5916.09, Efficiency=99.1%
+
+🏆 Winner: iCPursuitNeuralUCB (Gap: 0.9%)
+Experiment 3 completed successfully in environment onlineadaptive
+Total experiment time: 7058.1s
+Experiments completed for onlineadaptive
+TESTING ENVIRONMENT SCENARIO: BASELINE (OPTIMAL CONDITIONS)
+==================================================
+
+STARTING EXPERIMENTS: NONE
+Category: Baseline (No Attacks)
+============================================================
+EXPERIMENT 1: 4000 frames
+----------------------------------------
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+
+EXPERIMENT: Frames=4000, Attack='none', Capacity=4000, Scale=2
+==================================================
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+🔄 Dynamic Allocation (Initial): (9, 9, 9, 8)
+🔬 Environment: QuantumEnvironment | Frames: 4000 | Seed: 16797
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=2076.98, Efficiency=69.5%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=2401.65, Efficiency=80.4%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=2153.91, Efficiency=72.1%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.712
+iCPursuitNeuralUCB: Reward=2967.94, Efficiency=99.4%
+
+🏆 Winner: iCPursuitNeuralUCB (Gap: 0.6%)
+Experiment 1 completed successfully in environment none
+EXPERIMENT 2: 6000 frames
+----------------------------------------
+[DynamicUCBAllocator] timestep=1 (initial) → allocation=(9, 9, 9, 8)
+
+EXPERIMENT: Frames=6000, Attack='none', Capacity=4000, Scale=2
+==================================================
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+🔄 Dynamic Allocation (Initial): (9, 9, 9, 8)
+🔬 Environment: QuantumEnvironment | Frames: 6000 | Seed: 18307
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=4251.78, Efficiency=94.9%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=2849.08, Efficiency=63.6%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=4368.40, Efficiency=97.5%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.712
+iCPursuitNeuralUCB: Reward=4435.18, Efficiency=99.0%
+
+🏆 Winner: iCPursuitNeuralUCB (Gap: 1.0%)
+Experiment 2 completed successfully in environment none
+EXPERIMENT 3: 8000 frames
+----------------------------------------
+[DynamicUCBAllocator] timestep=2 (initial) → allocation=(9, 9, 9, 8)
+
+EXPERIMENT: Frames=8000, Attack='none', Capacity=4000, Scale=2
+==================================================
+[DynamicUCBAllocator] timestep=0 (initial) → allocation=(9, 9, 9, 8)
+🔄 Dynamic Allocation (Initial): (9, 9, 9, 8)
+🔬 Environment: QuantumEnvironment | Frames: 8000 | Seed: 18145
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=5825.97, Efficiency=97.5%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=4260.14, Efficiency=71.3%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=4304.26, Efficiency=72.0%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.712
+iCPursuitNeuralUCB: Reward=4300.78, Efficiency=72.0%
+
+🏆 Winner: GNeuralUCB (Gap: 2.5%)
+Experiment 3 completed successfully in environment none
+Total experiment time: 17074.3s
+Experiments completed for none
+Scenario 'stochastic' evaluation completed.
+Scenario 'markov' evaluation completed.
+Scenario 'adaptive' evaluation completed.
+Scenario 'onlineadaptive' evaluation completed.
+Scenario 'none' evaluation completed.
+
+======================================================================
+COMPREHENSIVE SCENARIO PERFORMANCE ANALYSIS
+======================================================================
+SCENARIO: STOCHASTIC
+	• Total Experiments: 3
+	• Overall Winner: CPursuitNeuralUCB
+	• Oracle Avg Reward: 4416.30
+	• Winner Avg Gap: 5.93%
+	• Winner Avg Reward: 4159.05
+	• Winner Avg Efficiency: 94.07%
+	• Win Counts:
+		- Oracle: 0 wins
+		- GNeuralUCB: 0 wins
+		- EXPNeuralUCB: 0 wins
+		- CPursuitNeuralUCB: 2 wins
+		- iCPursuitNeuralUCB: 1 wins
+----------------------------------------------------------------------
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: STOCHASTIC
+======================================================================
+SCENARIO: 	STOCHASTIC RANDOM FAILURES
+----------------------------------------
+Recommended Model: 	CPursuitNeuralUCB (Won 2/3 experiments)
+	Winner Avg Gap: 	5.9%
+	Winner Avg Efficiency: 	94.1%
+
+Overall Models Performance:
+	• CPursuitNeuralUCB: 	94.1% Efficiency 	(Won 2/3 experiments)
+	• iCPursuitNeuralUCB: 	93.4% Efficiency 	(Won 1/3 experiments)
+	• EXPNeuralUCB   : 	81.2% Efficiency 	(Won 0/3 experiments)
+	• GNeuralUCB     : 	74.6% Efficiency 	(Won 0/3 experiments)
+======================================================================
+SCENARIO: MARKOV
+	• Total Experiments: 3
+	• Overall Winner: CPursuitNeuralUCB
+	• Oracle Avg Reward: 4398.37
+	• Winner Avg Gap: 7.25%
+	• Winner Avg Reward: 4079.77
+	• Winner Avg Efficiency: 92.75%
+	• Win Counts:
+		- Oracle: 0 wins
+		- GNeuralUCB: 0 wins
+		- EXPNeuralUCB: 0 wins
+		- CPursuitNeuralUCB: 3 wins
+		- iCPursuitNeuralUCB: 0 wins
+----------------------------------------------------------------------
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: MARKOV
+======================================================================
+SCENARIO: 	MARKOV ADVERSARIAL ATTACK
+----------------------------------------
+Recommended Model: 	CPursuitNeuralUCB (Won 3/3 experiments)
+	Winner Avg Gap: 	7.2%
+	Winner Avg Efficiency: 	92.8%
+
+Overall Models Performance:
+	• CPursuitNeuralUCB: 	92.8% Efficiency 	(Won 3/3 experiments)
+	• iCPursuitNeuralUCB: 	92.4% Efficiency 	(Won 0/3 experiments)
+	• EXPNeuralUCB   : 	84.0% Efficiency 	(Won 0/3 experiments)
+	• GNeuralUCB     : 	74.8% Efficiency 	(Won 0/3 experiments)
+======================================================================
+SCENARIO: ADAPTIVE
+	• Total Experiments: 3
+	• Overall Winner: GNeuralUCB
+	• Oracle Avg Reward: 4428.92
+	• Winner Avg Gap: 6.85%
+	• Winner Avg Reward: 4140.53
+	• Winner Avg Efficiency: 93.15%
+	• Win Counts:
+		- Oracle: 0 wins
+		- GNeuralUCB: 2 wins
+		- EXPNeuralUCB: 0 wins
+		- CPursuitNeuralUCB: 0 wins
+		- iCPursuitNeuralUCB: 1 wins
+----------------------------------------------------------------------
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: ADAPTIVE
+======================================================================
+SCENARIO: 	ADAPTIVE ADVERSARIAL ATTACK
+----------------------------------------
+Recommended Model: 	GNeuralUCB (Won 2/3 experiments)
+	Winner Avg Gap: 	6.9%
+	Winner Avg Efficiency: 	93.1%
+
+Overall Models Performance:
+	• GNeuralUCB     : 	93.1% Efficiency 	(Won 2/3 experiments)
+	• CPursuitNeuralUCB: 	93.1% Efficiency 	(Won 0/3 experiments)
+	• EXPNeuralUCB   : 	80.8% Efficiency 	(Won 0/3 experiments)
+	• iCPursuitNeuralUCB: 	76.2% Efficiency 	(Won 1/3 experiments)
+======================================================================
+SCENARIO: ONLINEADAPTIVE
+	• Total Experiments: 3
+	• Overall Winner: CPursuitNeuralUCB
+	• Oracle Avg Reward: 4471.31
+	• Winner Avg Gap: 3.02%
+	• Winner Avg Reward: 4361.02
+	• Winner Avg Efficiency: 96.98%
+	• Win Counts:
+		- Oracle: 0 wins
+		- GNeuralUCB: 0 wins
+		- EXPNeuralUCB: 0 wins
+		- CPursuitNeuralUCB: 2 wins
+		- iCPursuitNeuralUCB: 1 wins
+----------------------------------------------------------------------
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: ONLINEADAPTIVE
+======================================================================
+SCENARIO: 	ONLINE ADAPTIVE ATTACK
+----------------------------------------
+Recommended Model: 	CPursuitNeuralUCB (Won 2/3 experiments)
+	Winner Avg Gap: 	3.0%
+	Winner Avg Efficiency: 	97.0%
+
+Overall Models Performance:
+	• CPursuitNeuralUCB: 	97.0% Efficiency 	(Won 2/3 experiments)
+	• iCPursuitNeuralUCB: 	95.0% Efficiency 	(Won 1/3 experiments)
+	• GNeuralUCB     : 	84.2% Efficiency 	(Won 0/3 experiments)
+	• EXPNeuralUCB   : 	83.5% Efficiency 	(Won 0/3 experiments)
+======================================================================
+SCENARIO: NONE
+	• Total Experiments: 3
+	• Overall Winner: iCPursuitNeuralUCB
+	• Oracle Avg Reward: 4480.55
+	• Winner Avg Gap: 9.89%
+	• Winner Avg Reward: 3901.30
+	• Winner Avg Efficiency: 90.11%
+	• Win Counts:
+		- Oracle: 0 wins
+		- GNeuralUCB: 1 wins
+		- EXPNeuralUCB: 0 wins
+		- CPursuitNeuralUCB: 0 wins
+		- iCPursuitNeuralUCB: 2 wins
+----------------------------------------------------------------------
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: NONE
+======================================================================
+SCENARIO: 	BASELINE (OPTIMAL CONDITIONS)
+----------------------------------------
+Recommended Model: 	iCPursuitNeuralUCB (Won 2/3 experiments)
+	Winner Avg Gap: 	9.9%
+	Winner Avg Efficiency: 	90.1%
+
+Overall Models Performance:
+	• iCPursuitNeuralUCB: 	90.1% Efficiency 	(Won 2/3 experiments)
+	• GNeuralUCB     : 	87.3% Efficiency 	(Won 1/3 experiments)
+	• CPursuitNeuralUCB: 	80.6% Efficiency 	(Won 0/3 experiments)
+	• EXPNeuralUCB   : 	71.8% Efficiency 	(Won 0/3 experiments)
+======================================================================
+KEY INSIGHTS:
+Best Performing Model Analysis (CPursuitNeuralUCB):
+	• Stochastic Performance:    	4159.050
+	• Baseline Performance:      	3901.300
+	• Performance Retention:     	106.6%
+	EXCELLENT:          	Minimal performance loss under realistic conditions
+Statistical Analysis:
+	• Total models evaluated:     	5
+	• Experiments per environment:	3
+	• Quantum network simulation: 	Comprehensive stochastic modeling
+======================================================================
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: STOCHASTIC
+======================================================================
+SCENARIO: 	STOCHASTIC RANDOM FAILURES
+----------------------------------------
+Recommended Model: 	CPursuitNeuralUCB (Won 2/3 experiments)
+	Winner Avg Gap: 	5.9%
+	Winner Avg Efficiency: 	94.1%
+
+Overall Models Performance:
+	• CPursuitNeuralUCB: 	94.1% Efficiency 	(Won 2/3 experiments)
+	• iCPursuitNeuralUCB: 	93.4% Efficiency 	(Won 1/3 experiments)
+	• EXPNeuralUCB   : 	81.2% Efficiency 	(Won 0/3 experiments)
+	• GNeuralUCB     : 	74.6% Efficiency 	(Won 0/3 experiments)
+======================================================================
+Scenario 'stochastic' evaluation completed.
+
+✓ Quantum MAB Models Evaluation Framework - STOCHASTIC-FOCUSED evaluation completed!
+======================================================================
+ROBUSTNESS ANALYSIS
+======================================================================
+Comparison Results Summary:
+Creating  stochastic vs basline comparison visualization...
+======================================================================
+SAVING EVALUATION RESULTS (Session: 20251103_152601)
+======================================================================
+✓ Created: Experiment_1_3_Runs_20251103_152601
+  └─ Category: Hybrid
+✓ Metadata: experiment_metadata.json
+✓ JSON: experiment_1_results.json
+✓ Pickle: experiment_1_results.pkl
+✓ Summary: experiment_summary.txt
+✓ Created: Experiment_2_3_Runs_20251103_152601
+  └─ Category: Hybrid
+✓ Metadata: experiment_metadata.json
+✓ JSON: experiment_2_results.json
+✓ Pickle: experiment_2_results.pkl
+✓ Summary: experiment_summary.txt
+✓ Created: Experiment_3_3_Runs_20251103_152601
+  └─ Category: Hybrid
+✓ Metadata: experiment_metadata.json
+✓ JSON: experiment_3_results.json
+✓ Pickle: experiment_3_results.pkl
+✓ Summary: experiment_summary.txt
+✓ Created: Experiment_1_3_Runs_20251103_152601
+  └─ Category: Hybrid
+✓ Metadata: experiment_metadata.json
+✓ JSON: experiment_1_results.json
+✓ Pickle: experiment_1_results.pkl
+✓ Summary: experiment_summary.txt
+✓ Created: Experiment_2_3_Runs_20251103_152601
+  └─ Category: Hybrid
+✓ Metadata: experiment_metadata.json
+✓ JSON: experiment_2_results.json
+✓ Pickle: experiment_2_results.pkl
+✓ Summary: experiment_summary.txt
+✓ Created: Experiment_3_3_Runs_20251103_152601
+  └─ Category: Hybrid
+✓ Metadata: experiment_metadata.json
+✓ JSON: experiment_3_results.json
+✓ Pickle: experiment_3_results.pkl
+✓ Summary: experiment_summary.txt
+✓ Created: Experiment_1_3_Runs_20251103_152601
+  └─ Category: Hybrid
+✓ Metadata: experiment_metadata.json
+✓ JSON: experiment_1_results.json
+✓ Pickle: experiment_1_results.pkl
+✓ Summary: experiment_summary.txt
+✓ Created: Experiment_2_3_Runs_20251103_152601
+  └─ Category: Hybrid
+✓ Metadata: experiment_metadata.json
+✓ JSON: experiment_2_results.json
+✓ Pickle: experiment_2_results.pkl
+✓ Summary: experiment_summary.txt
+✓ Created: Experiment_3_3_Runs_20251103_152601
+  └─ Category: Hybrid
+✓ Metadata: experiment_metadata.json
+✓ JSON: experiment_3_results.json
+✓ Pickle: experiment_3_results.pkl
+✓ Summary: experiment_summary.txt
+✓ Created: Experiment_1_3_Runs_20251103_152601
+  └─ Category: Hybrid
+✓ Metadata: experiment_metadata.json
+✓ JSON: experiment_1_results.json
+✓ Pickle: experiment_1_results.pkl
+✓ Summary: experiment_summary.txt
+✓ Created: Experiment_2_3_Runs_20251103_152601
+  └─ Category: Hybrid
+✓ Metadata: experiment_metadata.json
+✓ JSON: experiment_2_results.json
+✓ Pickle: experiment_2_results.pkl
+✓ Summary: experiment_summary.txt
+✓ Created: Experiment_3_3_Runs_20251103_152601
+  └─ Category: Hybrid
+✓ Metadata: experiment_metadata.json
+✓ JSON: experiment_3_results.json
+✓ Pickle: experiment_3_results.pkl
+✓ Summary: experiment_summary.txt
+✓ Created: Experiment_1_3_Runs_20251103_152601
+  └─ Category: Hybrid
+✓ Metadata: experiment_metadata.json
+✓ JSON: experiment_1_results.json
+✓ Pickle: experiment_1_results.pkl
+✓ Summary: experiment_summary.txt
+✓ Created: Experiment_2_3_Runs_20251103_152601
+  └─ Category: Hybrid
+✓ Metadata: experiment_metadata.json
+✓ JSON: experiment_2_results.json
+✓ Pickle: experiment_2_results.pkl
+✓ Summary: experiment_summary.txt
+✓ Created: Experiment_3_3_Runs_20251103_152601
+  └─ Category: Hybrid
+✓ Metadata: experiment_metadata.json
+✓ JSON: experiment_3_results.json
+✓ Pickle: experiment_3_results.pkl
+✓ Summary: experiment_summary.txt
+======================================================================
+✓ Saved 15 experiments
+✓ Session: 20251103_152601
+
+Category Breakdown:
+  • Hybrid: 15 experiments
+======================================================================
+
+📊 Generating plots for scenario: STOCHASTIC
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: STOCHASTIC
+======================================================================
+SCENARIO: 	STOCHASTIC RANDOM FAILURES
+----------------------------------------
+Recommended Model: 	CPursuitNeuralUCB (Won 2/3 experiments)
+	Winner Avg Gap: 	5.9%
+	Winner Avg Efficiency: 	94.1%
+
+Overall Models Performance:
+	• CPursuitNeuralUCB: 	94.1% Efficiency 	(Won 2/3 experiments)
+	• iCPursuitNeuralUCB: 	93.4% Efficiency 	(Won 1/3 experiments)
+	• EXPNeuralUCB   : 	81.2% Efficiency 	(Won 0/3 experiments)
+	• GNeuralUCB     : 	74.6% Efficiency 	(Won 0/3 experiments)
+======================================================================
+Scenario 'stochastic' evaluation completed.
+Creating  stochastic vs basline comparison visualization...
+✓ Comparison plot saved as: DynamicQubitAllocator_stochastic_vs_baseline_20251103_152601.png
+
+📊 Generating plots for scenario: MARKOV
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: MARKOV
+======================================================================
+SCENARIO: 	MARKOV ADVERSARIAL ATTACK
+----------------------------------------
+Recommended Model: 	CPursuitNeuralUCB (Won 3/3 experiments)
+	Winner Avg Gap: 	7.2%
+	Winner Avg Efficiency: 	92.8%
+
+Overall Models Performance:
+	• CPursuitNeuralUCB: 	92.8% Efficiency 	(Won 3/3 experiments)
+	• iCPursuitNeuralUCB: 	92.4% Efficiency 	(Won 0/3 experiments)
+	• EXPNeuralUCB   : 	84.0% Efficiency 	(Won 0/3 experiments)
+	• GNeuralUCB     : 	74.8% Efficiency 	(Won 0/3 experiments)
+======================================================================
+Scenario 'markov' evaluation completed.
+Creating  markov vs basline comparison visualization...
+✓ Comparison plot saved as: DynamicQubitAllocator_markov_vs_baseline_20251103_152601.png
+
+📊 Generating plots for scenario: ADAPTIVE
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: ADAPTIVE
+======================================================================
+SCENARIO: 	ADAPTIVE ADVERSARIAL ATTACK
+----------------------------------------
+Recommended Model: 	GNeuralUCB (Won 2/3 experiments)
+	Winner Avg Gap: 	6.9%
+	Winner Avg Efficiency: 	93.1%
+
+Overall Models Performance:
+	• GNeuralUCB     : 	93.1% Efficiency 	(Won 2/3 experiments)
+	• CPursuitNeuralUCB: 	93.1% Efficiency 	(Won 0/3 experiments)
+	• EXPNeuralUCB   : 	80.8% Efficiency 	(Won 0/3 experiments)
+	• iCPursuitNeuralUCB: 	76.2% Efficiency 	(Won 1/3 experiments)
+======================================================================
+Scenario 'adaptive' evaluation completed.
+Creating  adaptive vs basline comparison visualization...
+✓ Comparison plot saved as: DynamicQubitAllocator_adaptive_vs_baseline_20251103_152601.png
+
+📊 Generating plots for scenario: ONLINEADAPTIVE
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: ONLINEADAPTIVE
+======================================================================
+SCENARIO: 	ONLINE ADAPTIVE ATTACK
+----------------------------------------
+Recommended Model: 	CPursuitNeuralUCB (Won 2/3 experiments)
+	Winner Avg Gap: 	3.0%
+	Winner Avg Efficiency: 	97.0%
+
+Overall Models Performance:
+	• CPursuitNeuralUCB: 	97.0% Efficiency 	(Won 2/3 experiments)
+	• iCPursuitNeuralUCB: 	95.0% Efficiency 	(Won 1/3 experiments)
+	• GNeuralUCB     : 	84.2% Efficiency 	(Won 0/3 experiments)
+	• EXPNeuralUCB   : 	83.5% Efficiency 	(Won 0/3 experiments)
+======================================================================
+Scenario 'onlineadaptive' evaluation completed.
+Creating  onlineadaptive vs basline comparison visualization...
+✓ Comparison plot saved as: DynamicQubitAllocator_onlineadaptive_vs_baseline_20251103_152601.png
+
+📊 Generating plots for scenario: NONE
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: NONE
+======================================================================
+SCENARIO: 	BASELINE (OPTIMAL CONDITIONS)
+----------------------------------------
+Recommended Model: 	iCPursuitNeuralUCB (Won 2/3 experiments)
+	Winner Avg Gap: 	9.9%
+	Winner Avg Efficiency: 	90.1%
+
+Overall Models Performance:
+	• iCPursuitNeuralUCB: 	90.1% Efficiency 	(Won 2/3 experiments)
+	• GNeuralUCB     : 	87.3% Efficiency 	(Won 1/3 experiments)
+	• CPursuitNeuralUCB: 	80.6% Efficiency 	(Won 0/3 experiments)
+	• EXPNeuralUCB   : 	71.8% Efficiency 	(Won 0/3 experiments)
+======================================================================
+Scenario 'none' evaluation completed.
+Creating  none vs basline comparison visualization...
+✓ Comparison plot saved as: DynamicQubitAllocator_none_vs_baseline_20251103_152601.png
+
+ All scenario plots generated!
+
+✓ Stochastic Analysis Generated:
+  → quantum_mab_models_stochastic_evaluation.png
+
+======================================================================
+STOCHASTIC PERFORMANCE METRICS
+======================================================================
+
+Oracle:
+  • Stochastic Performance: 4416.302
+  • Oracle Efficiency: 0.0%
+  • Oracle Gap: 0.0%
+  • Classification: NEEDS IMPROVEMENT
+
+GNeuralUCB:
+  • Stochastic Performance: 3302.203
+  • Oracle Efficiency: 74.6%
+  • Oracle Gap: 25.4%
+  • Classification: MODERATE
+
+EXPNeuralUCB:
+  • Stochastic Performance: 3479.845
+  • Oracle Efficiency: 81.2%
+  • Oracle Gap: 18.8%
+  • Classification: GOOD
+
+CPursuitNeuralUCB:
+  • Stochastic Performance: 4159.050
+  • Oracle Efficiency: 94.1%
+  • Oracle Gap: 5.9%
+  • Classification: EXCELLENT
+  ★ WINNER ★
+
+iCPursuitNeuralUCB:
+  • Stochastic Performance: 4139.525
+  • Oracle Efficiency: 93.4%
+  • Oracle Gap: 6.6%
+  • Classification: EXCELLENT
+
+======================================================================
+STOCHASTIC ENVIRONMENT INSIGHTS
+======================================================================
+  • Natural quantum decoherence and network failures
+  • Performance metrics validate theoretical predictions
+  • Baseline for future adversarial robustness studies
+Exp1 complete
+[2025-11-03 15:26:47] Exp1 done
+[2025-11-03 15:27:05] Target branch: gcp-main
+[2025-11-03 15:27:05] ================================
+[2025-11-03 15:27:05] Verifying Repository
+[2025-11-03 15:27:05] ================================
+SUCCESS: Repository found
+[2025-11-03 15:27:05] ================================
+[2025-11-03 15:27:05] Preparing Results
+[2025-11-03 15:27:05] ================================
+[2025-11-03 15:27:05] Created unique run marker: Dynamic_Routing_Eval_Framework/results/run_marker_20251103_152705.txt
+[2025-11-03 15:27:05] Staged 1 file(s) for commit
+SUCCESS: Results committed locally
+[2025-11-03 15:27:05] ================================
+[2025-11-03 15:27:05] Pushing to GitHub
+[2025-11-03 15:27:05] ================================
+[2025-11-03 15:27:05] --- Attempt 1/5 ---
+WARN: Push failed on attempt 1. Another VM likely pushed first.
+[2025-11-03 15:27:05] Pulling latest changes with merge strategy...
+[2025-11-03 15:27:13] Waiting 2 seconds before retry...
+[2025-11-03 15:27:15] --- Attempt 2/5 ---
+SUCCESS: Results pushed to GitHub!
+[2025-11-03 15:27:15] URL: https://github.com/pzg8794/quantum_project/tree/gcp-main/Dynamic_Routing_Eval_Framework/results
+[2025-11-03 15:27:15] ================================
+[2025-11-03 15:27:15] PUSH COMPLETE
+[2025-11-03 15:27:15] ================================
+SUCCESS: All results pushed!
+Exp1 DONE

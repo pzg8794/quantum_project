@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-"""GCP Experiment Runner - Cleaned and streamlined version."""
-from concurrent.futures import ThreadPoolExecutor, as_completed
+"""GCP Experiment Runner - Final version with quick-test mode and dynamic command generation."""
+from concurrent.futures import ThreadPoolExecutor
 import re
 import sys
 import time
 import subprocess
 import threading
-import json
-import os
 from dataclasses import dataclass
 from typing import List
-from datetime import datetime
 
 
 @dataclass
@@ -22,21 +19,27 @@ class ExperimentConfig:
 class GCPExperimentRunner:
     """Manages creation, execution, and cleanup of GCP experiments."""
     ALLOCATORS = ["none", "thompson", "dynamic", "random"]
-    
+
     ZONE_MAP = {
         "none": "us-central1-a",
-        "thompson": "us-central1-f",
+        "thompson": "us-central1-f", 
         "dynamic": "us-west1-b",
         "random": "us-east1-b"
     }
 
-    def __init__(self, allocator: str, zone: str = "us-central1-a", mode: str = "production"):
+    def __init__(self, allocator: str, zone: str = "us-central1-a",
+                machine_type: str = "n2-standard-8", disk_size: str = "50GB",
+                mode: str = "production"):
+
         self.allocator = allocator.lower()
         self.zone = self.ZONE_MAP.get(self.allocator, zone)
         self.mode = mode.lower()
+        self.disk_size = disk_size
+        self.machine_type = machine_type
         self.test_mode = self.mode != "production"
         self.vms_to_cleanup = []
         self.to_delete = []
+        self.branch_name = "gcp-main"
 
         allocator_arg = "None" if self.allocator == "none" else self.allocator.lower()
 
@@ -52,14 +55,15 @@ class GCPExperimentRunner:
                 ExperimentConfig(f"exp4-{self.allocator}", f"run_exp4.sh {allocator_arg}")
             ]
 
+        print(f"⚡ PERFORMANCE MODE: {self.machine_type}")
+
     def create_vm(self, vm_name: str) -> bool:
-        """Create VM with your proven configuration."""
         print(f"Creating VM: {vm_name}...")
         cmd = [
             "gcloud", "compute", "instances", "create", vm_name,
             f"--zone={self.zone}",
-            "--machine-type=c2-standard-8",  # 8 vCPUs, 2x faster
-            "--boot-disk-size=50GB",
+            f"--machine-type={self.machine_type}",
+            f"--boot-disk-size={self.disk_size}",
             "--scopes=cloud-platform",
             "--image=quantum-exp-base-img",
             "--image-project=bright-zodiac-476705-d6",
@@ -71,7 +75,6 @@ class GCPExperimentRunner:
         return False
 
     def _run_gcloud_cmd(self, cmd: List[str], suppress_errors=False) -> bool:
-        """Execute gcloud command."""
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True)
             return True
@@ -85,7 +88,6 @@ class GCPExperimentRunner:
             return False
 
     def wait_for_ssh(self, vm_name: str, timeout: int = 180) -> bool:
-        """Wait for SSH connectivity."""
         print(f"Waiting for SSH on {vm_name}...", end="", flush=True)
         start_time = time.time()
         while time.time() - start_time < timeout:
@@ -98,13 +100,48 @@ class GCPExperimentRunner:
         print(" Timeout.")
         return False
 
-    def run_and_stream_experiment(self, vm_name: str, script_with_args: str):
-        """Run experiment on VM and stream logs."""
+    def _generate_test_branch_name(self, mode: str, allocator: str) -> str:
+        """Generate a unique test branch name with timestamp."""
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        return f"test/{mode}-{allocator}-{timestamp}"
+
+    def _create_and_switch_test_branch(self, vm_name: str, test_branch: str) -> str:
+        """Create test branch and return the command to switch to it."""
+        return f"""
+            echo "🔧 Creating test branch: {test_branch} for {vm_name}"
+            git checkout {self.branch_name}
+            git checkout -b {test_branch} 2>/dev/null || git checkout {test_branch}
+            git push -u origin {test_branch} 2>/dev/null || echo "Branch already exists on remote"
+        """
+
+    def run_and_stream_experiment(self, vm_name: str, script_with_args: str, gcp: bool = True):
+        """Runs the experiment on a remote VM and streams logs live."""
         shown_progress = set()
         print(f"--- Starting Experiment on {vm_name} ---")
         
+        try:
+            subprocess.run([
+                "gcloud", "compute", "instances", "add-metadata", vm_name,
+                f"--zone={self.zone}", "--metadata=status=starting", "--quiet"
+            ], check=False, text=True)
+        except Exception as e:
+            print(f"[{vm_name}] WARN: failed to set metadata to 'starting': {e}")
+            
         log_dir = f'$HOME/quantum_project/Dynamic_Routing_Eval_Framework/logs'
         log_file = f'{log_dir}/{vm_name}_$(date +"%Y%m%d_%H%M%S").log'
+
+        # 🎯 INTELLIGENT BRANCH LOGIC
+        if self.test_mode:
+            test_branch = self._generate_test_branch_name(self.mode, self.allocator)
+            branch_setup = self._create_and_switch_test_branch(vm_name, test_branch)
+            self.branch_name = test_branch
+            print(f"🧪 Test mode: Creating branch '{test_branch}' for {vm_name}")
+            script_with_args = f"{script_with_args} {self.branch_name}"
+            print(f"🔧 Test script command: {script_with_args}")
+        else:
+            branch_setup = ""
+            self.branch_name = "gcp-main" if gcp else "main"
 
         command_str = f"""
             set -e
@@ -114,10 +151,16 @@ class GCPExperimentRunner:
             (
                 cd "$HOME/quantum_project"
                 echo '--- Remote log started at $(date) ---'
-                git checkout --quiet gcp-main
-                git pull --quiet
+                echo "🔄 Switching to branch: {self.branch_name}"
+                
+                {branch_setup}
+                git checkout --quiet {self.branch_name}
+                git pull --quiet origin {self.branch_name} 2>/dev/null || echo "First push to new branch"
+                
                 chmod +x ./*.sh
+                echo "🚀 Executing: {script_with_args}"
                 ./{script_with_args}
+                
             ) | tee -a "{log_file}"
         """
         
@@ -132,15 +175,16 @@ class GCPExperimentRunner:
             for line in proc.stdout:
                 line_stripped = line.strip()
 
-                # Collapse progress spam
                 if "Progress" in line_stripped:
                     match = re.search(r"(\d+)%\|", line_stripped)
                     if match:
                         percent = int(match.group(1))
-                        if percent in shown_progress or percent not in (25, 50, 75, 100):
+                        if percent in shown_progress:
                             continue
                         shown_progress.add(percent)
-                        
+                        if percent not in (50, 75, 100):
+                            continue
+                            
                 if "Test DONE" in line_stripped:
                     self.to_delete.append(vm_name)
 
@@ -158,21 +202,19 @@ class GCPExperimentRunner:
             self.cleanup_vm()
 
     def cleanup_vm(self):
-        """Clean up completed VMs."""
         if not self.to_delete:
             return
 
         to_delete = list(self.to_delete)
-        for vm in to_delete:
-            print(f"DELETING: {vm} (completed)")
+        for vm in self.to_delete:
+            print(f"DELETING: {vm} (metadata status=DONE)")
         
         if to_delete:
+            print("\nCleaning up VMs (status=done):", ", ".join(to_delete))
             cmd = ["gcloud", "compute", "instances", "delete"] + to_delete + [f"--zone={self.zone}", "--quiet"]
             self._run_gcloud_cmd(cmd)
-            self.to_delete.clear()
 
     def run(self):
-        """Run experiments for this allocator."""
         print(f"\n[{self.mode.replace('-', ' ').title()}] Starting experiments for allocator: {self.allocator}\n")
         try:
             if not all(self.create_vm(exp.name) for exp in self.experiments):
@@ -181,17 +223,19 @@ class GCPExperimentRunner:
                 raise RuntimeError("VM SSH readiness failed.")
             
             threads = [threading.Thread(target=self.run_and_stream_experiment, args=(exp.name, exp.script_with_args)) for exp in self.experiments]
-            for thread in threads: 
-                thread.start()
-            for thread in threads: 
-                thread.join()
+            for thread in threads: thread.start()
+            for thread in threads: thread.join()
             print(f"\n✓ ALL EXPERIMENTS for allocator '{self.allocator}' are complete.")
         except Exception as e:
             print(f"\nAn error occurred during the run: {e}")
 
     @classmethod
-    def run_pipeline(cls, mode, exclude: list[str] = None, max_workers: int = 8):
-        """Run all experiments in pipeline mode."""
+    def run_all_allocators_pipelined(cls, mode, exclude: list[str] = None, max_workers: int = 8):
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import json
+        import os
+        from datetime import datetime
+        
         exclude = [e.lower() for e in (exclude or [])]
         all_allocators = [a for a in cls.ALLOCATORS if a not in exclude]
 
@@ -199,16 +243,10 @@ class GCPExperimentRunner:
         print(f"📋 Included: {', '.join(all_allocators)}")
         print(f"⚡ Max Workers: {max_workers}")
 
-        # Define experiments
         if "test" in mode:
             rounds = [("exp-test", f"run_exp_test.sh {mode}")]
         else:
-            rounds = [
-                # ("exp1", "run_exp1.sh"),
-                ("exp2", "run_exp2.sh"),
-                ("exp3", "run_exp3.sh"),
-                ("exp4", "run_exp4.sh"),
-            ]
+            rounds = [("exp2", "run_exp2.sh"), ("exp3", "run_exp3.sh"), ("exp4", "run_exp4.sh")]
 
         experiment_queue = []
         for round_name, script in rounds:
@@ -221,7 +259,6 @@ class GCPExperimentRunner:
         print(f"• Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
         def run_single_experiment(round_name, script, allocator):
-            """Execute single experiment."""
             allocator_arg = "None" if allocator == "none" else allocator.capitalize()
             runner = cls(allocator, mode=mode)
             exp_name = f"{round_name}-{allocator}"
@@ -250,12 +287,8 @@ class GCPExperimentRunner:
                 }
                 
             except Exception as e:
-                return {
-                    "name": exp_name, "success": False, "error": str(e),
-                    "start_time": start_time, "end_time": datetime.now()
-                }
+                return {"name": exp_name, "success": False, "error": str(e), "start_time": start_time, "end_time": datetime.now()}
 
-        # Execute pipeline
         results = []
         successful = 0
         failed = 0
@@ -289,7 +322,6 @@ class GCPExperimentRunner:
         except KeyboardInterrupt:
             print(f"\n🛑 Pipeline interrupted by user")
 
-        # Final stats
         print(f"\n🎯 ===== PIPELINE COMPLETE =====")
         print(f"📊 Final Stats:")
         print(f"• Total experiments: {len(results)}")
@@ -298,17 +330,10 @@ class GCPExperimentRunner:
         print(f"• 📈 Success rate: {successful/max(len(results), 1)*100:.1f}%")
         print(f"• 🚀 Max efficiency achieved: {max_workers} concurrent VMs")
         
-        # Save summary
         os.makedirs("results", exist_ok=True)
         json_path = f"results/pipeline_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         
-        summary = {
-            "timestamp": datetime.now().isoformat(),
-            "mode": mode,
-            "successful": successful,
-            "failed": failed,
-            "results": results
-        }
+        summary = {"timestamp": datetime.now().isoformat(), "mode": mode, "successful": successful, "failed": failed, "results": results}
         
         try:
             with open(json_path, "w") as f:
@@ -318,17 +343,11 @@ class GCPExperimentRunner:
             print(f"⚠️ Could not save summary: {e}")
 
     def cleanup_all_instances(self, require_done: bool = True):
-        """Clean up all experiment instances."""
         print("\n🧹 Scanning for active experiment instances...")
         protected = ("base", "template", "image", "main")
         
         try:
-            list_cmd = [
-                "gcloud", "compute", "instances", "list",
-                "--project=bright-zodiac-476705-d6",
-                "--filter=status=RUNNING",
-                "--format=value(name,zone)"
-            ]
+            list_cmd = ["gcloud", "compute", "instances", "list", "--project=bright-zodiac-476705-d6", "--filter=status=RUNNING", "--format=value(name,zone)"]
             r = subprocess.run(list_cmd, check=True, capture_output=True, text=True)
             lines = [l.strip() for l in r.stdout.splitlines() if l.strip()]
 
@@ -368,7 +387,6 @@ if __name__ == "__main__":
         mode = "test"
         max_workers = 4
 
-    # Parse exclude list
     exclude = []
     if "--exclude" in sys.argv:
         idx = sys.argv.index("--exclude")
@@ -377,13 +395,11 @@ if __name__ == "__main__":
 
     args = [arg for arg in sys.argv[1:] if arg not in ["--test", "--quick-test", "--exclude", "--pipeline", "--cleanup", "--cleanup-all"] and not arg.startswith(",")]
 
-    # Handle cleanup
     if "--cleanup" in sys.argv or "--cleanup-all" in sys.argv:
         runner = GCPExperimentRunner("none", mode="quick-test")
         runner.cleanup_all_instances()
         sys.exit(0)
 
-    # Show help
     if not args and "--pipeline" not in sys.argv:
         print("""
 Usage:
@@ -393,9 +409,8 @@ python gcp_experiment_runner.py --cleanup
         """)
         sys.exit(1)
 
-    # Run experiments
     if "--pipeline" in sys.argv:
-        GCPExperimentRunner.run_pipeline(mode=mode, exclude=exclude, max_workers=max_workers)
+        GCPExperimentRunner.run_all_allocators_pipelined(mode=mode, exclude=exclude, max_workers=max_workers)
     else:
         runner = GCPExperimentRunner(args[0], mode=mode)
         runner.run()

@@ -190,6 +190,7 @@ class QuantumExperimentRunner:
         self._build_environment_once(frame_count=frame_count, qubit_cap=qubit_cap)
 
         def get_oracle_reward(base_model, oracle_reward=0.0):
+            print("Getting Oracle Rewards ...")
             while oracle_reward <= 0:
                 results[base_model] = self.run_algorithm(base_model, frame_count, qubit_cap)
                 oracle_reward = results[base_model].get('final_reward', 0.0)

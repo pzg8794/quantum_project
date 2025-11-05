@@ -60,7 +60,9 @@ class QuantumExperimentRunner:
 
         # Build and store the environment
         self.environment = self.configs.get_environment()
-        print(f"🔬 Environment: {self.environment.__class__.__name__} | Frames: {frame_count} | Seed: {self.experiment_seed}")
+        
+        print(f"\nEXPERIMENT: Envinment (Env): {str(self.environment)}, Attack:{str(self.environment.attack)}, AttackRate:{self.environment.attack_rate}, Frames: {self.environment.frame_length}, Cap={self.configs.capacity} x Scale={self.configs.scale}, Seed: {self.experiment_seed}")
+        print("="*125)
 
 
     def run_step_wise_oracle(self, env_info, model, frame_count=4000, algorithm_name='Oracle'):
@@ -91,6 +93,7 @@ class QuantumExperimentRunner:
         if self.environment is None:
             # Safety: build env if caller forgot; prefer explicit build in run_experiment
             self._build_environment_once(frame_count=frame_count, qubit_cap=qubit_cap)
+        if self.configs.capacity > frame_count: self.configs.capacity = frame_count
 
         config = self.algorithm_configs[algorithm_name]
         env_info = self.environment.get_environment_info()
@@ -105,9 +108,9 @@ class QuantumExperimentRunner:
 
         enable_progress = self.enable_progress
         results = {'final_reward': 0.0}
+        total_reward, attempts = 0.0, 0
 
         try:
-            total_reward, attempts = 0.0, 0
             while total_reward <= 0.0:
                 model_kwargs['verbose'] = enable_progress
                 
@@ -124,7 +127,7 @@ class QuantumExperimentRunner:
                         frame_number=frame_count,
                         **model_kwargs,
                     )
-                    model.set_capacity(self.configs.capacity)
+                    model.set_capacity(self.configs.capacity*self.configs.scale)
 
                 if enable_progress: self.validate_quantum_model(model)
                 try:
@@ -151,8 +154,9 @@ class QuantumExperimentRunner:
                         'model_results': model.get_results(),
                         'retries':attempts
                     }
+                except Exception as e: 
                     attempts +=1
-                except Exception as e: print(f"❌ Runtime error in {algorithm_name}: {e}")
+                    print(f"❌ Runtime error in {algorithm_name}: {e}")
                 finally:
                     del model
                     gc.collect()
@@ -178,30 +182,34 @@ class QuantumExperimentRunner:
 
         if qubit_cap is None:
             # Strongly prefer caller to pass allocator-derived qubit_cap
-            if hasattr(self.configs, 'allocator') and self.configs.allocator is not None:
-                qubit_cap = tuple(self.configs.allocator.allocate(timestep=0, route_stats={}))
+            if self.configs.allocator is not None and not self.configs.allocator.has_allocated():
+                qubit_cap = tuple(self.configs.allocator.allocate(timestep=0, route_stats={}, verbose=False))
             else: qubit_cap = (8, 10, 8, 9)  # legacy fallback to avoid breaking runs
-
-        print(f"\nEXPERIMENT: Frames={frame_count}, Attack='{self.configs.attack_type}'")
-        print("="*50)
 
         # Build the environment ONCE per experiment, then reuse across all models
         self._build_environment_once(frame_count=frame_count, qubit_cap=qubit_cap)
 
+        def get_oracle_reward(base_model, oracle_reward=0.0):
+            print("Getting Oracle Rewards ...")
+            while oracle_reward <= 0:
+                results[base_model] = self.run_algorithm(base_model, frame_count, qubit_cap)
+                oracle_reward = results[base_model].get('final_reward', 0.0)
+            return oracle_reward
+            
         results = {}
-        results[base_model] = self.run_algorithm(base_model, frame_count, qubit_cap)
-        oracle_reward = results[base_model].get('final_reward', 0.0)
-
         best_reward = -1.0
+        oracle_reward = get_oracle_reward(base_model)
         for alg_name in models:
             if alg_name == base_model: continue
             print(f"\nRunning {alg_name}...")
             
             threshold = -1
+            efficiency = -1
             failed_threshold= threshold
             failed_attempts = {'total':0, 'failed':0, 'under_threshold':0, 'threshold':0}
             failed_attempts['threshold'] = self._get_min_efficiency(alg_name)
-            while threshold < failed_attempts['threshold']:
+
+            while threshold < failed_attempts['threshold']  and efficiency <= 0:
                 alg_result = self.run_algorithm(alg_name, frame_count, qubit_cap)
                 final_reward = alg_result.get('final_reward', 0.0)
                 failed_attempts['failed'] += alg_result['retries']
@@ -211,11 +219,12 @@ class QuantumExperimentRunner:
                 if threshold >= failed_threshold:
                     failed_threshold = threshold
                     results[alg_name] = alg_result
-                    efficiency = (final_reward / oracle_reward * 100) if oracle_reward > 0 else 0.0
+                    efficiency = (final_reward / oracle_reward * 100) if oracle_reward > 0 else get_oracle_reward()
                     gap = 100 - efficiency
 
                 if threshold < failed_attempts['threshold']: 
                     failed_attempts['under_threshold'] += 1 if threshold > 0 else 0
+                    failed_attempts['failed'] += 1 if threshold == 0 else 0
                     failed_attempts['total'] += 1
 
                 results[alg_name].update({'failed_attempts':failed_attempts})
@@ -234,7 +243,7 @@ class QuantumExperimentRunner:
             print(f"Total Retries={total}, Failed={failed}, Under Threshold={under_thr}, Threshold={threshold}")
             print(f"{alg_name}: Reward={final_reward:.2f}, Efficiency={efficiency:.1f}%")
 
-        print(f"\n🏆 Winner: {self.winner} (Gap: {results.get(self.winner, {}).get('gap', 100):.1f}%)")
+        print(f"\n🏆 Winner: {self.winner} (Gap: {results.get(self.winner, {}).get('gap', 100):.1f}%) [Env: {str(self.environment)}, Attack:{str(self.environment.attack)}, AttackRate:{self.environment.attack_rate}, Frames: {self.environment.frame_length}, Cap={self.configs.capacity} x Scale={self.configs.scale}]")
         return {'results': results, 'winner': self.winner}
 
     def cleanup(self, verbose=False, cooldown_seconds=1):

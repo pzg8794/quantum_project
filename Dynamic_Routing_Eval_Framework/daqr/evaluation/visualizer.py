@@ -48,6 +48,7 @@ class QuantumEvaluatorVisualizer:
         self.output_dir = output_dir or '../results'
         self.output_dir = Path(self.output_dir)
         self.session_id = self.session_timestamp
+        self.exp_dir = None
     
 
 
@@ -231,7 +232,7 @@ class QuantumEvaluatorVisualizer:
         (experiment_dir / "plots").mkdir(parents=True, exist_ok=True)
         (experiment_dir / "metadata").mkdir(parents=True, exist_ok=True)
         
-        print(f"✓ Created: {experiment_dir}")
+        print(f"✓ Created: {str(experiment_dir).split('/')[-1]}")
         print(f"  └─ Category: {model_category}")
         
         return experiment_dir, model_category
@@ -265,7 +266,7 @@ class QuantumEvaluatorVisualizer:
                 num_runs = 1
         
         # Create directory with auto-detected category
-        exp_dir, detected_category = self._create_experiment_directory(
+        self.exp_dir, detected_category = self._create_experiment_directory(
             environment_name, 
             experiment_id, 
             num_runs,
@@ -291,36 +292,36 @@ class QuantumEvaluatorVisualizer:
         saved_paths = {}
         
         # Save metadata
-        metadata_path = exp_dir / "metadata" / "experiment_metadata.json"
+        metadata_path = self.exp_dir / "metadata" / "experiment_metadata.json"
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2, default=str)
         saved_paths['metadata'] = str(metadata_path)
-        print(f"✓ Metadata: {metadata_path}")
+        print(f"✓ Metadata: {str(metadata_path).split('/')[-1]}")
         
         # Save results in requested format
         if save_format in ['json', 'both']:
             json_safe_results = self._make_json_safe(results)
-            results_json_path = exp_dir / "results" / f"experiment_{experiment_id}_results.json"
+            results_json_path = self.exp_dir / "results" / f"experiment_{experiment_id}_results.json"
             with open(results_json_path, 'w') as f:
                 json.dump(json_safe_results, f, indent=2, default=str)
             saved_paths['json'] = str(results_json_path)
-            print(f"✓ JSON: {results_json_path}")
+            print(f"✓ JSON: {str(results_json_path).split('/')[-1]}")
         
         if save_format in ['pickle', 'both']:
-            results_pickle_path = exp_dir / "results" / f"experiment_{experiment_id}_results.pkl"
+            results_pickle_path = self.exp_dir / "results" / f"experiment_{experiment_id}_results.pkl"
             with open(results_pickle_path, 'wb') as f:
                 pickle.dump(results, f)
             saved_paths['pickle'] = str(results_pickle_path)
-            print(f"✓ Pickle: {results_pickle_path}")
+            print(f"✓ Pickle: {str(results_pickle_path).split('/')[-1]}")
         
         # Save human-readable summary
-        summary_path = exp_dir / "results" / "experiment_summary.txt"
+        summary_path = self.exp_dir / "results" / "experiment_summary.txt"
         self._write_experiment_summary(summary_path, environment_name, results, metadata)
         saved_paths['summary'] = str(summary_path)
-        print(f"✓ Summary: {summary_path}")
+        print(f"✓ Summary: {str(summary_path).split('/')[-1]}")
         
         return {
-            'experiment_directory': str(exp_dir),
+            'experiment_directory': str(self.exp_dir),
             'model_category': detected_category,
             'files': saved_paths
         }
@@ -1032,8 +1033,31 @@ class QuantumEvaluatorVisualizer:
                         ha='center', va='center', transform=axes[1, 2].transAxes)
             axes[1, 2].set_axis_off()
 
+
+        # --- Build comparison results directory ---
+        allocator_type = str(self.allocator) if self.allocator else "None"
+        model_category = self._detect_model_category(
+            list(scenario_results['results'].keys()) if scenario_results else []
+        )
+
+        # Create unified "comparison" directory under /results
+        exp_dir = (
+            self.output_dir /
+            "comparison" /
+            allocator_type /
+            model_category
+        )
+        exp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Use timestamped filename for traceability
+        baseline_suffix = f"_vs_{baseline}" if baseline else ""
+        timestamp = self.session_timestamp
+        plot_filename = f"{allocator_type}_{scenario}{baseline_suffix}_{timestamp}.png"
+        plot_path = exp_dir / plot_filename
+
         plt.tight_layout()
-        plt.savefig(f'{scenario}_vs_{baseline if baseline else 'NA'}_comparison.png', dpi=300, bbox_inches='tight')
+        plt.savefig(plot_path, dpi=300, bbox_inches="tight")
+        print(f"✓ Comparison plot saved as: {str(plot_path).split('/')[-1]}")
         plt.show()
 
 
@@ -1059,14 +1083,18 @@ class QuantumEvaluatorVisualizer:
                 self.viz_data[scenario_data] = self._extract_primary_results('random', eval_results)
             stoch_data = self.viz_data[scenario_data]
         
+        baseline = ''
         if baseline_data is None:
             # Get baseline/none data
-            self.viz_data['baseline_data'] = self._extract_primary_results('none', eval_results)
-            if not self.viz_data['baseline_data']:
-                self.viz_data['baseline_data'] = self._extract_primary_results('baseline', eval_results)
-            if not self.viz_data['baseline_data']:
-                self.viz_data['baseline_data'] = self._extract_primary_results('no_attack', eval_results)
-            baseline_data = self.viz_data['baseline_data']
+            baseline = 'baseline'
+            baseline_data = f'{baseline}_data'
+            # Get baseline/none data
+            self.viz_data[baseline_data] = self._extract_primary_results('none', eval_results)
+            if not self.viz_data[baseline_data]:
+                self.viz_data[baseline_data] = self._extract_primary_results('baseline', eval_results)
+            if not self.viz_data[baseline_data]:
+                self.viz_data[baseline_data] = self._extract_primary_results('no_attack', eval_results)
+            baseline_data = self.viz_data[baseline_data]
 
         # Extract averaged results (already computed by framework)
         stoch_results = stoch_data['averaged'] if stoch_data else None
@@ -1099,10 +1127,31 @@ class QuantumEvaluatorVisualizer:
                         ha='center', va='center', transform=axes[1, 2].transAxes)
             axes[1, 2].set_axis_off()
 
-        plt.tight_layout()
-        plt.savefig('stochastic_vs_baseline_comparison.png', dpi=300, bbox_inches='tight')
-        plt.show()
+        # --- Build comparison results directory ---
+        allocator_type = str(self.allocator) if self.allocator else "None"
+        model_category = self._detect_model_category(
+            list(stoch_results['results'].keys()) if stoch_results else []
+        )
 
+        # Create unified "comparison" directory under /results
+        exp_dir = (
+            self.output_dir /
+            "comparison" /
+            allocator_type /
+            model_category
+        )
+        exp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Use timestamped filename for traceability
+        baseline_suffix = f"_vs_{baseline}_comparison" if baseline else ""
+        timestamp = self.session_timestamp
+        plot_filename = f"{allocator_type}_{scenario}{baseline_suffix}_{timestamp}.png"
+        plot_path = exp_dir / plot_filename
+
+        plt.tight_layout()
+        plt.savefig(plot_path, dpi=300, bbox_inches="tight")
+        print(f"✓ Comparison plot saved as: {str(plot_path).split('/')[-1]}")
+        plt.show()
 
     def _plot_single_environment_summary(self, ax, stochresults, environment_name):
         """Plot single environment summary using pre-computed winner and efficiency."""

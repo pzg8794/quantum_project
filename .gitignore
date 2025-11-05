@@ -1,0 +1,65 @@
+# ===========================================
+# PYTHON BUILD / CACHE FILES
+# ===========================================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.egg-info/
+*.so
+*.log
+
+# ===========================================
+# VIRTUAL ENVIRONMENTS & DEPENDENCIES
+# ===========================================
+.env
+.venv
+env/
+venv/
+ENV/
+pip-wheel-metadata/
+
+# ===========================================
+# JUPYTER / COLAB
+# ===========================================
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+*.ipynb_save
+
+# ===========================================
+# GCP EXPERIMENT OUTPUTS
+# ===========================================
+# Auto-generated experiment results/logs
+Dynamic_Routing_Eval_Framework/results/*
+Dynamic_Routing_Eval_Framework/logs/*
+Dynamic_Routing_Eval_Framework/experiment_results/*
+quantum_project/results/*
+quantum_project/logs/*
+
+# But keep result metadata & scripts
+!Dynamic_Routing_Eval_Framework/results/*
+!Dynamic_Routing_Eval_Framework/logs/*
+# ===========================================
+# EDITOR / OS JUNK
+# ===========================================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# ===========================================
+# OTHER TEMP FILES
+# ===========================================
+*.out
+*.cache
+*.dat
+*.tmp
+*.npy
+*.npz
+*.h5
+*.ckpt

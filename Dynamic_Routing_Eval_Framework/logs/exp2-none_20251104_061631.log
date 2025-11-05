@@ -1,0 +1,156 @@
+--- Remote log started at $(date) ---
+🔄 Switching to branch: gcp-main
+🚀 Executing: run_exp2.sh None
+[2025-11-04 06:16:52] Run: Exp2 | Frames: 10000 | Runs: 2 | Step: 2000 | Seed: 12345
+PyTorch version: 2.8.0+cu128
+NumPy version: 1.26.4
+Using device: cpu
+PyTorch version: 2.8.0+cu128
+NumPy version: 1.26.4
+Using device: cpu
+[WARN] Unknown or missing allocator 'None'. Defaulting to None.
+Multi-Run Evaluator Initialized
+Environment Type: None
+Frame Range: 10000 -> 12000 (step: 2000)
+
+✓ Framework Configuration:
+  • Primary Environment: STOCHASTIC
+  • Evaluation Mode: COMPREHENSIVE
+  • Models to Test: 5
+======================================================================
+
+▶ Executing STOCHASTIC-FOCUSED EVALUATION:
+  • STOCHASTIC           Stochastic Random Failures
+  • MARKOV               Markov Adversarial Attack
+  • ADAPTIVE             Adaptive Adversarial Attack
+  • ONLINEADAPTIVE       Online Adaptive Attack
+  • NONE                 Baseline (Optimal Conditions)
+======================================================================
+
+⚙ Running Quantum MAB Models Evaluation...
+======================================================================
+SCENARIOS MODEL EVALUATION
+======================================================================
+Testing algorithm performance against:
+	• Stochastic:  	Natural quantum decoherence and network failures
+	• Baseline:    	Optimal conditions for validation
+======================================================================
+Models to Test:             	Oracle, GNeuralUCB, EXPNeuralUCB, CPursuitNeuralUCB, iCPursuitNeuralUCB
+Test Scenarios:             	Stochastic Random Failures, Markov Adversarial Attack, Adaptive Adversarial Attack, Online Adaptive Attack, Baseline (Optimal Conditions)
+Experiments per Scenario:   	2
+======================================================================
+TESTING ENVIRONMENT SCENARIO: STOCHASTIC RANDOM FAILURES
+==================================================
+
+STARTING EXPERIMENTS: STOCHASTIC
+Category: Stochastic (Natural Random Failures)
+============================================================
+EXPERIMENT 1: 10000 frames
+----------------------------------------
+[FixedAllocator] timestep=0 → allocation=(8, 10, 8, 9)
+🔄 Dynamic Allocation (Initial): (8, 10, 8, 9)
+
+EXPERIMENT: Envinment (Env): Stochastic, Attack:Random, AttackRate:0.0625, Frames: 10000, Cap=10000 x Scale=2, Seed: 14682
+=============================================================================================================================
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=6436.00, Efficiency=93.2%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=6373.58, Efficiency=92.3%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=6329.88, Efficiency=91.6%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=1, Failed=0, Under Threshold=1, Threshold=0.712
+iCPursuitNeuralUCB: Reward=3743.46, Efficiency=54.2%
+
+🏆 Winner: GNeuralUCB (Gap: 6.8%) [Env: Stochastic, Attack:Random, AttackRate:0.0625, Frames: 10000, Cap=10000 x Scale=2]
+Experiment 1 completed successfully in environment stochastic
+EXPERIMENT 2: 12000 frames
+----------------------------------------
+[FixedAllocator] timestep=1 → allocation=(8, 10, 8, 9)
+🔄 Dynamic Allocation (Initial): (8, 10, 8, 9)
+
+EXPERIMENT: Envinment (Env): Stochastic, Attack:Random, AttackRate:0.0625, Frames: 12000, Cap=10000 x Scale=2, Seed: 16678
+=============================================================================================================================
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=7698.51, Efficiency=92.9%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=7569.21, Efficiency=91.4%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=7767.66, Efficiency=93.8%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.712
+iCPursuitNeuralUCB: Reward=6704.46, Efficiency=80.9%
+
+🏆 Winner: CPursuitNeuralUCB (Gap: 6.2%) [Env: Stochastic, Attack:Random, AttackRate:0.0625, Frames: 12000, Cap=10000 x Scale=2]
+Experiment 2 completed successfully in environment stochastic
+Total experiment time: 9766.5s
+Experiments completed for stochastic
+TESTING ENVIRONMENT SCENARIO: MARKOV ADVERSARIAL ATTACK
+==================================================
+
+STARTING EXPERIMENTS: MARKOV
+Category: Structured (Markov Chain Based)
+============================================================
+EXPERIMENT 1: 10000 frames
+----------------------------------------
+[FixedAllocator] timestep=0 → allocation=(8, 10, 8, 9)
+🔄 Dynamic Allocation (Initial): (8, 10, 8, 9)
+
+EXPERIMENT: Envinment (Env): Adversarial, Attack:Markov, AttackRate:0.25, Frames: 10000, Cap=10000 x Scale=2, Seed: 21015
+=============================================================================================================================
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=6182.24, Efficiency=89.7%
+
+Running EXPNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.628
+EXPNeuralUCB: Reward=6243.68, Efficiency=90.6%
+
+Running CPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.634
+CPursuitNeuralUCB: Reward=6337.76, Efficiency=92.0%
+
+Running iCPursuitNeuralUCB...
+✓ CMAB(Pursuit) initialized with learning_rate=0.1
+✓ ARIMA prediction enabled at frame 50
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.712
+iCPursuitNeuralUCB: Reward=6289.08, Efficiency=91.3%
+
+🏆 Winner: CPursuitNeuralUCB (Gap: 8.0%) [Env: Adversarial, Attack:Markov, AttackRate:0.25, Frames: 10000, Cap=10000 x Scale=2]
+Experiment 1 completed successfully in environment markov
+EXPERIMENT 2: 12000 frames
+----------------------------------------
+[FixedAllocator] timestep=1 → allocation=(8, 10, 8, 9)
+🔄 Dynamic Allocation (Initial): (8, 10, 8, 9)
+
+EXPERIMENT: Envinment (Env): Adversarial, Attack:Markov, AttackRate:0.25, Frames: 12000, Cap=10000 x Scale=2, Seed: 15433
+=============================================================================================================================
+
+Running GNeuralUCB...
+Total Retries=0, Failed=0, Under Threshold=0, Threshold=0.582
+GNeuralUCB: Reward=7551.12, Efficiency=91.3%
+
+Running EXPNeuralUCB...

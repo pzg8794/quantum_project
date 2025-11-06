@@ -64,19 +64,19 @@ class QuantumModel(ABC):
                 'iCPursuitNeuralUCB': {'stochastic': 0.712, 'adversarial': 0.689}
             }
 
-    def get_cleanup_wait_time(self, frame_count=1000, cooldown_base=3, cooldown_scale_factor=1, cooldown_max=15):
+    def get_cleanup_wait_time(self, frames_count=1000, cooldown_base=3, cooldown_scale_factor=1, cooldown_max=15):
         """
         Calculate frame-scaled cleanup wait time.
         
         Args:
-            frame_count: Number of frames (if None, uses self.frame_count)
+            frames_count: Number of frames (if None, uses self.frames_count)
         
         Returns:
             float: Wait time in seconds
         """
 
         # Frame-scaled timing formula
-        scale = (frame_count / 1000.0) * cooldown_scale_factor
+        scale = (frames_count / 1000.0) * cooldown_scale_factor
         wait_time = cooldown_base + scale
         
         return min(wait_time, cooldown_max)

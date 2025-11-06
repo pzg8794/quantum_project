@@ -13,7 +13,7 @@ class MultiRunEvaluator:
     """
     def __init__(self, configs=None, base_frames=4000, frame_step=2000, base_seed=12345, 
                  runs=None, attack_type=None, models=None, scenarios=None,
-                 attack_intensity=None, enable_progress=False, capacity=None):
+                 attack_intensity=None, enable_progress=False):
         """
         Initialize the multi-run evaluator.
         Args:
@@ -34,6 +34,7 @@ class MultiRunEvaluator:
 
         self.base_seed = base_seed
         self.frame_step = frame_step
+        self.frames_count = base_frames
         self.base_frames = base_frames
         self.enable_progress = enable_progress
         
@@ -48,10 +49,9 @@ class MultiRunEvaluator:
 
         self.cal_winner = True
         self.env_type = 'stochastic'
+        self.capacity = self.base_frames
         self.update_configs(runs, models, attack_type, scenarios, attack_intensity)
         # self.capacity = (frame_step * self.configs.runs) + base_frames
-        self.capacity = base_frames if capacity is None else (capacity/2)
-        self.configs.capacity = self.capacity
 
         print("Multi-Run Evaluator Initialized")
         print(f"Environment Type: {attack_type}")
@@ -61,10 +61,13 @@ class MultiRunEvaluator:
     def run_experiment(self, exp_no, offset=100, models=None, attack_category="Stochastic", attack_rate=0.25):
         self.update_configs(models=models, attack_rate=attack_rate)
 
-        frame_count = self.base_frames + (exp_no * self.frame_step)
+        self.frames_count = self.base_frames + (exp_no * self.frame_step)
+        self.capacity = self.base_frames if self.configs.base_capacity else self.frames_count
+        
+        print("-" * 100)
         exp_id = exp_no + 1
-        print(f"EXPERIMENT {exp_id}: {frame_count} frames")
-        print("-" * 40)
+        print(f"EXPERIMENT {exp_id}: {self.frames_count} frames  <>  SCALED-CAPACITY: {self.capacity*self.configs.scale} frames (CAPACITY:{self.capacity} X SCALE:{self.configs.scale})")
+        print("-" * 100)
 
         # Configure attack scenario ONCE (per scenario batch is fine; here per exp is safe too)
         self.configs.set_attack_strategy(
@@ -87,15 +90,17 @@ class MultiRunEvaluator:
         # Create runner and pass the precomputed qubit_cap
         runner = QuantumExperimentRunner(
             config=self.configs,
-            base_seed=self.base_seed + exp_no * offset,
+            capacity = self.capacity,
+            frames_count=self.frames_count,
+            enable_progress=self.enable_progress,
             attack_type=self.configs.attack_type,
+            base_seed=self.base_seed + exp_no * offset,
             attack_intensity=self.configs.attack_intensity,
-            enable_progress=self.enable_progress
         )
 
         try:
             experiment_results = runner.run_experiment(
-                frame_count=frame_count,
+                frames_count=self.frames_count,
                 models=self.configs.models,
                 qubit_cap=qubit_cap  # critical: pass routing-derived capacities
             )

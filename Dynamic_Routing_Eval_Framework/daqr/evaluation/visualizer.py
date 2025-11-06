@@ -627,7 +627,7 @@ class QuantumEvaluatorVisualizer:
         else:
             highest_exp = max(exp_keys)
             peak_data = env_results[highest_exp]
-            peak_frames = peak_data.get('frame_count', highest_exp)
+            peak_frames = peak_data.get('frames_count', highest_exp)
         
         return {
             'averaged': {
@@ -947,13 +947,13 @@ class QuantumEvaluatorVisualizer:
         
         # Case 2: It's a dict of experiments {exp_id: experiment_data}
         if isinstance(exp_dict, dict):
-            # Pick the one with largest frame_count
+            # Pick the one with largest frames_count
             best_exp = None
             max_frames = 0
             
             for exp_id, exp_data in exp_dict.items():
                 if isinstance(exp_data, dict) and 'results' in exp_data:
-                    frames = exp_data.get('frame_count', exp_data.get('results', {}).get('frame_count', 0))
+                    frames = exp_data.get('frames_count', exp_data.get('results', {}).get('frames_count', 0))
                     if frames > max_frames:
                         max_frames = frames
                         best_exp = exp_data

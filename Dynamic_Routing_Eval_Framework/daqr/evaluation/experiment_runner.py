@@ -20,7 +20,7 @@ class QuantumExperimentRunner:
     """
     
     def __init__(self, config: ExperimentConfiguration | None = None, frames_count=4000, base_seed=12345, 
-             attack_type=None, attack_intensity=None, enable_progress=True, use_locks=False, 
+             attack_type=None, attack_intensity=None, enable_progress=False, use_locks=False, 
              capacity=None, max_workers=None):
         self.configs = config if config is not None else ExperimentConfiguration()
         self.configs.base_seed = base_seed
@@ -98,7 +98,7 @@ class QuantumExperimentRunner:
             total_reward = oracle_results['final_reward']
         return total_reward
     
-    def run_algorithm(self, algorithm_name: str):
+    def run_algorithm(self, algorithm_name: str, enable_progress=False):
         """
         Run a single algorithm assuming the environment has already been built
         for this experiment with the provided qubit_cap.
@@ -116,7 +116,6 @@ class QuantumExperimentRunner:
         torch.manual_seed(algorithm_seed)
         np.random.seed(algorithm_seed)
 
-        enable_progress = self.enable_progress
         results = {'final_reward': 0.0}
         total_reward, attempts = 0.0, 0
 
@@ -530,8 +529,8 @@ class QuantumExperimentRunner:
         print(f"\n🚀 Running {len(parallel_models)} models in parallel (max_workers={max_workers})")
         print("="*80)
         
-        best_reward = oracle_result.get('final_reward', 0.0)
-        winner = base_model
+        best_reward = -1
+        self.winner = None
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all model tasks
@@ -549,18 +548,15 @@ class QuantumExperimentRunner:
                     final_reward = model_result.get('final_reward', 0.0)
                     if final_reward > best_reward:
                         best_reward = final_reward
-                        winner = model_name
+                        self.winner = model_name
                         
                 except Exception as e:
                     model_name = future_to_model[future]
                     print(f"❌ Parallel execution failed for {model_name}: {e}")
                     results[model_name] = {'final_reward': 0.0, 'error': str(e)}
 
-        print(f"\n🏆 Winner: {winner} (Reward: {best_reward:.2f}) "
-            f"[Env: {str(self.environment)}, Attack: {str(self.environment.attack)}, "
-            f"Frames: {self.environment.frame_length}, Cap: {self.capacity}]")
-        
-        return {'results': results, 'winner': winner}
+        print(f"\n🏆 Winner: {self.winner} (Gap: {results.get(self.winner, {}).get('gap', 100):.1f}%) [Env: {str(self.environment)}, Attack:{str(self.environment.attack)} X Rate:{self.environment.attack_rate}, Frames: {self.environment.frame_length}, Scaled-Capacity={self.capacity}, Alloc={str(self.configs.allocator)}]")
+        return {'results': results, 'winner': self.winner}
 
 
 

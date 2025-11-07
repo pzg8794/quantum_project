@@ -5,7 +5,10 @@ import  gc, time
 import  torch
 import  threading  
 from    threading import Lock, Event
-
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import multiprocessing as mp
+import psutil  # for memory estimation (optional)
 
 
 
@@ -15,7 +18,10 @@ class QuantumExperimentRunner:
     leverages the ExperimentConfiguration factory to set up and execute tests
     across various scenarios and models.
     """
-    def __init__(self, config: ExperimentConfiguration | None = None, frames_count=4000, base_seed=12345, attack_type=None, attack_intensity=None, enable_progress=True, use_locks=False, capacity=None):
+    
+    def __init__(self, config: ExperimentConfiguration | None = None, frames_count=4000, base_seed=12345, 
+             attack_type=None, attack_intensity=None, enable_progress=True, use_locks=False, 
+             capacity=None, max_workers=None):
         self.configs = config if config is not None else ExperimentConfiguration()
         self.configs.base_seed = base_seed
         
@@ -27,9 +33,16 @@ class QuantumExperimentRunner:
         self.experiment_seed = None
         self.frames_count = frames_count
         self.enable_progress = enable_progress
-        self.capacity = capacity or self.frames_count
         self.algorithm_configs = self.configs.get_models_configs()
+        self.capacity = capacity if capacity else self.frames_count
         self.configs.update_configs(attack_type=attack_type, attack_intensity=attack_intensity)
+        
+        # ADD these new parallel execution attributes
+        self.max_workers = max_workers if max_workers else min(4, mp.cpu_count())
+        self._model_cache = {}  # Cache for model reuse
+        self._parallel_lock = threading.RLock()  # Thread-safe operations
+        self._execution_stats = {'total_time': 0, 'parallel_efficiency': 0}
+    
     
     def remove_model(self, model_name):
         if model_name in self.algorithm_configs.keys():
@@ -68,6 +81,7 @@ class QuantumExperimentRunner:
 
 
     def run_step_wise_oracle(self, env_info, model, frames_count=4000, algorithm_name='Oracle'):
+        if frames_count: self.frames_count = frames_count
         total_reward = 0.0
         for t in tqdm(range(self.frames_count), desc=f"{algorithm_name}", disable=not self.enable_progress):
             if t >= env_info['attack_pattern'].shape[0]:
@@ -84,21 +98,12 @@ class QuantumExperimentRunner:
             total_reward = oracle_results['final_reward']
         return total_reward
     
-    def run_algorithm(self, algorithm_name: str, frames_count: int, qubit_cap: tuple):
+    def run_algorithm(self, algorithm_name: str):
         """
         Run a single algorithm assuming the environment has already been built
         for this experiment with the provided qubit_cap.
         """
-        if frames_count: self.frames_count =frames_count
-        if algorithm_name not in self.algorithm_configs:
-            raise ValueError(f"Unknown algorithm: {algorithm_name}")
-
-        if self.environment is None:
-            # Safety: build env if caller forgot; prefer explicit build in run_experiment
-            self._build_environment_once(frames_count=frames_count, qubit_cap=qubit_cap)
-
-        # setting capacity at the experiment level
-        self.capacity = self.capacity*self.configs.scale
+        if algorithm_name not in self.algorithm_configs: raise ValueError(f"Unknown algorithm: {algorithm_name}")
 
         config = self.algorithm_configs[algorithm_name]
         env_info = self.environment.get_environment_info()
@@ -198,10 +203,13 @@ class QuantumExperimentRunner:
         def get_oracle_reward(base_model, oracle_reward=0.0):
             print("Getting Oracle Rewards ...")
             while oracle_reward <= 0:
-                results[base_model] = self.run_algorithm(base_model, self.frames_count, qubit_cap)
+                results[base_model] = self.run_algorithm(base_model)
                 oracle_reward = results[base_model].get('final_reward', 0.0)
             return oracle_reward
-            
+
+        # setting capacity at the experiment level
+        self.capacity = self.capacity*self.configs.scale
+
         results = {}
         best_reward = -1.0
         oracle_reward = get_oracle_reward(base_model)
@@ -216,7 +224,7 @@ class QuantumExperimentRunner:
             failed_attempts['threshold'] = self._get_min_efficiency(alg_name)
 
             while threshold < failed_attempts['threshold']  and efficiency <= 0:
-                alg_result = self.run_algorithm(alg_name, self.frames_count, qubit_cap)
+                alg_result = self.run_algorithm(alg_name)
                 final_reward = alg_result.get('final_reward', 0.0)
                 failed_attempts['failed'] += alg_result['retries']
                 failed_attempts['total'] += alg_result['retries']
@@ -249,16 +257,16 @@ class QuantumExperimentRunner:
             print(f"Total Retries={total}, Failed={failed}, Under Threshold={under_thr}, Threshold={threshold}")
             print(f"{alg_name}: Reward={final_reward:.2f}, Efficiency={efficiency:.1f}%")
 
-        print(f"\n🏆 Winner: {self.winner} (Gap: {results.get(self.winner, {}).get('gap', 100):.1f}%) [Env: {str(self.environment)}, Attack:{str(self.environment.attack)} X Rate:{self.environment.attack_rate}, Frames: {self.environment.frame_length}, Cap={self.capacity} X Scale={self.configs.scale}, Alloc={str(self.configs.allocator)}]")
+        print(f"\n🏆 Winner: {self.winner} (Gap: {results.get(self.winner, {}).get('gap', 100):.1f}%) [Env: {str(self.environment)}, Attack:{str(self.environment.attack)} X Rate:{self.environment.attack_rate}, Frames: {self.environment.frame_length}, Scaled-Capacity={self.capacity}, Alloc={str(self.configs.allocator)}]")
         return {'results': results, 'winner': self.winner}
 
     def cleanup(self, verbose=False, cooldown_seconds=1):
-        """Enhanced cleanup with model cache support."""
+        """Enhanced cleanup with parallel execution support."""
         import gc
         cleanup_items = []
         if cooldown_seconds > 0: time.sleep(cooldown_seconds)
         
-        # 1. Clean up environment
+        # YOUR EXISTING CLEANUP (keep as-is)
         if hasattr(self, 'environment') and self.environment:
             if hasattr(self.environment, 'cleanup'):
                 self.environment.cleanup(verbose=verbose)
@@ -266,7 +274,7 @@ class QuantumExperimentRunner:
             self.environment = None
             cleanup_items.append("environment")
         
-        # 2. Clean up all models (NEW!)
+        # ADD: Clean up model cache
         if hasattr(self, '_model_cache'):
             for model_name, model in self._model_cache.items():
                 if hasattr(model, 'cleanup'):
@@ -274,7 +282,7 @@ class QuantumExperimentRunner:
             self._model_cache.clear()
             cleanup_items.append("model_cache")
         
-        # 3. PyTorch cleanup
+        # YOUR EXISTING PYTORCH/GC CLEANUP (keep as-is)
         try:
             import torch
             if torch.cuda.is_available():
@@ -284,13 +292,13 @@ class QuantumExperimentRunner:
         except ImportError:
             pass
         
-        # 4. Garbage collection
         collected = gc.collect()
         cleanup_items.append(f"GC:{collected} objects")
-
         cleanup_items.append(f"cooldown:{cooldown_seconds}s")
+        
         if cooldown_seconds > 0: time.sleep(cooldown_seconds)
         if verbose: print(f"✓ ExperimentRunner cleaned: \t{', '.join(cleanup_items)}")
+
 
 
     def __del__(self):
@@ -411,3 +419,313 @@ class QuantumExperimentRunner:
         print("| Metadata System   | Comprehensive Info          |")
         print("| Capability Detection | Automatic                |")
         print("=" * 60)
+
+
+
+
+
+
+    def run_experiment_parallel(self, frames_count=None, models=None, base_model='Oracle',
+                            attack_type=None, qubit_cap=None, max_workers=None):
+        """Enhanced parallel execution of multiple models simultaneously"""
+        
+        if attack_type is not None: 
+            self.configs.attack_type = attack_type
+        if models is None: 
+            models = list(self.algorithm_configs.keys())
+        if frames_count: 
+            self.frames_count = frames_count
+        if max_workers is None:
+            max_workers = min(len(models), mp.cpu_count())
+
+        # Build environment once (your excellent optimization)
+        if qubit_cap is None:
+            if self.configs.allocator is not None and not self.configs.allocator.has_allocated():
+                qubit_cap = tuple(self.configs.allocator.allocate(timestep=0, route_stats={}, verbose=False))
+            else: 
+                qubit_cap = (8, 10, 8, 9)
+
+        self._build_environment_once(frames_count=self.frames_count, qubit_cap=qubit_cap)
+        
+        # Get Oracle baseline first (required for efficiency calculation)
+        def get_oracle_reward():
+            print("Getting Oracle Rewards in parallel setup...")
+            oracle_reward = 0.0
+            while oracle_reward <= 0:
+                oracle_result = self.run_algorithm(base_model)
+                oracle_reward = oracle_result.get('final_reward', 0.0)
+            return oracle_result, oracle_reward
+
+        results = {}
+        oracle_result, oracle_reward = get_oracle_reward()
+        results[base_model] = oracle_result
+        
+        # Remove Oracle from parallel execution list
+        parallel_models = [m for m in models if m != base_model]
+        
+        # Enhanced parallel execution with live progress
+        def run_single_model(model_name):
+            """Run a single model with retry logic"""
+            print(f"\n🔄 Starting {model_name} in parallel...")
+            
+            threshold = -1
+            efficiency = -1
+            failed_attempts = {
+                'total': 0, 
+                'failed': 0, 
+                'under_threshold': 0, 
+                'threshold': self._get_min_efficiency(model_name)
+            }
+            
+            best_result = None
+            failed_threshold = threshold
+            
+            while threshold < failed_attempts['threshold'] and efficiency <= 0:
+                try:
+                    alg_result = self.run_algorithm(model_name)
+                    final_reward = alg_result.get('final_reward', 0.0)
+                    failed_attempts['failed'] += alg_result.get('retries', 0)
+                    failed_attempts['total'] += alg_result.get('retries', 0)
+                    threshold = final_reward / oracle_reward if oracle_reward > 0 else 0
+
+                    if threshold >= failed_threshold:
+                        failed_threshold = threshold
+                        best_result = alg_result.copy()
+                        efficiency = (final_reward / oracle_reward * 100) if oracle_reward > 0 else 0
+                        gap = 100 - efficiency
+
+                    if threshold < failed_attempts['threshold']: 
+                        failed_attempts['under_threshold'] += 1 if threshold > 0 else 0
+                        failed_attempts['failed'] += 1 if threshold == 0 else 0
+
+                    failed_attempts['total'] += 1
+                    
+                    if failed_attempts['under_threshold'] >= 3:
+                        break
+                        
+                except Exception as e:
+                    print(f"❌ Error in {model_name}: {e}")
+                    failed_attempts['failed'] += 1
+                    failed_attempts['total'] += 1
+                    
+                    if failed_attempts['failed'] >= 3:  # Max retries
+                        best_result = {'final_reward': 0.0, 'error': str(e)}
+                        break
+            
+            if best_result is None:
+                best_result = {'final_reward': 0.0, 'error': 'Failed to achieve threshold'}
+                
+            best_result.update({
+                'failed_attempts': failed_attempts,
+                'efficiency': efficiency,
+                'gap': 100 - efficiency if efficiency > 0 else 100
+            })
+            
+            print(f"✅ {model_name}: Reward={best_result['final_reward']:.2f}, "
+                f"Efficiency={efficiency:.1f}%, Retries={failed_attempts['total']}")
+            
+            return model_name, best_result
+
+        # Execute models in parallel with controlled concurrency
+        print(f"\n🚀 Running {len(parallel_models)} models in parallel (max_workers={max_workers})")
+        print("="*80)
+        
+        best_reward = oracle_result.get('final_reward', 0.0)
+        winner = base_model
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all model tasks
+            future_to_model = {
+                executor.submit(run_single_model, model_name): model_name 
+                for model_name in parallel_models
+            }
+            
+            # Process results as they complete (live progress)
+            for future in as_completed(future_to_model):
+                try:
+                    model_name, model_result = future.result()
+                    results[model_name] = model_result
+                    
+                    final_reward = model_result.get('final_reward', 0.0)
+                    if final_reward > best_reward:
+                        best_reward = final_reward
+                        winner = model_name
+                        
+                except Exception as e:
+                    model_name = future_to_model[future]
+                    print(f"❌ Parallel execution failed for {model_name}: {e}")
+                    results[model_name] = {'final_reward': 0.0, 'error': str(e)}
+
+        print(f"\n🏆 Winner: {winner} (Reward: {best_reward:.2f}) "
+            f"[Env: {str(self.environment)}, Attack: {str(self.environment.attack)}, "
+            f"Frames: {self.environment.frame_length}, Cap: {self.capacity}]")
+        
+        return {'results': results, 'winner': winner}
+
+
+
+    def get_or_create_model(self, algorithm_name, env_info, algorithm_seed):
+        """Thread-safe model creation with caching"""
+        cache_key = f"{algorithm_name}_{algorithm_seed}_{self.frames_count}"
+        
+        with self._model_lock:
+            if cache_key in self._model_cache:
+                model = self._model_cache[cache_key]
+                if hasattr(model, 'reset'):
+                    model.reset()  # Reset state but reuse instance
+                return model
+            
+            # Create new model
+            config = self.algorithm_configs[algorithm_name]
+            model_class = config['model_class']
+            model_kwargs = config['kwargs'].copy()
+            
+            if algorithm_name == 'Oracle':
+                model = model_class(
+                    X_n=env_info['contexts'],
+                    reward_list=env_info['reward_functions'],
+                    attack_list=env_info['attack_pattern']
+                )
+            else:
+                model = model_class(
+                    X_n=env_info['contexts'],
+                    reward_list=env_info['reward_functions'],
+                    frame_number=self.frames_count,
+                    **model_kwargs,
+                )
+                model.set_capacity(self.capacity)
+            
+            # Cache for reuse (if stateless or has reset capability)
+            if hasattr(model, 'reset') or getattr(model, 'stateless', False):
+                self._model_cache[cache_key] = model
+                
+            return model
+
+
+    async def run_experiments_async(self, experiment_configs):
+        """Run multiple complete experiments asynchronously"""
+        import asyncio
+        
+        async def run_single_experiment_async(config):
+            """Async wrapper for single experiment"""
+            loop = asyncio.get_event_loop()
+            
+            # Run in thread pool to avoid blocking
+            result = await loop.run_in_executor(
+                None,  # Use default thread pool
+                self.run_experiment,
+                config.get('frames_count'),
+                config.get('models'),
+                config.get('base_model', 'Oracle'),
+                config.get('attack_type'),
+                config.get('qubit_cap')
+            )
+            
+            return config['experiment_id'], result
+        
+        # Execute all experiments concurrently
+        tasks = [
+            run_single_experiment_async(config) 
+            for config in experiment_configs
+        ]
+        
+        results = {}
+        for task in asyncio.as_completed(tasks):
+            exp_id, result = await task
+            results[exp_id] = result
+            print(f"✅ Experiment {exp_id} completed")
+        
+        return results
+
+
+    def optimize_parallel_execution(self, models, system_resources=None):
+        """Determine optimal parallel execution strategy"""
+        if system_resources is None:
+            system_resources = {
+                'cpu_cores': mp.cpu_count(),
+                'memory_gb': self.estimate_available_memory(),
+                'gpu_available': torch.cuda.is_available() if 'torch' in globals() else False
+            }
+        
+        # Model complexity estimation
+        model_complexity = {
+            'Oracle': 1,      # Lightweight
+            'EXPUCB': 2,      # Medium
+            'GNeuralUCB': 4,  # Neural network intensive
+            'EXPNeuralUCB': 5, # Most complex
+            'CEXPNeuralUCB': 4,
+            # 'EXPUCB':2,
+            # 'LinUCB':2,
+            # 'CPursuit':2, 
+            # 'CEXPNeuralUCB':5,
+            'CPursuitNeuralUCB':5,
+            'iCPursuitNeuralUCB':5
+        }
+        
+        total_complexity = sum(model_complexity.get(m, 3) for m in models)
+        
+        # Adaptive worker count based on complexity and resources
+        if total_complexity <= system_resources['cpu_cores']:
+            max_workers = len(models)  # Run all in parallel
+        else:
+            # Limit based on estimated resource usage
+            max_workers = max(1, system_resources['cpu_cores'] // 2)
+        
+        return {
+            'max_workers': max_workers,
+            'batch_size': min(max_workers, len(models)),
+            'memory_per_worker': system_resources['memory_gb'] // max_workers,
+            'use_gpu': system_resources['gpu_available'] and any(
+                'Neural' in m for m in models
+            )
+        }
+
+    def estimate_available_memory(self):
+        """Estimate available system memory in GB"""
+        try:
+            import psutil
+            return psutil.virtual_memory().available // (1024**3)
+        except ImportError:
+            return 8  # Conservative default
+
+
+    def run_experiment_with_live_progress(self, frames_count=None, models=None, **kwargs):
+        """Enhanced experiment runner with live parallel progress tracking"""
+        from tqdm import tqdm
+        import time
+        
+        if models is None:
+            models = list(self.algorithm_configs.keys())
+        
+        print(f"\n🎯 PARALLEL QUANTUM EXPERIMENT")
+        print(f"📊 Models: {len(models)} | Frames: {frames_count}")
+        print("="*60)
+        
+        # Progress tracking
+        model_progress = {model: 0 for model in models}
+        completed_models = set()
+        
+        def update_progress_callback(model_name, progress_percent):
+            """Callback for model progress updates"""
+            model_progress[model_name] = progress_percent
+            
+            # Update display
+            overall_progress = sum(model_progress.values()) / len(models)
+            active_models = len([m for m in models if m not in completed_models])
+            
+            print(f"🔄 Overall: {overall_progress:.1f}% | Active: {active_models}/{len(models)}")
+        
+        # Enhanced execution with progress
+        start_time = time.time()
+        results = self.run_experiment_parallel(
+            frames_count=frames_count, 
+            models=models,
+            progress_callback=update_progress_callback,
+            **kwargs
+        )
+        execution_time = time.time() - start_time
+        
+        print(f"\n⏱️  Total execution time: {execution_time:.2f}s")
+        print(f"🏆 Winner: {results['winner']}")
+        
+        return results

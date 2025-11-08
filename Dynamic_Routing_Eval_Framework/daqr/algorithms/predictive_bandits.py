@@ -66,6 +66,7 @@ class CPursuitNeuralUCB(EXPNeuralUCB):
         
         # Override mode and add CMAB components
         self.mode = mode
+        self.verbose = verbose
         self.learning_rate = learning_rate
         self.n_features = len(X_n[0]) if X_n else 2
         
@@ -82,7 +83,8 @@ class CPursuitNeuralUCB(EXPNeuralUCB):
                 n_features=self.n_features,
                 learning_rate=self.learning_rate
             )
-            print(f"✓ CMAB(Pursuit) initialized with learning_rate={self.learning_rate}")
+            if self.verbose:
+                print(f"✓ CMAB(Pursuit) initialized with learning_rate={self.learning_rate}")
         except Exception as e:
             print(f"✗ Failed to initialize CMAB(Pursuit): {e}")
             self.cmab = None
@@ -130,10 +132,13 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
     - Neural UCB for action selection
     - Anomaly detection for reward filtering
     """
-    
     def __init__(self, X_n, reward_list, frame_number, mode='icmab',
                  gamma_factor=0.1, eta_factor=0.005, beta=0.2, 
-                 learning_rate=0.1, obs=None, verbose=True):
+                 learning_rate=0.1, obs=None, verbose=True,
+                 warmup_frames=50,  # ✅ Configurable
+                 arima_update_interval=200,  # ✅ Configurable
+                 obs_noise=0.1,  # ✅ Configurable
+                 n_experts=4):  # ✅ NEW: Configurable experts
         """
         Initialize iCPursuitNeuralUCB
         
@@ -150,44 +155,46 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
         super().__init__(X_n, reward_list, frame_number, 'cmab',
                         gamma_factor, eta_factor, beta, learning_rate, verbose)
         
-        # Override mode to informative
         self.mode = mode
         self.n_features = len(X_n[0]) if X_n else 2
         
-        # Initialize iCMAB if mode is informative
+        # Store configurable parameters
+        self.arima_update_interval = arima_update_interval
+        self.warmup_frames = warmup_frames
+        self.obs_noise = obs_noise
+        self.n_experts = n_experts  # Store experts count
+        
         if mode == 'icmab':
             self._initialize_icmab_components(obs)
     
     def _initialize_icmab_components(self, obs):
         """Initialize iCMAB(Pursuit) with anomaly detection"""
         try:
-            # Create initial observation if not provided
             if obs is None:
                 obs = np.zeros((self.n_features, self.num_groups))
             
-            # Initialize iCMAB with Pursuit algorithm
             self.icmab = iCMAB(
                 bandit="pursuit",
                 n_arms=self.num_groups,
-                n_experts=4,
+                n_experts=self.n_experts,
                 n_features=self.n_features,
                 learning_rate=self.learning_rate,
                 obs=obs
             )
             
-            # ARIMA model tracking
             self.arima_models = {}
-            self.use_arima = False  # Enable after warmup
-            self.warmup_frames = 50  # Minimum frames for ARIMA
+            self.use_arima = False
+            
             if self.verbose:
                 print(f"✓ iCMAB(Pursuit) initialized with ARIMA prediction capability")
                 print(f"  - Learning rate: {self.learning_rate}")
-                print(f"  - Warmup frames: {self.warmup_frames}")
+                print(f"  - Warmup frames: {self.warmup_frames} (configurable)")
+                print(f"  - ARIMA update interval: {self.arima_update_interval} (configurable)")
             
         except Exception as e:
             print(f"✗ Failed to initialize iCMAB(Pursuit): {e}")
             self.icmab = None
-            self.mode = 'cmab'  # Fallback to regular CMAB
+            self.mode = 'cmab'
     
     def select_group(self, frame):
         """Override: Use iCMAB with predictive intelligence"""
@@ -202,7 +209,8 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
         # Enable ARIMA after warmup period
         if frame >= self.warmup_frames and not self.use_arima:
             self.use_arima = True
-            print(f"✓ ARIMA prediction enabled at frame {frame}")
+            if self.verbose:
+                print(f"✓ ARIMA prediction enabled at frame {frame}")
         
         # Use iCMAB to select arm (path)
         selected_group = self.icmab.pickArm()
@@ -223,37 +231,27 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
             arm_rewards: Rewards for all arms (optional)
         """
         if self.mode == 'icmab' and self.icmab is not None:
-            # Filter reward through anomaly detection if ARIMA is enabled
             filtered_reward = observed_reward
             
-            if self.use_arima and frame % 200 == 0:  # Periodic ARIMA update
+            # Use configurable interval instead of hardcoded 200
+            if self.use_arima and frame % self.arima_update_interval == 0:
                 try:
-                    # Generate/update ARIMA model for the selected path
                     arima_model = self.icmab.generateRewardARIMA(selected_path)
-                    
-                    # Detect and filter anomalous rewards
                     filtered_reward = self.icmab.detectRewardAnomaly(
                         observed_reward, 
                         arima_model
                     )
-                    
-                    # Store model for future use
                     self.arima_models[selected_path] = arima_model
-                    
                 except Exception as e:
-                    # Silently fallback to unfiltered reward
                     filtered_reward = observed_reward
             
-            # Prepare observation and arm rewards for iCMAB
             if obs is None:
                 obs = np.zeros((self.n_features, self.num_groups))
             
             if arm_rewards is None:
-                # Estimate arm rewards (actual reward only for selected path)
                 arm_rewards = [0.0] * self.num_groups
                 arm_rewards[selected_path] = filtered_reward
             
-            # Update iCMAB
             self.icmab.update(
                 reward=filtered_reward,
                 obs=obs,
@@ -261,62 +259,56 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
                 arm_rewards=arm_rewards
             )
             
-            # Update simple group tracking (inherited from CPursuitNeuralUCB)
             self.group_rewards[selected_path] += filtered_reward
             self.group_counts[selected_path] += 1
         else:
-            # Fallback to parent update
             super().update_group_selection(selected_path, observed_reward, advice)
+
     
     def run(self, attack_list, verbose=None):
-        """
-        Override: Enhanced batch runner with iCMAB integration
-        """
-        if verbose is None: verbose = self.verbose
+        """Enhanced batch runner with progress suppression"""
+        if verbose: self.verbose = verbose
+        
         start_time = time.time()
         
-        if verbose:
+        if self.verbose:
             print(f"\nEXECUTION STARTING:")
             print("=" * 50)
             print(f"| Mode:             | {self.mode.upper():<15} |")
             print(f"| Frames:           | {self.frame_number:,} |")
             print(f"| Paths:            | {self.num_groups} |")
-            print(f"| ARIMA Warmup:     | {self.warmup_frames if hasattr(self, 'warmup_frames') else 0} frames |")
+            print(f"| ARIMA Warmup:     | {self.warmup_frames} frames |")
+            print(f"| ARIMA Update:     | Every {self.arima_update_interval} frames |")
             print("=" * 50)
         
-        for frame in tqdm(range(self.frame_number), desc=f"- {self.mode.upper()} Progress"):
-            # Select path using iCMAB
+        # ✅ FIX: Add disable parameter for progress bar
+        for frame in tqdm(range(self.frame_number), 
+                          desc=f"- {self.mode.upper()} Progress",
+                          disable=not self.verbose):  # Now respects verbose
+            
             selected_path, _ = self.select_group(frame)
-            
-            # Select action using Neural UCB
             selected_action = self.select_action(selected_path)
-            
             self.path_action_list.append([selected_path, selected_action])
             
-            # Calculate reward
             base_reward = self.reward_list[selected_path][selected_action]
             d_t = np.random.choice([0, 1], p=[1 - base_reward, base_reward])
             dt = d_t * attack_list[frame][selected_path]
             observed_reward = base_reward * attack_list[frame][selected_path]
             
-            # Update Neural UCB (action selection)
             self.update_algorithms(selected_path, selected_action, base_reward, attack_list, frame)
             
-            # Create observation for iCMAB (simplified)
-            obs = np.random.randn(self.n_features, self.num_groups) * 0.1
+            # Use configurable noise
+            obs = np.random.randn(self.n_features, self.num_groups) * self.obs_noise
             obs[:, selected_path] += observed_reward
             
-            # Estimate all arm rewards (only selected path known)
             arm_rewards = [0.0] * self.num_groups
             for i in range(self.num_groups):
                 if i == selected_path:
                     arm_rewards[i] = observed_reward
                 else:
-                    # Estimate based on historical average
                     if self.group_counts[i] > 0:
                         arm_rewards[i] = self.group_rewards[i] / self.group_counts[i]
             
-            # Update iCMAB with anomaly detection
             self.update_group_selection(
                 selected_path, 
                 observed_reward, 
@@ -325,12 +317,10 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
                 arm_rewards=arm_rewards
             )
             
-            # Calculate regret
             oracle_reward = (self.reward_list[self.oracle_path][self.oracle_action] * 
                            attack_list[frame][self.oracle_path])
             oracle_regret = oracle_reward - observed_reward
-            if oracle_regret < 0:
-                oracle_regret = 0
+            if oracle_regret < 0: oracle_regret = 0
             
             self.regret += np.abs(oracle_regret)
             self.total_reward += observed_reward
@@ -339,9 +329,7 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
         
         end_time = time.time()
         elapsed_time = end_time - start_time
-        
-        if verbose:
-            self._print_experiment_results(elapsed_time)
+        if self.verbose: self._print_experiment_results(elapsed_time)
     
     def get_results(self):
         """Return results with iCMAB metadata"""
@@ -359,7 +347,7 @@ class CEXPNeuralUCB(EXPNeuralUCB):
     """
     
     def __init__(self, X_n, reward_list, frame_number, mode='cmab', 
-                 gamma_factor=0.1, eta_factor=0.005, beta=0.2, n_experts=4, verbose=True):
+                 gamma_factor=0.1, eta_factor=0.005, beta=0.2, n_experts=4, verbose=False):
         # Initialize with 'neural' mode to get safe base components
         super().__init__(X_n, reward_list, frame_number, 'neural', gamma_factor, eta_factor, beta, verbose)
         
@@ -381,8 +369,9 @@ class CEXPNeuralUCB(EXPNeuralUCB):
                 n_experts=self.n_experts,
                 n_features=self.n_features
             )
-            self.expert_advice_history = []
-            print(f"✓ CMAB(EXP4) initialized with {self.n_experts} experts")
+            self.expert_advice_history = []        
+            if self.verbose:
+                print(f"✓ CMAB(EXP4) initialized with {self.n_experts} experts")
         except Exception as e:
             print(f"✗ Failed to initialize CMAB: {e}")
             self.cmab = None
@@ -1005,7 +994,8 @@ class iCKernelUCB(iCMABModelBase):
         super().__init__(X_n, reward_list, frame_number, **kwargs)
         self.round_count = 0
 
-        print(f"✓ iCKernelUCB initialized with {len(X_n)} paths, {self.n_features} features each")
+        if self.verbose:
+            print(f"✓ iCKernelUCB initialized with {len(X_n)} paths, {self.n_features} features each")
 
     def take_action(self, **kwargs):
         try:

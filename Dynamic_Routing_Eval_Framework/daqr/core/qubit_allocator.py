@@ -39,7 +39,7 @@ class QubitAllocator:
     def __repr__(self):
         alloc =  self.__class__.__name__.replace("QubitAllocator", "")
         if not alloc: return "Default"
-        else: return alloc
+        else: return alloc.replace("Allocator", "")
 
 
 # ============================================================

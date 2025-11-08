@@ -49,6 +49,16 @@ class QuantumEvaluatorVisualizer:
         self.output_dir = Path(self.output_dir)
         self.session_id = self.session_timestamp
         self.exp_dir = None
+
+        # self._env_params = {
+        #     'attack': None,
+        #     'qubit_capacities': tuple(qubit_cap),
+        #     'frame_length': int(frames_no),
+        #     'seed': int(seed),
+        #     'allocator': self.allocator,
+        #     'env_type': env_type,
+        #     'actk_type': attack_type
+        # }
     
 
 
@@ -216,7 +226,6 @@ class QuantumEvaluatorVisualizer:
 
         allocator_type = str(self.allocator) if self.allocator else "None"
 
-        
         # Build path with category layer
         experiment_dir = (
             self.output_dir / 
@@ -224,7 +233,7 @@ class QuantumEvaluatorVisualizer:
             env_name / 
             allocator_type /
             model_category /
-            f"Experiment_{experiment_id}_{num_runs}_Runs_{self.session_timestamp}"
+            f"Experiment_{experiment_id}_{num_runs}_Runs_{self._env_params.get('frame_length',100)}frames_{self.session_timestamp}"
         )
         
         # Create subdirectories
@@ -1035,7 +1044,7 @@ class QuantumEvaluatorVisualizer:
 
 
         # --- Build comparison results directory ---
-        allocator_type = str(self.allocator) if self.allocator else "None"
+        alloc_type = str(self.allocator) if self.allocator else "None"
         model_category = self._detect_model_category(
             list(scenario_results['results'].keys()) if scenario_results else []
         )
@@ -1044,7 +1053,7 @@ class QuantumEvaluatorVisualizer:
         exp_dir = (
             self.output_dir /
             "comparison" /
-            allocator_type /
+            alloc_type /
             model_category
         )
         exp_dir.mkdir(parents=True, exist_ok=True)
@@ -1052,7 +1061,7 @@ class QuantumEvaluatorVisualizer:
         # Use timestamped filename for traceability
         baseline_suffix = f"_vs_{baseline}" if baseline else ""
         timestamp = self.session_timestamp
-        plot_filename = f"{allocator_type}_{scenario}{baseline_suffix}_{timestamp}.png"
+        plot_filename = f"{alloc_type}_{scenario}{baseline_suffix}_{self._env_params.get('frame_length', 100)}frames_{timestamp}.png"
         plot_path = exp_dir / plot_filename
 
         plt.tight_layout()
@@ -1145,7 +1154,7 @@ class QuantumEvaluatorVisualizer:
         # Use timestamped filename for traceability
         baseline_suffix = f"_vs_{baseline}_comparison" if baseline else ""
         timestamp = self.session_timestamp
-        plot_filename = f"{allocator_type}_{scenario}{baseline_suffix}_{timestamp}.png"
+        plot_filename = f"{allocator_type}_{scenario}{baseline_suffix}_{self._env_params.get('frame_length', 100)}_{timestamp}.png"
         plot_path = exp_dir / plot_filename
 
         plt.tight_layout()

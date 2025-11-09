@@ -280,7 +280,9 @@ class EXPNeuralUCB(QuantumModel):
 
     def run(self, attack_list, verbose=None):
         """Enhanced batch/episode runner with clean progress output"""
-        if verbose is None: verbose = self.verbose
+        if verbose is None: 
+            verbose = self.verbose
+        
         start_time = time.time()
         
         if verbose:
@@ -289,8 +291,10 @@ class EXPNeuralUCB(QuantumModel):
             print(f"| Mode:    | {self.mode.upper():<10} | Frames: {self.frame_number:<6} | Paths: {self.num_groups} |")
             print("=" * 50)
 
-        
-        for frame in tqdm(range(self.frame_number), desc=f"- {self.mode.upper()} Progress"):
+        # ✅ FIX: Add disable parameter
+        for frame in tqdm(range(self.frame_number), 
+                        desc=f"- {self.mode.upper()} Progress",
+                        disable=not verbose):  # Now respects verbose parameter
             selected_path, prob_array = self.select_group(frame)
             selected_action = self.select_action(selected_path)
             self.path_action_list.append([selected_path, selected_action])
@@ -304,7 +308,7 @@ class EXPNeuralUCB(QuantumModel):
             self.update_group_selection(selected_path, dt, prob_array)
             
             oracle_reward = (self.reward_list[self.oracle_path][self.oracle_action] *
-                             attack_list[frame][self.oracle_path])
+                            attack_list[frame][self.oracle_path])
             oracle_regret = oracle_reward - observed_reward
             if oracle_regret < 0:
                 oracle_regret = 0
@@ -320,6 +324,7 @@ class EXPNeuralUCB(QuantumModel):
         
         if verbose:
             self._print_experiment_results(elapsed_time)
+
 
     def _print_experiment_results(self, elapsed_time):
         """Clean tabular results output"""

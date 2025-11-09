@@ -1,0 +1,43 @@
+{
+  "execution_summary": {
+    "timestamp": "2025-11-03T19:54:44.922198",
+    "mode": "quick-test",
+    "max_workers": 8,
+    "total_experiments": 4,
+    "successful": 0,
+    "failed": 4,
+    "success_rate": 0.0,
+    "average_duration_seconds": 0.0,
+    "total_duration_seconds": 0,
+    "results": [
+      {
+        "name": "exp-test-random",
+        "success": false,
+        "error": "VM creation failed",
+        "start_time": "2025-11-03 19:51:20.311980",
+        "end_time": "2025-11-03 19:54:33.246575"
+      },
+      {
+        "name": "exp-test-thompson",
+        "success": false,
+        "error": "VM creation failed",
+        "start_time": "2025-11-03 19:51:20.310223",
+        "end_time": "2025-11-03 19:54:38.950923"
+      },
+      {
+        "name": "exp-test-none",
+        "success": false,
+        "error": "VM creation failed",
+        "start_time": "2025-11-03 19:51:20.310161",
+        "end_time": "2025-11-03 19:54:42.610674"
+      },
+      {
+        "name": "exp-test-dynamic",
+        "success": false,
+        "error": "VM creation failed",
+        "start_time": "2025-11-03 19:51:20.310351",
+        "end_time": "2025-11-03 19:54:44.921827"
+      }
+    ]
+  }
+}

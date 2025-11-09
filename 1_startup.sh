@@ -85,7 +85,7 @@ python3 --version
 pip3 --version
 pip install -q --upgrade pip setuptools wheel 2>&1 | tail -1 || log "pip upgrade note"
 pip install -q numpy pandas matplotlib seaborn tqdm 2>&1 | tail -1 || log "pip install note"
-
+# Optional: install everything in requirements.txt if present
 if [ -f "$REPO_DIR/requirements.txt" ]; then
     pip install -r "$REPO_DIR/requirements.txt" >> "$LOG_FILE" 2>&1 || log "Warning: requirements.txt not fully installed"
 fi

@@ -49,6 +49,16 @@ class QuantumEvaluatorVisualizer:
         self.output_dir = Path(self.output_dir)
         self.session_id = self.session_timestamp
         self.exp_dir = None
+
+        # self._env_params = {
+        #     'attack': None,
+        #     'qubit_capacities': tuple(qubit_cap),
+        #     'frame_length': int(frames_no),
+        #     'seed': int(seed),
+        #     'allocator': self.allocator,
+        #     'env_type': env_type,
+        #     'actk_type': attack_type
+        # }
     
 
 
@@ -216,7 +226,6 @@ class QuantumEvaluatorVisualizer:
 
         allocator_type = str(self.allocator) if self.allocator else "None"
 
-        
         # Build path with category layer
         experiment_dir = (
             self.output_dir / 
@@ -224,7 +233,7 @@ class QuantumEvaluatorVisualizer:
             env_name / 
             allocator_type /
             model_category /
-            f"Experiment_{experiment_id}_{num_runs}_Runs_{self.session_timestamp}"
+            f"Experiment_{experiment_id}_{num_runs}_Runs_{self.framework_config._env_params.get('frame_length',100)}frames_{self.session_timestamp}"
         )
         
         # Create subdirectories
@@ -627,7 +636,7 @@ class QuantumEvaluatorVisualizer:
         else:
             highest_exp = max(exp_keys)
             peak_data = env_results[highest_exp]
-            peak_frames = peak_data.get('frame_count', highest_exp)
+            peak_frames = peak_data.get('frames_count', highest_exp)
         
         return {
             'averaged': {
@@ -947,13 +956,13 @@ class QuantumEvaluatorVisualizer:
         
         # Case 2: It's a dict of experiments {exp_id: experiment_data}
         if isinstance(exp_dict, dict):
-            # Pick the one with largest frame_count
+            # Pick the one with largest frames_count
             best_exp = None
             max_frames = 0
             
             for exp_id, exp_data in exp_dict.items():
                 if isinstance(exp_data, dict) and 'results' in exp_data:
-                    frames = exp_data.get('frame_count', exp_data.get('results', {}).get('frame_count', 0))
+                    frames = exp_data.get('frames_count', exp_data.get('results', {}).get('frames_count', 0))
                     if frames > max_frames:
                         max_frames = frames
                         best_exp = exp_data
@@ -1035,7 +1044,7 @@ class QuantumEvaluatorVisualizer:
 
 
         # --- Build comparison results directory ---
-        allocator_type = str(self.allocator) if self.allocator else "None"
+        alloc_type = str(self.allocator) if self.allocator else "None"
         model_category = self._detect_model_category(
             list(scenario_results['results'].keys()) if scenario_results else []
         )
@@ -1044,7 +1053,7 @@ class QuantumEvaluatorVisualizer:
         exp_dir = (
             self.output_dir /
             "comparison" /
-            allocator_type /
+            alloc_type /
             model_category
         )
         exp_dir.mkdir(parents=True, exist_ok=True)
@@ -1052,7 +1061,7 @@ class QuantumEvaluatorVisualizer:
         # Use timestamped filename for traceability
         baseline_suffix = f"_vs_{baseline}" if baseline else ""
         timestamp = self.session_timestamp
-        plot_filename = f"{allocator_type}_{scenario}{baseline_suffix}_{timestamp}.png"
+        plot_filename = f"{alloc_type}_{scenario}{baseline_suffix}_{self.framework_config._env_params.get('frame_length', 100)}frames_{timestamp}.png"
         plot_path = exp_dir / plot_filename
 
         plt.tight_layout()
@@ -1145,7 +1154,7 @@ class QuantumEvaluatorVisualizer:
         # Use timestamped filename for traceability
         baseline_suffix = f"_vs_{baseline}_comparison" if baseline else ""
         timestamp = self.session_timestamp
-        plot_filename = f"{allocator_type}_{scenario}{baseline_suffix}_{timestamp}.png"
+        plot_filename = f"{allocator_type}_{scenario}{baseline_suffix}_{self.framework_config._env_params.get('frame_length', 100)}_{timestamp}.png"
         plot_path = exp_dir / plot_filename
 
         plt.tight_layout()

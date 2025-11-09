@@ -63,3 +63,48 @@ Thumbs.db
 *.npz
 *.h5
 *.ckpt
+
+
+# macOS Icon files
+Icon?
+Icon
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Git backups and temp files
+.git_backup/
+.git_backup
+*.git_backup
+*_backup/
+backup/
+
+# macOS
+.DS_Store
+Icon?
+Icon
+.AppleDouble
+
+# Large files
+*.pack
+*.idx
+*.rev

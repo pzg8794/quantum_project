@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import time, gc
 import numpy as np, copy
 from daqr.config.experiment_config import ExperimentConfiguration
@@ -13,7 +14,7 @@ class MultiRunEvaluator:
     """
     def __init__(self, configs=None, base_frames=4000, frame_step=2000, base_seed=12345, 
                  runs=None, attack_type=None, models=None, scenarios=None,
-                 attack_intensity=None, enable_progress=False, capacity=None):
+                 attack_intensity=None, enable_progress=False):
         """
         Initialize the multi-run evaluator.
         Args:
@@ -34,6 +35,7 @@ class MultiRunEvaluator:
 
         self.base_seed = base_seed
         self.frame_step = frame_step
+        self.frames_count = base_frames
         self.base_frames = base_frames
         self.enable_progress = enable_progress
         
@@ -48,10 +50,9 @@ class MultiRunEvaluator:
 
         self.cal_winner = True
         self.env_type = 'stochastic'
+        self.capacity = self.base_frames
         self.update_configs(runs, models, attack_type, scenarios, attack_intensity)
         # self.capacity = (frame_step * self.configs.runs) + base_frames
-        self.capacity = base_frames if capacity is None else (capacity/2)
-        self.configs.capacity = self.capacity
 
         print("Multi-Run Evaluator Initialized")
         print(f"Environment Type: {attack_type}")
@@ -61,10 +62,13 @@ class MultiRunEvaluator:
     def run_experiment(self, exp_no, offset=100, models=None, attack_category="Stochastic", attack_rate=0.25):
         self.update_configs(models=models, attack_rate=attack_rate)
 
-        frame_count = self.base_frames + (exp_no * self.frame_step)
+        self.frames_count = self.base_frames + (exp_no * self.frame_step)
+        self.capacity = self.base_frames if self.configs.base_capacity else self.frames_count
+        
+        print("-" * 100)
         exp_id = exp_no + 1
-        print(f"EXPERIMENT {exp_id}: {frame_count} frames")
-        print("-" * 40)
+        print(f"EXPERIMENT {exp_id}: {self.frames_count} frames  <>  SCALED-CAPACITY: {self.capacity*self.configs.scale} frames (CAPACITY:{self.capacity} X SCALE:{self.configs.scale})")
+        print("-" * 100)
 
         # Configure attack scenario ONCE (per scenario batch is fine; here per exp is safe too)
         self.configs.set_attack_strategy(
@@ -87,22 +91,24 @@ class MultiRunEvaluator:
         # Create runner and pass the precomputed qubit_cap
         runner = QuantumExperimentRunner(
             config=self.configs,
-            base_seed=self.base_seed + exp_no * offset,
+            capacity = self.capacity,
+            frames_count=self.frames_count,
+            enable_progress=self.enable_progress,
             attack_type=self.configs.attack_type,
+            base_seed=self.base_seed + exp_no * offset,
             attack_intensity=self.configs.attack_intensity,
-            enable_progress=self.enable_progress
         )
 
         try:
             experiment_results = runner.run_experiment(
-                frame_count=frame_count,
+                frames_count=self.frames_count,
                 models=self.configs.models,
                 qubit_cap=qubit_cap  # critical: pass routing-derived capacities
             )
             experiment_results['attack_category'] = attack_category
             experiment_results['exp_id'] = exp_id
             self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
-            print(f"Experiment {exp_id} completed successfully in environment {self.configs.attack_type}")
+            # print(f"Experiment {exp_id} completed successfully in environment {self.configs.attack_type}")
         except Exception as e:
             print(f"Experiment {exp_id} failed: {e}")
             raise
@@ -134,7 +140,7 @@ class MultiRunEvaluator:
             self.run_experiment(exp_no=i, attack_category=attack_category)
         self.total_time = time.time() - self.start_time
 
-        print(f"Total experiment time: {self.total_time:.1f}s")
+        print(f"Total experiment time: {self.total_time:05.1f}s")
         print(f"Experiments completed for {self.configs.attack_type}")
         return self.env_experiments[self.configs.attack_type]
 
@@ -160,8 +166,8 @@ class MultiRunEvaluator:
             print(f"Recommended Model: \t{winner} (Won {winner_metrics.get('wins', 0)}/{total_exps} experiments)")
             
             if winner_metrics:
-                print(f"\tWinner Avg Gap: \t{winner_metrics.get('avg_gap', 0):.1f}%")
-                print(f"\tWinner Avg Efficiency: \t{winner_metrics.get('avg_efficiency', 0):.1f}%")
+                print(f"\tWinner Avg Gap: \t{winner_metrics.get('avg_gap', 0):05.1f}%")
+                print(f"\tWinner Avg Efficiency: \t{winner_metrics.get('avg_efficiency', 0):05.1f}%")
 
             print("\nOverall Models Performance:")
             # Access the nested dictionary for all models' metrics
@@ -177,7 +183,7 @@ class MultiRunEvaluator:
             for model_name, metrics in sorted_models:
                 if model_name == 'Oracle': continue
                 wins_str = f"(Won {metrics.get('wins', 0)}/{total_exps} experiments)"
-                print(f"\t• {model_name:<15}: \t{metrics.get('avg_efficiency', 0):.1f}% Efficiency \t{wins_str}")
+                print(f"\t• {model_name:<15}: \t{metrics.get('avg_efficiency', 0):05.1f}% Efficiency \t{wins_str}")
             print("="*70)
 
 
@@ -196,11 +202,11 @@ class MultiRunEvaluator:
             print(f"\t• Total Experiments: {stats['total_experiments']}")
 
             print(f"\t• Overall Winner: {stats['overall_winner']}")
-            print(f"\t• Oracle Avg Reward: {stats['oracle_avg_reward']:.2f}")
+            print(f"\t• Oracle Avg Reward: {stats['oracle_avg_reward']:07.2f}")
 
-            print(f"\t• Winner Avg Gap: {stats['avg_gap']:.2f}%")
-            print(f"\t• Winner Avg Reward: {stats['avg_reward']:.2f}")
-            print(f"\t• Winner Avg Efficiency: {stats['avg_efficiency']:.2f}%")
+            print(f"\t• Winner Avg Gap: {stats['avg_gap']:07.2f}%")
+            print(f"\t• Winner Avg Reward: {stats['avg_reward']:07.2f}")
+            print(f"\t• Winner Avg Efficiency: {stats['avg_efficiency']:07.2f}%")
             
             print("\t• Win Counts:")
             for model, model_data in stats['all_model_metrics'].items():
@@ -228,13 +234,13 @@ class MultiRunEvaluator:
         """
         if scenario not in comparison_results: return {}
         all_experiments = comparison_results[scenario]
-        exps_no = len(all_experiments)
-        if exps_no == 0: return {}
+        if (not all_experiments) or  (len(all_experiments) == 0): return {}
 
         model_totals = {}
+        scenarios_stats = {}
         winner_efficients = {}
         total_oracle_reward = 0
-        scenarios_stats = {}
+        exps_no = len(all_experiments)
         for exp_data in all_experiments.values():
             exp_oracle = exp_data['results'][baseline_model]['final_reward']
             for model_name, model_result in exp_data['results'].items():
@@ -350,15 +356,20 @@ class MultiRunEvaluator:
         return {}
 
 
-    def run_scenario_model_evaluation(self, runs=None, models=None, attack_type=None):
+    def run_scenario_model_evaluation(self, runs=None, models=None, attack_type=None, threaded=True):
         """
         Wrapper to run comprehensive evaluation for a single scenario.
         """
         self.update_configs(runs, models, attack_type)
 
-        print(f"TESTING ENVIRONMENT SCENARIO: {self.configs.test_scenarios[self.configs.attack_type].upper()}")
+        print(f"\n\n\nTESTING ENVIRONMENT SCENARIO: {self.configs.test_scenarios[self.configs.attack_type].upper()}")
         print("="*50)
-        return self.run_experiments()
+        if threaded: 
+            print("\tRUNNING EXPERIMENTS IN PARALLEL")
+            # return self.run_threaded_experiments()
+            return self.run_experiments_parallel()
+        else: 
+            return self.run_experiments()
 
     def generate_key_insights(self):
         """
@@ -386,7 +397,7 @@ class MultiRunEvaluator:
             print(f"Best Performing Model Analysis ({best_model}):")
             print(f"\t• Stochastic Performance:    \t{stoch_performance:.3f}")
             print(f"\t• Baseline Performance:      \t{baseline_performance:.3f}")
-            print(f"\t• Performance Retention:     \t{perf_retention:.1f}%")
+            print(f"\t• Performance Retention:     \t{perf_retention:05.1f}%")
             
             if perf_retention   > 95: 
                 print(f"\tEXCELLENT:          \tMinimal performance loss under realistic conditions")
@@ -405,7 +416,7 @@ class MultiRunEvaluator:
             stoch_stats = self.scenarios_stats['stochastic']
             print(f"Stochastic Environment Analysis:")
             print(f"\t• Best Model:         \t{stoch_stats['overall_winner']}")
-            print(f"\t• Oracle Efficiency:  \t{stoch_stats['avg_efficiency']:.1f}%")
+            print(f"\t• Oracle Efficiency:  \t{stoch_stats['avg_efficiency']:05.1f}%")
             print(f"\t• Performance under realistic quantum network conditions validated")
 
         # Statistical significance and ranking
@@ -476,13 +487,13 @@ class MultiRunEvaluator:
             gaps = [exp['results'][alg]['gap']  for exp in experiments.values()]
 
             print(f"{alg}:")
-            print(f"\tRewards:  \t{np.mean(rewards):.1f} ± {np.std(rewards):.1f}")
-            print(f"\tAvg Gap:  \t{np.mean(gaps):.1f}%")
+            print(f"\tRewards:  \t{np.mean(rewards):05.1f} ± {np.std(rewards):05.1f}")
+            print(f"\tAvg Gap:  \t{np.mean(gaps):05.1f}%")
             print(f"\tWins:     \t{sum(1 for exp in experiments.values() if exp['winner'] == alg)}/{len(experiments)}")
 
         # Oracle efficiency analysis
         oracle_rewards = [exp['results'][baseline_model]['final_reward'] for exp in experiments.values()]
-        print(f"Oracle Performance: \t{np.mean(oracle_rewards):.1f} ± {np.std(oracle_rewards):.1f}")
+        print(f"Oracle Performance: \t{np.mean(oracle_rewards):05.1f} ± {np.std(oracle_rewards):05.1f}")
 
         # Best performing algorithm
         winner_counts = {}
@@ -599,10 +610,145 @@ class MultiRunEvaluator:
         return results
 
 
-    def test_individual_environment(self, attack_type="stochastic"):
+    def test_individual_environment(self, attack_type="stochastic", threaded=True):
         """Test a single environment type."""
+        self.update_configs(attack_type=attack_type)
 
-        self.run_experiments()
+        if threaded:
+            # self.run_threaded_experiments()
+            return self.run_experiments_parallel()
+        else:
+            self.run_experiments()
+        
         self.print_summary()
-
         return self
+
+    
+    def run_threaded_experiment(self, exp_no, offset=100, models=None, attack_category="Stochastic", attack_rate=0.25):
+        self.update_configs(models=models, attack_rate=attack_rate)
+
+        self.frames_count = self.base_frames + (exp_no * self.frame_step)
+        self.capacity = self.base_frames if self.configs.base_capacity else self.frames_count
+        
+        print("\n\n", "-" * 100)
+        exp_id = exp_no + 1
+        print(f"EXPERIMENT {exp_id}: {self.frames_count} frames  <>  SCALED-CAPACITY: {self.capacity*self.configs.scale} frames")
+        print("-" * 100)
+
+        self.configs.set_attack_strategy(
+            attack_rate=self.configs.attack_rate,
+            attack_type=self.configs.attack_type,
+            attack_intensity=self.configs.attack_intensity
+        )
+
+        route_stats = {}
+        if hasattr(self.configs, 'allocator') and self.configs.allocator is not None:
+            qubit_cap = tuple(self.configs.allocator.allocate(
+                timestep=exp_no,
+                route_stats=route_stats
+            ))
+        else:
+            qubit_cap = (8, 10, 8, 9)
+
+        runner = QuantumExperimentRunner(
+            id= exp_id,
+            config=self.configs,
+            capacity=self.capacity,
+            frames_count=self.frames_count,
+            enable_progress=self.enable_progress,
+            attack_type=self.configs.attack_type,
+            base_seed=self.base_seed + exp_no * offset,
+            attack_intensity=self.configs.attack_intensity,
+        )
+
+        try:
+            #  USE PARALLEL VERSION HERE
+            experiment_results = runner.run_experiment_parallel(
+                frames_count=self.frames_count,
+                models=self.configs.models,
+                qubit_cap=qubit_cap,
+                max_workers=4  # Models run in parallel within this experiment
+            )
+            
+            experiment_results['attack_category'] = attack_category
+            experiment_results['exp_id'] = exp_id
+            self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
+            # print(f"Experiment {exp_id} completed successfully")
+        except Exception as e:
+            print(f"Experiment {exp_id} failed: {e}")
+            raise
+        finally:
+            del runner
+            gc.collect()
+
+        return self.env_experiments[self.configs.attack_type][exp_id]
+
+
+    def run_threaded_experiments(self, runs=None, attack_type=None, models=None):
+        """
+        Run experiments for a specific environment type.
+
+        Args:
+            attack_type: Override default attack type
+            exps_num: Number of frame count experiments (default: 3)
+            algorithms: List of algorithms to test
+        """
+        self.update_configs(runs, models, attack_type)
+
+        print(f"\nSTARTING EXPERIMENTS: {self.configs.attack_type.upper()}")
+        attack_category = self.configs.category_map.get(self.configs.attack_type, 'Unknown')
+        print(f"Category: {attack_category}")
+        print("="*60)
+
+        self.start_time = time.time()
+        for i in range(0, self.configs.runs):
+            self.run_threaded_experiment(exp_no=i, attack_category=attack_category)
+        self.total_time = time.time() - self.start_time
+
+        print(f"Total experiment time: {self.total_time:05.1f}s")
+        print(f"Experiments completed for {self.configs.attack_type}")
+        return self.env_experiments[self.configs.attack_type]
+
+
+    def run_experiments_parallel(self, runs=None, attack_type=None, models=None, max_workers=3):
+        """
+        Run experiments in parallel at the multi-run level.
+        
+        Args:
+            runs: Number of experiments
+            attack_type: Override default attack type
+            models: List of algorithms to test
+            max_workers: Number of parallel experiments
+        """
+        self.update_configs(runs, models, attack_type)
+
+        print(f"\nSTARTING PARALLEL MULTI-RUN EXPERIMENTS: {self.configs.attack_type.upper()}")
+        attack_category = self.configs.category_map.get(self.configs.attack_type, 'Unknown')
+        print(f"Category: {attack_category}")
+        print(f"\tRunning {self.configs.runs} experiments with {max_workers} parallel workers")
+        print("="*60)
+
+        self.start_time = time.time()
+        
+        # Execute experiments in parallel
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all experiments
+            future_to_exp = {
+                executor.submit(self.run_threaded_experiment, exp_no=i, attack_category=attack_category): i 
+                for i in range(self.configs.runs)
+            }
+            
+            # Process as they complete
+            for future in as_completed(future_to_exp):
+                exp_no = future_to_exp[future]
+                exp_id = exp_no + 1
+                try:
+                    future.result()
+                    # print(f"✅ Experiment {exp_id} completed (frames: {self.base_frames + exp_no * self.frame_step})")
+                except Exception as e:
+                    print(f"❌ Experiment {exp_id} failed: {e}")
+        self.total_time = time.time() - self.start_time
+
+        print(f"\n\t⏱️  Total multi-run time: {self.total_time:05.1f}s")
+        print(f"\tExperiments completed for {self.configs.attack_type}")
+        return self.env_experiments[self.configs.attack_type]

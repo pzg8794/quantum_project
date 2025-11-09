@@ -55,28 +55,45 @@ class QuantumModel(ABC):
     Enhanced minimal interface that every model (policy/algorithm) in the quantum environment obeys.
     Keep methods generic so both 'step-wise' (Oracle) and 'batch' (EXPNeuralUCB) fit.
     """
-    def __init__(self):
+    def __init__(self, X_n, reward_list, frame_number, mode='hybrid', 
+                 gamma_factor=0.01, eta_factor=0.05, beta=0.2, verbose=True, capacity=10000, lamb=1):
         super().__init__()
+        
+        # Core parameters (shared across all modes)
+        self.X_n = X_n
+        self.reward_list = reward_list
+        self.frame_number = frame_number
+        self.num_groups = len(reward_list)
+        self.mode = mode
+        self.beta = beta
+        self.verbose = verbose
+
+        # EXP3 parameters (used in 'hybrid' and 'exp3' modes)
+        self.gamma = gamma_factor
+        self.eta = eta_factor
+        self.capacity = capacity
+
         self.thresholds = {
                 'EXPNeuralUCB': {'stochastic': 0.628, 'adversarial': 0.598},
                 'CPursuitNeuralUCB': {'stochastic': 0.634, 'adversarial': 0.614},
                 'GNeuralUCB': {'stochastic': 0.582, 'adversarial': 0.509},  # Added; higher stochastic for grouping
                 'iCPursuitNeuralUCB': {'stochastic': 0.712, 'adversarial': 0.689}
             }
-
-    def get_cleanup_wait_time(self, frame_count=1000, cooldown_base=3, cooldown_scale_factor=1, cooldown_max=15):
+        self.path_configs = {0:2, 1:2, 2:3, 3:3, 'lamb':lamb, 'beta':beta}        # Path-specific configs (per path index)
+        
+    def get_cleanup_wait_time(self, frames_count=1000, cooldown_base=3, cooldown_scale_factor=1, cooldown_max=15):
         """
         Calculate frame-scaled cleanup wait time.
         
         Args:
-            frame_count: Number of frames (if None, uses self.frame_count)
+            frames_count: Number of frames (if None, uses self.frames_count)
         
         Returns:
             float: Wait time in seconds
         """
 
         # Frame-scaled timing formula
-        scale = (frame_count / 1000.0) * cooldown_scale_factor
+        scale = (frames_count / 1000.0) * cooldown_scale_factor
         wait_time = cooldown_base + scale
         
         return min(wait_time, cooldown_max)
@@ -207,6 +224,10 @@ class QuantumModel(ABC):
             self.cleanup(verbose=False)
         except Exception as e:
             print(f"Warning: Cleanup in destructor failed: {e}")
+
+    def __repr__(self):
+        env = self.__class__.__name__
+        return env if env else "Baseline (None)"
 
 
 # =============================================================================

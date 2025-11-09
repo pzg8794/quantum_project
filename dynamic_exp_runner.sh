@@ -142,8 +142,11 @@ else:
     allocator = None
     print(f"[WARN] Unknown or missing allocator '{arg}'. Defaulting to None.")
 
+# Create config with allocator
 custom_config = ExperimentConfiguration(
-    runs=current_experiments, allocator=allocator, env_type=FRAMEWORK_CONFIG['main_env'], scenarios=test_scenarios, models=models, attack_intensity=attack_intensity)
+    runs=current_experiments, allocator=allocator, 
+    env_type=FRAMEWORK_CONFIG['main_env'], scenarios=test_scenarios, 
+    models=models, attack_intensity=attack_intensity, scale=2, base_capacity=True, overwrite=True)
 
 
 # 5

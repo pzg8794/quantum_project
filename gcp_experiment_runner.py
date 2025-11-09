@@ -28,7 +28,7 @@ class GCPExperimentRunner:
     }
 
     def __init__(self, allocator: str, zone: str = "us-central1-a",
-                machine_type: str = "n2-standard-8", disk_size: str = "50GB",
+                machine_type: str = "n2-standard-8", disk_size: str = "100GB",
                 mode: str = "production"):
 
         self.allocator = allocator.lower()
@@ -65,7 +65,7 @@ class GCPExperimentRunner:
             f"--machine-type={self.machine_type}",
             f"--boot-disk-size={self.disk_size}",
             "--scopes=cloud-platform",
-            "--image=quantum-exp-base-img",
+            "--image=quantum-exp-base",
             "--image-project=bright-zodiac-476705-d6",
             "--quiet",
         ]

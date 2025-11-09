@@ -1,0 +1,40 @@
+{
+  "timestamp": "2025-11-09T17:03:37.374069",
+  "mode": "quick-test",
+  "successful": 4,
+  "failed": 0,
+  "results": [
+    {
+      "name": "exp-test-thompson",
+      "success": true,
+      "error": null,
+      "start_time": "2025-11-09 17:00:30.621082",
+      "end_time": "2025-11-09 17:03:07.239629",
+      "duration_seconds": 156.618547
+    },
+    {
+      "name": "exp-test-dynamic",
+      "success": true,
+      "error": null,
+      "start_time": "2025-11-09 17:00:30.623159",
+      "end_time": "2025-11-09 17:03:11.860555",
+      "duration_seconds": 161.237396
+    },
+    {
+      "name": "exp-test-random",
+      "success": true,
+      "error": null,
+      "start_time": "2025-11-09 17:00:30.623361",
+      "end_time": "2025-11-09 17:03:12.719593",
+      "duration_seconds": 162.096232
+    },
+    {
+      "name": "exp-test-none",
+      "success": true,
+      "error": null,
+      "start_time": "2025-11-09 17:00:30.620561",
+      "end_time": "2025-11-09 17:03:37.372915",
+      "duration_seconds": 186.752354
+    }
+  ]
+}

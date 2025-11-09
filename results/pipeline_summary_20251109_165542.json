@@ -1,0 +1,22 @@
+{
+  "timestamp": "2025-11-09T16:55:42.712395",
+  "mode": "quick-test",
+  "successful": 0,
+  "failed": 2,
+  "results": [
+    {
+      "name": "exp-test-thompson",
+      "success": false,
+      "error": "VM creation failed",
+      "start_time": "2025-11-09 16:55:22.122714",
+      "end_time": "2025-11-09 16:55:24.080693"
+    },
+    {
+      "name": "exp-test-random",
+      "success": false,
+      "error": "VM creation failed",
+      "start_time": "2025-11-09 16:55:22.122744",
+      "end_time": "2025-11-09 16:55:24.727657"
+    }
+  ]
+}

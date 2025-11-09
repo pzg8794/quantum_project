@@ -1,4 +1,4 @@
-from    daqr.config.experiment_config import ExperimentConfiguration, QuantumAlgorithmLock
+from    daqr.config.experiment_config import ExperimentConfiguration
 from    tqdm    import tqdm
 import  numpy as np, copy
 import  gc, time
@@ -26,7 +26,6 @@ class QuantumExperimentRunner:
         self.configs.base_seed = base_seed
         
         self.use_locks = use_locks
-        self.resource_lock = QuantumAlgorithmLock(cooldown_seconds=1)
         
         self.id = id
         self.results = {}

@@ -42,7 +42,6 @@ class QuantumExperimentRunner:
         self.max_workers = max_workers if max_workers else min(4, mp.cpu_count())
         self._model_cache = {}  # Cache for model reuse
         self._parallel_lock = threading.RLock()  # Thread-safe operations
-        self._model_lock = threading.RLock()
         self._execution_stats = {'total_time': 0, 'parallel_efficiency': 0}
     
     
@@ -106,40 +105,30 @@ class QuantumExperimentRunner:
         return total_reward
     
     def run_algorithm(self, algorithm_name: str, enable_progress=False):
-        """Run a single algorithm. Requires the environment to be built first.
-
-        Returns a results dict with keys: final_reward, avg_reward, algorithm, seed,
-        frames_count, attack_type, model_results, retries
         """
-        if algorithm_name not in self.algorithm_configs:
-            raise ValueError(f"Unknown algorithm: {algorithm_name}")
-
-        if self.environment is None:
-            raise RuntimeError("Environment not built. Call _build_environment_once or run_experiment first.")
+        Run a single algorithm assuming the environment has already been built
+        for this experiment with the provided qubit_cap.
+        """
+        if algorithm_name not in self.algorithm_configs: raise ValueError(f"Unknown algorithm: {algorithm_name}")
 
         config = self.algorithm_configs[algorithm_name]
         env_info = self.environment.get_environment_info()
-        model_class = config.get('model_class')
-        seed_offset = config.get('seed_offset', 0)
-        runner_type = config.get('runner_type', 'step-wise')
-        model_kwargs = config.get('kwargs', {}).copy()
+        model_class = config['model_class']
+        seed_offset = config['seed_offset']
+        runner_type = config['runner_type']
+        model_kwargs = config['kwargs']
 
-        algorithm_seed = self.experiment_seed + seed_offset if self.experiment_seed is not None else seed_offset
-        try:
-            torch.manual_seed(algorithm_seed)
-        except Exception:
-            pass
+        algorithm_seed = self.experiment_seed + seed_offset
+        torch.manual_seed(algorithm_seed)
         np.random.seed(algorithm_seed)
 
         results = {'final_reward': 0.0}
-        total_reward = 0.0
-        attempts = 0
-        MAX_RETRIES = 3
+        total_reward, attempts = 0.0, 0
 
-        while total_reward <= 0.0 and attempts < MAX_RETRIES:
-            model_kwargs['verbose'] = enable_progress
-            model = None
-            try:
+        try:
+            while total_reward <= 0.0:
+                model_kwargs['verbose'] = enable_progress
+                
                 if algorithm_name == 'Oracle':
                     model = self.algorithm_configs['Oracle']['model_class'](
                         X_n=env_info['contexts'],
@@ -153,57 +142,43 @@ class QuantumExperimentRunner:
                         frame_number=self.frames_count,
                         **model_kwargs,
                     )
-                    # Use experiment-level capacity (may be scaled by run_experiment)
-                    try:
-                        model.set_capacity(self.capacity)
-                    except Exception:
-                        # some models may not implement set_capacity
-                        pass
+                    model.set_capacity(self.capacity)
 
-                if enable_progress:
-                    self.validate_quantum_model(model)
-
-                if runner_type == 'step-wise':
-                    total_reward = self.run_step_wise_oracle(env_info, model, self.frames_count, algorithm_name)
-                else:
-                    result = model.run(attack_list=env_info['attack_pattern'], verbose=enable_progress)
-                    if result is not None:
-                        total_reward = float(result)
-                    else:
-                        mr = model.get_results() if hasattr(model, 'get_results') else {}
-                        if mr and 'final_reward' in mr:
-                            total_reward = float(mr['final_reward'])
-
-                enable_progress = False  # suppress retries spam on subsequent attempts
-
-                avg_reward = total_reward / self.frames_count if (self.frames_count > 0 and total_reward > 0) else 0.0
-                results = {
-                    'final_reward': float(total_reward),
-                    'avg_reward': float(avg_reward),
-                    'algorithm': algorithm_name,
-                    'seed': algorithm_seed,
-                    'frames_count': self.frames_count,
-                    'attack_type': self.configs.attack_type,
-                    'model_results': model.get_results() if model and hasattr(model, 'get_results') else {},
-                    'retries': attempts
-                }
-                break
-
-            except Exception as e:
-                attempts += 1
-                print(f"\t❌ Runtime error in {algorithm_name} (attempt {attempts}/{MAX_RETRIES}): {e}")
-                # continue to retry until MAX_RETRIES
-            finally:
+                if enable_progress: self.validate_quantum_model(model)
                 try:
-                    if model is not None:
-                        del model
-                except Exception:
-                    pass
-                gc.collect()
+                    if runner_type == 'step-wise':
+                        total_reward = self.run_step_wise_oracle(env_info, model, self.frames_count, algorithm_name)
+                    else:
+                        result = model.run(attack_list=env_info['attack_pattern'], verbose=enable_progress)
+                        if result is not None:
+                            total_reward = float(result)
+                        else:
+                            mr = model.get_results() if hasattr(model, 'get_results') else {}
+                            if mr and 'final_reward' in mr:
+                                total_reward = float(mr['final_reward'])
 
-        if total_reward <= 0.0:
-            # Final fallback result when all retries failed
-            results = results or {'final_reward': 0.0}
+                    enable_progress = False  # suppress retries spam
+                    avg_reward = total_reward / self.frames_count if (self.frames_count > 0 and total_reward > 0) else 0.0
+                    results = {
+                        'final_reward': float(total_reward),
+                        'avg_reward': float(avg_reward),
+                        'algorithm': algorithm_name,
+                        'seed': algorithm_seed,
+                        'frames_count': self.frames_count,
+                        'attack_type': self.configs.attack_type,
+                        'model_results': model.get_results(),
+                        'retries':attempts
+                    }
+                except Exception as e: 
+                    attempts +=1
+                    print(f"\t❌ Runtime error in {algorithm_name}: {e}")
+                finally:
+                    del model
+                    gc.collect()
+
+        except Exception as e:
+            print(f"\t❌ Failed to create {algorithm_name}: {e}")
+            results = {'final_reward': 0.0, 'error': str(e)}
 
         return results
 

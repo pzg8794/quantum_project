@@ -52,7 +52,7 @@ class QuantumExperimentRunner:
 
     def display_experiment_conditions(self):
         "Display Experiment Conditions"
-        print(f"\n{str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Env:{str(self.environment)}, Attack:{str(self.environment.attack)}, Rate:{self.environment.attack_rate}, Frames:{self.environment.frame_length}, QubitAlloc={str(self.configs.allocator)}, SC:{self.capacity*self.configs.scale} (Cap={self.capacity} x Scale={self.configs.scale}), Seed: {self.experiment_seed}")
+        print(f"\n{str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Env:{str(self.environment)}, Attack:{str(self.environment.attack)}, Rate:{self.environment.attack_rate}, Frames:{self.environment.frame_length}, QubitAlloc={str(self.configs.allocator)}, SC:{self.capacity*self.configs.scale} (Scale={self.configs.scale} x Cap={self.capacity}), Seed: {self.experiment_seed}")
 
     def _build_environment_once(self, frames_count: int, qubit_cap: tuple):
         """

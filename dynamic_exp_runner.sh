@@ -60,7 +60,7 @@ base_frames = ${BASE_FRAMES}
 exp_id = str("${EXP_ID}")
 res_dir = "${RES_DIR}"
 scale = ${SCALE:-2}
-base_capacity = "${BASE_CAPACITY:-"Y"}" == "Y"
+base_capacity = str(${BASE_CAPACITY:-"Y"}).lower() == "y"
 
 # ==============================================================================
 # MODIFICATION BLOCK: Override settings for quick-test and test modes

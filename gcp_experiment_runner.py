@@ -143,26 +143,30 @@ class GCPExperimentRunner:
             branch_setup = ""
             self.branch_name = "gcp-main" if gcp else "main"
 
-        command_str = f"""
-            set -e
-            echo "--- Remote script started. Preparing log directory: {log_dir}"
-            mkdir -p "{log_dir}"
-            
-            (
-                cd "$HOME/quantum_project"
-                echo '--- Remote log started at $(date) ---'
-                echo "🔄 Switching to branch: {self.branch_name}"
+            command_str = f"""
+                set -e
+                echo "--- Remote script started. Preparing log directory: {log_dir}"
+                mkdir -p "{log_dir}"
                 
-                {branch_setup}
-                git checkout --quiet {self.branch_name}
-                git pull --quiet origin {self.branch_name} 2>/dev/null || echo "First push to new branch"
-                
-                chmod +x ./*.sh
-                echo "🚀 Executing: {script_with_args}"
-                ./{script_with_args}
-                
-            ) | tee -a "{log_file}"
-        """
+                (
+                    cd "$HOME/quantum_project"
+                    echo '--- Remote log started at $(date) ---'
+                    echo "🔄 Switching to branch: {self.branch_name}"
+                    
+                    {branch_setup}
+                    git checkout --quiet {self.branch_name}
+                    
+                    # FIX: Show git pull errors and force overwrite
+                    echo "📥 Pulling latest changes..."
+                    git fetch origin {self.branch_name}
+                    git reset --hard origin/{self.branch_name}  # Force update to remote state
+                    
+                    chmod +x ./*.sh
+                    echo "🚀 Executing: {script_with_args}"
+                    ./{script_with_args}
+                    
+                ) | tee -a "{log_file}"
+            """
         
         ssh_cmd = [
             "gcloud", "compute", "ssh", vm_name,
@@ -175,15 +179,15 @@ class GCPExperimentRunner:
             for line in proc.stdout:
                 line_stripped = line.strip()
 
-                if "Progress" in line_stripped:
-                    match = re.search(r"(\d+)%\|", line_stripped)
-                    if match:
-                        percent = int(match.group(1))
-                        if percent in shown_progress:
-                            continue
-                        shown_progress.add(percent)
-                        if percent not in (50, 75, 100):
-                            continue
+                # if "Progress" in line_stripped:
+                #     match = re.search(r"(\d+)%\|", line_stripped)
+                #     if match:
+                #         percent = int(match.group(1))
+                #         if percent in shown_progress:
+                #             continue
+                #         shown_progress.add(percent)
+                #         if percent not in (50, 75, 100):
+                #             continue
                             
                 if "Test DONE" in line_stripped:
                     self.to_delete.append(vm_name)
@@ -246,7 +250,7 @@ class GCPExperimentRunner:
         if "test" in mode:
             rounds = [("exp-test", f"run_exp_test.sh {mode}")]
         else:
-            rounds = [("exp2", "run_exp2.sh"), ("exp3", "run_exp3.sh"), ("exp4", "run_exp4.sh")]
+            rounds = [("exp1", "run_exp1.sh"), ("exp2", "run_exp2.sh"), ("exp3", "run_exp3.sh"), ("exp4", "run_exp4.sh")]
 
         experiment_queue = []
         for round_name, script in rounds:
@@ -378,7 +382,7 @@ class GCPExperimentRunner:
 
 if __name__ == "__main__":
     mode = "production"
-    max_workers = 8
+    max_workers = 4
     
     if "--quick-test" in sys.argv:
         mode = "quick-test"

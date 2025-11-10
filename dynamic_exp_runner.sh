@@ -13,7 +13,9 @@ BASE_SEED=$4
 EXP_ID=$5
 INTENSITY=$6
 ALLOCATOR=$7
-SCENARIOS=$8
+SCALE=$8
+BASE_CAPACITY=$9
+SCENARIOS=$10
 
 
 LOG_DIR="${LOG_DIR:-$HOME/quantum_logs}"
@@ -57,6 +59,8 @@ models = config.NEURAL_MODELS
 base_frames = ${BASE_FRAMES}
 exp_id = str("${EXP_ID}")
 res_dir = "${RES_DIR}"
+scale = ${SCALE:-2}
+base_capacity = "${BASE_CAPACITY:-"Y"}" == "Y"
 
 # ==============================================================================
 # MODIFICATION BLOCK: Override settings for quick-test and test modes
@@ -146,7 +150,7 @@ else:
 custom_config = ExperimentConfiguration(
     runs=current_experiments, allocator=allocator, 
     env_type=FRAMEWORK_CONFIG['main_env'], scenarios=test_scenarios, 
-    models=models, attack_intensity=attack_intensity, scale=2, base_capacity=True, overwrite=True)
+    models=models, attack_intensity=attack_intensity, scale=scale, base_capacity=base_capacity, overwrite=True)
 
 
 # 5
@@ -201,7 +205,7 @@ try:
 
 
     # Full comparison plot (all scenarios together)
-    viz = QuantumEvaluatorVisualizer(comparison_results, allocator=allocator, output_dir=res_dir, framework_config=custom_config)
+    viz = QuantumEvaluatorVisualizer(comparison_results, allocator=allocator, output_dir=res_dir, config=custom_config)
     viz.plot_stochastic_vs_adversarial_comparison()
     viz.save_all_evaluation_results()
 

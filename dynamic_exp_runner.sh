@@ -201,7 +201,7 @@ try:
 
 
     # Full comparison plot (all scenarios together)
-    viz = QuantumEvaluatorVisualizer(comparison_results, allocator=allocator, output_dir=res_dir)
+    viz = QuantumEvaluatorVisualizer(comparison_results, allocator=allocator, output_dir=res_dir, framework_config=custom_config)
     viz.plot_stochastic_vs_adversarial_comparison()
     viz.save_all_evaluation_results()
 

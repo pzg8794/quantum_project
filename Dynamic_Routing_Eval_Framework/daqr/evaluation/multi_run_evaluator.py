@@ -624,7 +624,7 @@ class MultiRunEvaluator:
         return self
 
     
-    def run_threaded_experiment(self, exp_no, offset=100, models=None, attack_category="Stochastic", attack_rate=0.25):
+    def run_threaded_experiment(self, exp_no, offset=100, models=None, attack_category="Stochastic", attack_rate=0.25, max_workers=4):
         self.update_configs(models=models, attack_rate=attack_rate)
 
         self.frames_count = self.base_frames + (exp_no * self.frame_step)
@@ -667,7 +667,7 @@ class MultiRunEvaluator:
                 frames_count=self.frames_count,
                 models=self.configs.models,
                 qubit_cap=qubit_cap,
-                max_workers=4  # Models run in parallel within this experiment
+                max_workers=max_workers  # Models run in parallel within this experiment
             )
             
             experiment_results['attack_category'] = attack_category

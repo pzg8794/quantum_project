@@ -1,0 +1,33 @@
+{
+  "environment": "stochastic",
+  "experiment_id": 1,
+  "num_runs": 3,
+  "model_category": "Hybrid",
+  "models_tested": [
+    "Oracle",
+    "CPursuitNeuralUCB",
+    "GNeuralUCB",
+    "EXPNeuralUCB",
+    "iCPursuitNeuralUCB"
+  ],
+  "timestamp": "2025-11-09T23:16:26.464236",
+  "session_timestamp": "20251109_231618",
+  "session_id": "20251109_231618",
+  "framework_config": {},
+  "allocator_type": "Random",
+  "allocator_config": {
+    "total_qubits": 35,
+    "num_routes": 4,
+    "min_qubits_per_route": 2,
+    "epsilon": 1.0,
+    "initial_epsilon": 1.0,
+    "epsilon_decay": 1.0,
+    "min_epsilon": 0.1,
+    "baseline": [
+      8,
+      10,
+      8,
+      9
+    ]
+  }
+}

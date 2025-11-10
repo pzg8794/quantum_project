@@ -19,7 +19,6 @@ class ExperimentConfig:
 class GCPExperimentRunner:
     """Manages creation, execution, and cleanup of GCP experiments."""
     ALLOCATORS = ["none", "thompson", "dynamic", "random"]
-
     ZONE_MAP = {
         "none": "us-central1-a",
         "thompson": "us-central1-f", 
@@ -28,7 +27,7 @@ class GCPExperimentRunner:
     }
 
     def __init__(self, allocator: str, zone: str = "us-central1-a",
-                machine_type: str = "n2-standard-8", disk_size: str = "100GB",
+                machine_type: str = "c2-standard-8", disk_size: str = "100GB",
                 mode: str = "production"):
 
         self.allocator = allocator.lower()
@@ -112,13 +111,17 @@ class GCPExperimentRunner:
             echo "🔧 Creating test branch: {test_branch} for {vm_name}"
             git checkout {self.branch_name}
             git checkout -b {test_branch} 2>/dev/null || git checkout {test_branch}
+            echo "🌐 Current branch: $(git rev-parse --abbrev-ref HEAD)"
+            echo "📍 Latest commit: $(git log -1 --oneline)"
             git push -u origin {test_branch} 2>/dev/null || echo "Branch already exists on remote"
         """
 
     def run_and_stream_experiment(self, vm_name: str, script_with_args: str, gcp: bool = True):
         """Runs the experiment on a remote VM and streams logs live."""
-        shown_progress = set()
-        print(f"--- Starting Experiment on {vm_name} ---")
+        with GCPExperimentRunner._print_lock:
+            print(f"\n{'='*80}")
+            print(f"[{vm_name}] Starting Experiment")
+            print(f"{'='*80}")
         
         try:
             subprocess.run([
@@ -131,43 +134,54 @@ class GCPExperimentRunner:
         log_dir = f'$HOME/quantum_project/Dynamic_Routing_Eval_Framework/logs'
         log_file = f'{log_dir}/{vm_name}_$(date +"%Y%m%d_%H%M%S").log'
 
-        # 🎯 INTELLIGENT BRANCH LOGIC
+        # Branch logic
         if self.test_mode:
             test_branch = self._generate_test_branch_name(self.mode, self.allocator)
             branch_setup = self._create_and_switch_test_branch(vm_name, test_branch)
             self.branch_name = test_branch
             print(f"🧪 Test mode: Creating branch '{test_branch}' for {vm_name}")
             script_with_args = f"{script_with_args} {self.branch_name}"
-            print(f"🔧 Test script command: {script_with_args}")
         else:
             branch_setup = ""
             self.branch_name = "gcp-main" if gcp else "main"
 
-            command_str = f"""
-                set -e
-                echo "--- Remote script started. Preparing log directory: {log_dir}"
-                mkdir -p "{log_dir}"
-                
-                (
-                    cd "$HOME/quantum_project"
-                    echo '--- Remote log started at $(date) ---'
-                    echo "🔄 Switching to branch: {self.branch_name}"
-                    
-                    {branch_setup}
-                    git checkout --quiet {self.branch_name}
-                    
-                    # FIX: Show git pull errors and force overwrite
-                    echo "📥 Pulling latest changes..."
-                    git fetch origin {self.branch_name}
-                    git reset --hard origin/{self.branch_name}  # Force update to remote state
-                    
-                    chmod +x ./*.sh
-                    echo "🚀 Executing: {script_with_args}"
-                    ./{script_with_args}
-                    
-                ) | tee -a "{log_file}"
-            """
+        # Build command (works for both test and production)
+        command_str = f"""
+        set -e
+        echo "--- Remote script started. Preparing log directory: {log_dir}"
+        mkdir -p "{log_dir}"
+
+    cd "$HOME/quantum_project" || exit 1
+    echo "--- Remote log started at $(date) ---"
+    echo "🔄 Switching to branch: {self.branch_name}"
+
+    {branch_setup}
+    git checkout {self.branch_name}
+
+    if [ -f .git/index.lock ]; then
+        echo "🧹 Removing stale git lock"
+        rm -f .git/index.lock
+    fi
+
+    echo "📥 Pulling latest changes..."
+    git fetch origin {self.branch_name} 2>/dev/null
+    git reset --hard origin/{self.branch_name} 2>/dev/null
+
+    chmod +x ./*.sh
+    echo "🚀 Executing: {script_with_args}"
+    PYTHONUNBUFFERED=1 ./{script_with_args} 2>&1 | tee -a "{log_file}"
+    """
         
+        # Wrap entire command in bash -l -c
+        # ssh_cmd = [
+        #     "gcloud", "compute", "ssh", vm_name,
+        #     f"--zone={self.zone}",
+        #     "--quiet",
+        #     "--",
+        #     f"bash -l -c '{command_str}'"
+        # ]
+
+
         ssh_cmd = [
             "gcloud", "compute", "ssh", vm_name,
             f"--zone={self.zone}",
@@ -177,18 +191,7 @@ class GCPExperimentRunner:
         try:
             proc = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             for line in proc.stdout:
-                line_stripped = line.strip()
-
-                # if "Progress" in line_stripped:
-                #     match = re.search(r"(\d+)%\|", line_stripped)
-                #     if match:
-                #         percent = int(match.group(1))
-                #         if percent in shown_progress:
-                #             continue
-                #         shown_progress.add(percent)
-                #         if percent not in (50, 75, 100):
-                #             continue
-                            
+                line_stripped = line.strip()   
                 if "Test DONE" in line_stripped:
                     self.to_delete.append(vm_name)
 
@@ -250,7 +253,8 @@ class GCPExperimentRunner:
         if "test" in mode:
             rounds = [("exp-test", f"run_exp_test.sh {mode}")]
         else:
-            rounds = [("exp1", "run_exp1.sh"), ("exp2", "run_exp2.sh"), ("exp3", "run_exp3.sh"), ("exp4", "run_exp4.sh")]
+            rounds = [("exp1", "run_exp1.sh"), ("exp2", "run_exp2.sh")]
+                    #   ("exp3", "run_exp3.sh"), ("exp4", "run_exp4.sh")]
 
         experiment_queue = []
         for round_name, script in rounds:

@@ -35,11 +35,24 @@ class QubitAllocator:
             'num_routes': self.num_routes,
             'min_qubits_per_route': self.min_qubits_per_route
         }
-    
+
     def __repr__(self):
         alloc =  self.__class__.__name__.replace("QubitAllocator", "")
         if not alloc: return "Default"
         else: return alloc.replace("Allocator", "")
+
+    # ------------------------------------------------------------
+    # Equality check (used across all allocator types)
+    # ------------------------------------------------------------
+    def __eq__(self, other):
+        if not isinstance(other, QubitAllocator):
+            return NotImplemented
+        return (
+            type(self) is type(other)
+            and self.total_qubits == other.total_qubits
+            and self.num_routes == other.num_routes
+            and self.min_qubits_per_route == other.min_qubits_per_route
+        )
 
 
 # ============================================================
@@ -146,6 +159,17 @@ class RandomQubitAllocator(QubitAllocator):
         })
         return config
 
+    def __eq__(self, other):
+        if not super().__eq__(other):
+            return False
+        return (
+            np.isclose(self.epsilon, other.epsilon)
+            and np.isclose(self.epsilon_decay, other.epsilon_decay)
+            and np.isclose(self.min_epsilon, other.min_epsilon)
+            and self.baseline_allocation == other.baseline_allocation
+        )
+
+
 
 # ============================================================
 # Dynamic Qubit Allocator (UCB-based)
@@ -206,6 +230,11 @@ class DynamicQubitAllocator(QubitAllocator):
         if verbose:
             print(f"[DynamicUCBAllocator] timestep={timestep} → allocation={result}")
         return result
+
+    def __eq__(self, other):
+        if not super().__eq__(other):
+            return False
+        return np.isclose(self.exploration_bonus, other.exploration_bonus)
 
 
 # ============================================================

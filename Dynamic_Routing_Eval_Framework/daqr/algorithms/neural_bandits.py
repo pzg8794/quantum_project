@@ -280,50 +280,56 @@ class EXPNeuralUCB(QuantumModel):
 
     def run(self, attack_list, verbose=None):
         """Enhanced batch/episode runner with clean progress output"""
-        if verbose is None: 
-            verbose = self.verbose
+        if verbose is None: verbose = self.verbose
+        
+        # ADAPTIVE: Adjust to actual attack_list size
+        actual_frames = len(attack_list)
+        expected_frames = self.frame_number
+        
+        # Use actual frames (whether more or less than expected)
+        frames_to_run = actual_frames
+        
+        # Log adjustment if mismatch
+        if actual_frames != expected_frames:
+            adjustment = "extended" if actual_frames > expected_frames else "reduced"
+            if verbose: print(f"\tℹ️  Frame count {adjustment}: expected={expected_frames}, actual={actual_frames}")
         
         start_time = time.time()
         
         if verbose:
             print(f"\nEXECUTION STARTING:")
             print("=" * 50)
-            print(f"| Mode:    | {self.mode.upper():<10} | Frames: {self.frame_number:<6} | Paths: {self.num_groups} |")
+            print(f"| Mode: {self.mode.upper():<10} | Frames: {frames_to_run:<6} | Paths: {self.num_groups} |")
             print("=" * 50)
 
-        # ✅ FIX: Add disable parameter
-        for frame in tqdm(range(self.frame_number), 
-                        desc=f"- {self.mode.upper()} Progress",
-                        disable=not verbose):  # Now respects verbose parameter
-            selected_path, prob_array = self.select_group(frame)
-            selected_action = self.select_action(selected_path)
+        # ✅ Run for actual available frames (completes regardless of mismatch)
+        for frame in tqdm(range(frames_to_run), desc=f"- {self.mode.upper()} Progress", disable=not verbose):
+            # Now respects verbose parameter
+            selected_path, prob_array   = self.select_group(frame)
+            selected_action             = self.select_action(selected_path)
             self.path_action_list.append([selected_path, selected_action])
             
-            base_reward = self.reward_list[selected_path][selected_action]
-            d_t = np.random.choice([0, 1], p=[1 - base_reward, base_reward])
-            dt = d_t * attack_list[frame][selected_path]
-            observed_reward = base_reward * attack_list[frame][selected_path]
+            base_reward         = self.reward_list[selected_path][selected_action]
+            d_t                 = np.random.choice([0, 1], p=[1 - base_reward, base_reward])
+            dt                  = d_t * attack_list[frame][selected_path]
+            observed_reward     = base_reward * attack_list[frame][selected_path]
             
             self.update_algorithms(selected_path, selected_action, base_reward, attack_list, frame)
             self.update_group_selection(selected_path, dt, prob_array)
             
-            oracle_reward = (self.reward_list[self.oracle_path][self.oracle_action] *
-                            attack_list[frame][self.oracle_path])
-            oracle_regret = oracle_reward - observed_reward
-            if oracle_regret < 0:
-                oracle_regret = 0
+            oracle_reward       = (self.reward_list[self.oracle_path][self.oracle_action] * attack_list[frame][self.oracle_path])
+            oracle_regret       = oracle_reward - observed_reward
+            if oracle_regret    < 0: oracle_regret = 0
             
-            self.regret += np.abs(oracle_regret)
-            self.total_reward += observed_reward
+            self.regret         += np.abs(oracle_regret)
+            self.total_reward   += observed_reward
             
             self.regret_list.append(self.regret)
             self.reward_list_total.append(self.total_reward)
         
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        
-        if verbose:
-            self._print_experiment_results(elapsed_time)
+        end_time        = time.time()
+        elapsed_time    = end_time - start_time
+        if verbose: self._print_experiment_results(elapsed_time)
 
 
     def _print_experiment_results(self, elapsed_time):
@@ -347,10 +353,14 @@ class EXPNeuralUCB(QuantumModel):
             'final_reward': copy.deepcopy(self.total_reward),
             'oracle_path': copy.deepcopy(self.oracle_path),
             'oracle_action': copy.deepcopy(self.oracle_action),
-            'mode': copy.deepcopy(self.mode)
+            'mode': copy.deepcopy(self.mode),
+            'state':self.state,
+            'metadata': {
+                'expected_frames': self.frame_number,
+                'actual_frames_processed': len(self.reward_list_total)
+            }
         }
-        if self.mode in ['hybrid', 'exp3']:
-            results['prob_list'] = copy.deepcopy(self.prob_list)
+        if self.mode in ['hybrid', 'exp3']: results['prob_list'] = copy.deepcopy(self.prob_list)
         return results
     
     def cleanup(self, verbose=False):

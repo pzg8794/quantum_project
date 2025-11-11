@@ -1,3 +1,7 @@
+from datetime import datetime
+import os
+from pathlib import Path
+import pickle
 from    daqr.config.experiment_config import ExperimentConfiguration
 from    tqdm    import tqdm
 import  numpy as np, copy
@@ -22,6 +26,8 @@ class QuantumExperimentRunner:
     def __init__(self, id=0, config: ExperimentConfiguration | None = None, frames_count=4000, base_seed=12345, 
              attack_type=None, attack_intensity=None, enable_progress=False, use_locks=False, 
              capacity=None, max_workers=None):
+        self._save_lock = threading.Lock()
+        self._model_lock = threading.Lock()
         self.configs = config if config is not None else ExperimentConfiguration()
         self.configs.base_seed = base_seed
         
@@ -29,6 +35,7 @@ class QuantumExperimentRunner:
         
         self.id = id
         self.results = {}
+        # self.model = None
         self.winner = None
         self.environment = None
         self.experiment_seed = None
@@ -36,14 +43,116 @@ class QuantumExperimentRunner:
         self.enable_progress = enable_progress
         self.algorithm_configs = self.configs.get_models_configs()
         self.capacity = capacity if capacity else self.frames_count
-        self.configs.update_configs(attack_type=attack_type, attack_intensity=attack_intensity)
         
         # ADD these new parallel execution attributes
         self.max_workers = max_workers if max_workers else min(4, mp.cpu_count())
         self._model_cache = {}  # Cache for model reuse
-        self._parallel_lock = threading.RLock()  # Thread-safe operations
         self._execution_stats = {'total_time': 0, 'parallel_efficiency': 0}
+
+        # Set paths
+        self.key_attrs = {}
+        self.day_str = datetime.now().strftime("%Y%m%d")
+        self.config_dir = Path(__file__).parent.parent / "config"
+        self.save_to_dir = Path(f"{self.config_dir}/framework_state/day_{self.day_str}/")
+        self.configs.update_configs(attack_type=attack_type, attack_intensity=attack_intensity)
+
+
+        qubit_cap = (8, 10, 8, 9)  # legacy fallback to avoid breaking runs
+        # Strongly prefer caller to pass allocator-derived qubit_cap
+        if self.configs.allocator is not None:
+            qubit_cap = tuple(self.configs.allocator.allocate(timestep=0, route_stats={}, verbose=False))
+
+        # Build the environment ONCE per experiment, then reuse across all models
+        self._build_environment_once(frames_count=self.frames_count, qubit_cap=qubit_cap)
+
+
+        allocator_id = getattr(self.configs, "allocator", "alloc")
+        env_id       = getattr(self.configs, "environment", "env")
+        attack_id    = getattr(self.configs, "attack_strategy", "None")
+        self.file_name = f"{self}-{allocator_id}_{env_id}_{attack_id}-{self.frames_count}_{self.id}.pkl"
+        
+        # Resume previous evaluator state if configured
+        if getattr(self.configs, "resume", False):
+            try:                    self.resume()
+            except Exception as e:  print(f"⚠️ Resume failed: {e}")
     
+    def __eq__(self, other):
+        """Defines equality for evaluator or saved dict comparison."""
+        # --- dict comparison (used in resume) ---
+        if isinstance(other, dict):
+            if (
+                self.id   == other.get("id") and
+                self.frames_count  == other.get("frames_count") and
+                self.key_attrs    == other.get("key_attrs")
+            ):
+                return True
+            return False
+
+        # --- evaluator comparison ---
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+
+        return (
+            self.id   == getattr(other, "id", None)
+            and self.frames_count == getattr(other, "frames_count", None)
+            and self.key_attrs   == getattr(other, "key_attrs", None)
+        )
+
+    def save(self):
+        """Save evaluator state for the current day."""
+        self.save_to_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Build pickleable dict
+        save_dict = {}
+        unpickleable = []
+        
+        for attr, value in self.__dict__.items():
+            try:
+                pickle.dumps(value)
+                save_dict[attr] = value
+            except:
+                unpickleable.append(attr)
+        
+        if unpickleable: print(f"\t⚠️ Excluding: {', '.join(unpickleable)}")
+        
+        try:
+            with open( self.save_to_dir / self.file_name, 'wb') as f:
+                pickle.dump(save_dict, f)
+                print(f"\tEVALUATOR Saved Succesfully")
+        except Exception as e:
+            print(f"❌ EVALUATOR Save failed: {e}")
+            raise  # Re-raise to see full traceback
+        return str(self.save_to_dir / self.file_name)
+
+    def resume(self, day_str=None):
+        """
+        Resume evaluator state if configuration layer requests it.
+        Replaces the current object state with the stored one.
+        Returns:
+            bool: True if successfully resumed, False otherwise.
+        """
+        self.save_to_dir.mkdir(parents=True, exist_ok=True)
+        state_path = Path(f"{self.save_to_dir}/{self.file_name}")
+
+        if not state_path.exists() or state_path.stat().st_size == 0:
+            print(f"\t⚠️ No saved state found for {self.save_to_dir}")
+            return False
+
+        print(f"\t🔄 Resuming state from: {state_path}")
+        try:
+            with open(state_path, "rb") as f:
+                loaded_dict = pickle.load(f)
+                # Compare IDs from the loaded dict
+                if (self == loaded_dict):
+                    self.__dict__.update(loaded_dict)
+                    print(f"\tState restored from {state_path}")
+                    return True
+
+                print(f"\t⚠️ ID mismatch - skipping resume")
+                return False
+        except Exception as e:
+            print(f"\t❌ Resume failed: {e}")
+            return False
     
     def remove_model(self, model_name):
         if model_name in self.algorithm_configs.keys():
@@ -81,6 +190,8 @@ class QuantumExperimentRunner:
 
         # Build and store the environment
         self.environment = self.configs.get_environment()
+        self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
+        
         print("="*150)
         self.display_experiment_conditions()
         print("="*150)
@@ -124,7 +235,7 @@ class QuantumExperimentRunner:
 
         results = {'final_reward': 0.0}
         total_reward, attempts = 0.0, 0
-
+        model = None
         try:
             while total_reward <= 0.0:
                 model_kwargs['verbose'] = enable_progress
@@ -144,6 +255,8 @@ class QuantumExperimentRunner:
                     )
                     model.set_capacity(self.capacity)
 
+                
+                model.state = -1
                 if enable_progress: self.validate_quantum_model(model)
                 try:
                     if runner_type == 'step-wise':
@@ -159,6 +272,8 @@ class QuantumExperimentRunner:
 
                     enable_progress = False  # suppress retries spam
                     avg_reward = total_reward / self.frames_count if (self.frames_count > 0 and total_reward > 0) else 0.0
+
+                    model.state = 1
                     results = {
                         'final_reward': float(total_reward),
                         'avg_reward': float(avg_reward),
@@ -170,10 +285,14 @@ class QuantumExperimentRunner:
                         'retries':attempts
                     }
                 except Exception as e: 
+                    model = None
+                    # self.save()
+
                     attempts +=1
                     print(f"\t❌ Runtime error in {algorithm_name}: {e}")
                 finally:
                     del model
+                    # self.save()
                     gc.collect()
 
         except Exception as e:
@@ -201,6 +320,7 @@ class QuantumExperimentRunner:
             if hasattr(self.environment, 'cleanup'):
                 self.environment.cleanup(verbose=verbose)
             del self.environment
+            # del model
             self.environment = None
             cleanup_items.append("environment")
         
@@ -350,24 +470,10 @@ class QuantumExperimentRunner:
         print("| Capability Detection | Automatic                |")
         print("=" * 60)
 
-
-
-
-
-    def run_experiment(self, frames_count=None, models=None, base_model='Oracle',
-                       attack_type=None, qubit_cap=None):
+    def run_experiment(self, frames_count=None, models=None, base_model='Oracle',attack_type=None, qubit_cap=None):
         if attack_type is not None: self.configs.attack_type = attack_type
         if models is None: models = list(self.algorithm_configs.keys())
         if frames_count: self.frames_count =frames_count
-
-        if qubit_cap is None:
-            # Strongly prefer caller to pass allocator-derived qubit_cap
-            if self.configs.allocator is not None and not self.configs.allocator.has_allocated():
-                qubit_cap = tuple(self.configs.allocator.allocate(timestep=0, route_stats={}, verbose=False))
-            else: qubit_cap = (8, 10, 8, 9)  # legacy fallback to avoid breaking runs
-
-        # Build the environment ONCE per experiment, then reuse across all models
-        self._build_environment_once(frames_count=self.frames_count, qubit_cap=qubit_cap)
 
         def get_oracle_reward(base_model, oracle_reward=0.0):
             print("\tGetting Oracle Rewards ...")
@@ -379,11 +485,13 @@ class QuantumExperimentRunner:
         # setting capacity at the experiment level
         self.capacity = self.capacity*self.configs.scale
 
-        self.results = {}
+        # self.results = {}
         best_reward = -1.0
         oracle_reward = get_oracle_reward(base_model)
         for alg_name in models:
-            if alg_name == base_model: continue
+            if (alg_name == base_model) or (alg_name in self.results.keys()): 
+                print(f"\t{alg_name} WAS ALREADY PROCESSED")
+                continue
             print(f"\n\t{str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Running {alg_name:<20}...")
             
             threshold = -1
@@ -455,17 +563,7 @@ class QuantumExperimentRunner:
         if frames_count: self.frames_count =frames_count
         if max_workers is None: max_workers = min(len(models), mp.cpu_count())
 
-        if qubit_cap is None:
-            # Strongly prefer caller to pass allocator-derived qubit_cap
-            if self.configs.allocator is not None and not self.configs.allocator.has_allocated():
-                qubit_cap = tuple(self.configs.allocator.allocate(timestep=0, route_stats={}, verbose=False))
-            else: qubit_cap = (8, 10, 8, 9)  # legacy fallback to avoid breaking runs
-
-        # Build the environment ONCE per experiment, then reuse across all models
-        self._build_environment_once(frames_count=self.frames_count, qubit_cap=qubit_cap)
-
-
-        self.results = {}
+        # self.results = {}
         best_reward = -1.0
         self.get_oracle_reward(base_model)
         # setting capacity at the experiment level
@@ -518,6 +616,7 @@ class QuantumExperimentRunner:
 
             self.results[alg_name]['efficiency'] = efficiency
             self.results[alg_name]['gap'] = gap
+            self.save()
             return alg_name
 
         # Execute models in parallel with controlled concurrency
@@ -726,3 +825,6 @@ class QuantumExperimentRunner:
         print(f"\t-->🏆 Winner: {results['winner']}")
         
         return results
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}_{self.id}"

@@ -493,7 +493,8 @@ class CMABModelBase(QuantumModel):
             'reward_list': copy.deepcopy(self.reward_list_total),
             'path_action_list': copy.deepcopy(self.path_action_list),
             'final_regret': copy.deepcopy(sum(self.regret_list)),
-            'final_reward': copy.deepcopy(self.total_reward)
+            'final_reward': copy.deepcopy(self.total_reward),
+            'state':self.state
         }
 
 

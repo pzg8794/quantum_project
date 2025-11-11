@@ -72,6 +72,7 @@ class QuantumModel(ABC):
         self.gamma = gamma_factor
         self.eta = eta_factor
         self.capacity = capacity
+        self.state = 0
 
         self.thresholds = {
                 'EXPNeuralUCB': {'stochastic': 0.628, 'adversarial': 0.598},
@@ -249,8 +250,10 @@ class Oracle(QuantumModel):
         self.reward_list = reward_list
         self.attack_list = attack_list
         self.frame_number = len(attack_list)
-        # Pre-compute optimal actions for each time step
+            
+        # Pre-compute with actual available data
         self.optimal_actions = self._compute_optimal_actions()
+
         # Tracking variables
         self.regret_list = []
         self.reward_list_total = []
@@ -258,48 +261,102 @@ class Oracle(QuantumModel):
         self.total_reward = 0
         self.current_frame = 0
 
+    # def _compute_optimal_actions(self):
+    #     """Pre-compute optimal path and action for each time step"""
+    #     optimal_actions = []
+    #     for frame in range(self.frame_number):
+    #         best_reward = -1
+    #         best_path = 0
+    #         best_action = 0
+    #         # Check all paths
+    #         for path in range(len(self.reward_list)):
+    #             if self.attack_list[frame][path] > 0:  # Path not attacked
+    #                 path_rewards = self.reward_list[path]
+    #                 best_path_action = np.argmax(path_rewards)
+    #                 path_reward = path_rewards[best_path_action] * self.attack_list[frame][path]
+    #                 if path_reward > best_reward:
+    #                     best_reward = path_reward
+    #                     best_path = path
+    #                     best_action = best_path_action
+    #         optimal_actions.append((best_path, best_action, best_reward))
+    #     return optimal_actions
+
     def _compute_optimal_actions(self):
-        """Pre-compute optimal path and action for each time step"""
+        """
+        Pre-compute optimal actions using ACTUAL data bounds. Handles edge cases without crashing.
+        """
         optimal_actions = []
-        for frame in range(self.frame_number):
-            best_reward = -1
+        
+        # Use actual attack_list length (defensive)
+        for frame in range(len(self.attack_list)):
+            best_reward = -float('inf')
             best_path = 0
             best_action = 0
-            # Check all paths
+            
+            # Nested defensive check
             for path in range(len(self.reward_list)):
-                if self.attack_list[frame][path] > 0:  # Path not attacked
+                # Validate path exists in attack_list[frame]
+                if path < len(self.attack_list[frame]) and self.attack_list[frame][path] > 0:
                     path_rewards = self.reward_list[path]
                     best_path_action = np.argmax(path_rewards)
                     path_reward = path_rewards[best_path_action] * self.attack_list[frame][path]
+                    
                     if path_reward > best_reward:
                         best_reward = path_reward
                         best_path = path
                         best_action = best_path_action
-            optimal_actions.append((best_path, best_action, best_reward))
-        return optimal_actions
 
+            optimal_actions.append((best_path, best_action, best_reward))
+
+        return optimal_actions
+    
+    # def take_action(self):
+    #     """Return optimal action for current frame"""
+    #     if self.current_frame < len(self.optimal_actions):
+    #         path, action, _ = self.optimal_actions[self.current_frame]
+    #         return path, action
+    #     return 0, 0
+    
     def take_action(self):
-        """Return optimal action for current frame"""
-        if self.current_frame < len(self.optimal_actions):
-            path, action, _ = self.optimal_actions[self.current_frame]
-            return path, action
-        return 0, 0
+        """Return optimal action with bounds checking"""
+        # Defensive: Check if we're within valid range
+        if self.current_frame >= len(self.optimal_actions):
+            # Fallback: return last known optimal action
+            if len(self.optimal_actions) > 0: return self.optimal_actions[-1][0], self.optimal_actions[-1][1]
+            else: return 0, 0 # Ultimate fallback: random valid action
+        
+        path, action, _ = self.optimal_actions[self.current_frame]
+        return path, action
+
+    # def update(self, path, action, reward):
+    #     """Update Oracle (just tracking)"""
+    #     self.total_reward += reward
+    #     self.reward_list_total.append(self.total_reward)
+    #     self.path_action_list.append([path, action])
+    #     self.regret_list.append(0)  # Oracle has zero regret by definition
+    #     self.current_frame += 1
 
     def update(self, path, action, reward):
-        """Update Oracle (just tracking)"""
+        """Update with defensive frame tracking"""
         self.total_reward += reward
         self.reward_list_total.append(self.total_reward)
         self.path_action_list.append([path, action])
-        self.regret_list.append(0)  # Oracle has zero regret by definition
+        self.regret_list.append(0)
         self.current_frame += 1
-
+        
     def get_results(self):
+        """Return results with metadata about actual vs expected frames"""
         return {
             'final_regret': 0,
             'regret_list': copy.deepcopy(self.regret_list),
             'final_reward': copy.deepcopy(self.total_reward),
             'reward_list': copy.deepcopy(self.reward_list_total),
-            'path_action_list': copy.deepcopy(self.path_action_list)
+            'path_action_list': copy.deepcopy(self.path_action_list),
+            'state':self.state,
+            'metadata': {
+                'actual_frames': len(self.optimal_actions),
+                'frames_processed': copy.deepcopy(self.current_frame)
+            }
         }
 
 # Base Random Algorithm Class

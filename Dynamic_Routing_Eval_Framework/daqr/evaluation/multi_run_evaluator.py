@@ -1,6 +1,10 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import time, gc
+from datetime import datetime
+import pickle
+import threading
+import time, gc, os
 import numpy as np, copy
+from pathlib import Path
 from daqr.config.experiment_config import ExperimentConfiguration
 from daqr.evaluation.experiment_runner import QuantumExperimentRunner
 
@@ -29,6 +33,7 @@ class MultiRunEvaluator:
             scenarios: Dictionary of scenarios to test {scenario_key: description}
         """
         self.configs = configs if configs else ExperimentConfiguration()
+        self._save_lock = threading.Lock()  
         self.scenarios_stats = {}
         self.env_experiments = {}
         self.evaluation_results = {}
@@ -39,59 +44,192 @@ class MultiRunEvaluator:
         self.base_frames = base_frames
         self.enable_progress = enable_progress
         
+        # self.runner = None
+        self.run_state = 0        # 0: not run, 1: completed, -1: failed
         self.total_time = 0
         self.start_time = None
         
-        # self.runs = runs
-        # self.models = models
-        # self.attack_type = attack_type
-        # self.test_scenarios = scenarios
-        # self.attack_intensity = attack_intensity
-
+        self.key_attrs = {}
+        self.file_name = None
         self.cal_winner = True
         self.env_type = 'stochastic'
         self.capacity = self.base_frames
+
+        # Set paths
+        self.day_str = datetime.now().strftime("%Y%m%d")
+        self.config_dir = Path(__file__).parent.parent / "config"
+        self.save_to_dir = Path(f"{self.config_dir}/framework_state/day_{self.day_str}/")
+        
+        # Update configs FIRST
         self.update_configs(runs, models, attack_type, scenarios, attack_intensity)
-        # self.capacity = (frame_step * self.configs.runs) + base_frames
+
+        qubit_cap = (8, 10, 8, 9)  # legacy fallback to avoid breaking runs
+        # Strongly prefer caller to pass allocator-derived qubit_cap
+        if self.configs.allocator is not None and not self.configs.allocator.has_allocated():
+            qubit_cap = tuple(self.configs.allocator.allocate(timestep=0, route_stats={}, verbose=False))
+
+        # Build the environment ONCE per experiment, then reuse across all models
+        self._build_environment_once(frames_count=self.frames_count, qubit_cap=qubit_cap)
+
+        # Set filename AFTER configs are ready
+        allocator_id = getattr(self.configs, "allocator", "alloc")
+        env_id       = getattr(self.configs, "environment", "env")
+        runs_id      = getattr(self.configs, "runs", "1")
+        attack_id    = getattr(self.configs, "attack_strategy", "None")
+        self.file_name = f"{self}-{allocator_id}_{env_id}_{attack_id}-{self.base_frames}_{self.frame_step}_{runs_id}.pkl"
+
+        # NOW resume can work
+        if getattr(self.configs, "resume", False):
+            try:    self.resume()
+            except Exception as e:  print(f"⚠️ Resume failed: {e}")
 
         print("Multi-Run Evaluator Initialized")
         print(f"Environment Type: {attack_type}")
         print(f"Frame Range: {base_frames} -> {base_frames + (self.configs.runs-1)*frame_step} (step: {frame_step})")
 
+    def _build_environment_once(self, frames_count: int, qubit_cap: tuple):
+        """
+        Build ONE shared environment for the whole experiment (all models),
+        with a seed that is independent of the model being run.
+        """
+        if frames_count: self.frames_count =frames_count
+        # Seed independent of model to keep environment identical across algorithms
+        env_seed = self.configs.base_seed + (hash(f"{self.configs.attack_type}_{self.frames_count}") % 10000)
+
+        # Configure attack scenario if not already configured by MultiRun
+        self.configs.set_attack_strategy(
+            attack_type=self.configs.attack_type,
+            attack_rate=self.configs.attack_rate,
+            attack_intensity=self.configs.attack_intensity
+        )
+
+        # Configure environment core parameters
+        self.configs.set_environment(
+            qubit_cap=qubit_cap,
+            frames_no=self.frames_count,
+            seed=env_seed,
+            attack_intensity=self.configs.attack_intensity,
+            attack_type=self.configs.attack_type
+        )
+        self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
+
+    def __eq__(self, other):
+        """Defines equality for evaluator or saved dict comparison."""
+        # --- dict comparison (used in resume) ---
+        if isinstance(other, dict):
+            if (
+                self.frame_step   == other.get("frame_step") and
+                self.base_frames  == other.get("base_frames") and
+                self.key_attrs    == other.get("key_attrs")
+            ):
+                return True
+            return False
+
+        # --- evaluator comparison ---
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+
+        return (
+            self.frame_step   == getattr(other, "frame_step", None)
+            and self.base_frames == getattr(other, "base_frames", None)
+            and self.key_attrs   == getattr(other, "key_attrs", None)
+        )
+
+    def save(self):
+        """Save evaluator state for the current day."""
+        self.save_to_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Build pickleable dict
+        save_dict = {}
+        unpickleable = []
+        
+        for attr, value in self.__dict__.items():
+            try:
+                pickle.dumps(value)
+                save_dict[attr] = value
+            except:
+                unpickleable.append(attr)
+        
+        if unpickleable: print(f"\t⚠️ Excluding: {', '.join(unpickleable)}")
+        
+        try:
+            with open(self.save_to_dir / self.file_name, 'wb') as f:
+                pickle.dump(save_dict, f)
+            print(f"\tEVALUATOR Saved Succesfully")
+        except Exception as e:
+            print(f"❌ EVALUATOR Save failed: {e}")
+            raise  # Re-raise to see full traceback
+        return str(self.save_to_dir / self.file_name)
+
+    def resume(self, day_str=None):
+        """
+        Resume evaluator state if configuration layer requests it.
+        Replaces the current object state with the stored one.
+        Returns:
+            bool: True if successfully resumed, False otherwise.
+        """
+        state_path = Path(f"{self.save_to_dir}/{self.file_name}")
+
+        if not state_path.exists() or state_path.stat().st_size == 0:
+            print(f"\t⚠️ No saved state found for {self.save_to_dir}")
+            return False
+
+        print(f"\t🔄 Resuming state from: {state_path}")
+        try:
+            with open(state_path, "rb") as f:
+                loaded_dict = pickle.load(f)
+                # Compare IDs from the loaded dict
+                if (self == loaded_dict):
+                    self.__dict__.update(loaded_dict)
+                    print(f"\tState restored from {state_path}")
+                    return True
+
+                print(f"\t⚠️ ID mismatch - skipping resume")
+                return False
+        except Exception as e:
+            print(f"\t❌ Resume failed: {e}")
+            return False
 
     def run_experiment(self, exp_no, offset=100, models=None, attack_category="Stochastic", attack_rate=0.25):
         self.update_configs(models=models, attack_rate=attack_rate)
 
         self.frames_count = self.base_frames + (exp_no * self.frame_step)
         self.capacity = self.base_frames if self.configs.base_capacity else self.frames_count
-        
-        print("-" * 100)
         exp_id = exp_no + 1
-        print(f"EXPERIMENT {exp_id}: {self.frames_count} frames  <>  SCALED-CAPACITY: {self.capacity*self.configs.scale} frames (CAPACITY:{self.capacity} X SCALE:{self.configs.scale})")
+
+        # Skip if already completed (resume-safe)
+        if (
+            self.configs.attack_type in self.env_experiments
+            and exp_id in self.env_experiments[self.configs.attack_type]
+        ):
+            print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
+            return self.env_experiments[self.configs.attack_type][exp_id]
+
+        print("-" * 100)
+        print(f"EXPERIMENT {exp_id}: {self.frames_count} frames  <>  SCALED-CAPACITY: "
+            f"{self.capacity*self.configs.scale} frames (CAPACITY:{self.capacity} X SCALE:{self.configs.scale})")
         print("-" * 100)
 
-        # Configure attack scenario ONCE (per scenario batch is fine; here per exp is safe too)
+        # Configure attack scenario
         self.configs.set_attack_strategy(
             attack_rate=self.configs.attack_rate,
             attack_type=self.configs.attack_type,
             attack_intensity=self.configs.attack_intensity
         )
 
-        # Ask the allocator for dynamic qubit allocation (routing layer)
-        route_stats = {}  # Plug in prior results if you want feedback-driven routing
-        if hasattr(self.configs, 'allocator') and self.configs.allocator is not None:
+        # Allocator (routing layer)
+        route_stats = {}
+        if hasattr(self.configs, "allocator") and self.configs.allocator is not None:
             qubit_cap = tuple(self.configs.allocator.allocate(
                 timestep=exp_no,
                 route_stats=route_stats
             ))
-        else:
-            # Conservative fallback; prefer allocator presence
-            qubit_cap = (8, 10, 8, 9)
+        else: qubit_cap = (8, 10, 8, 9)
 
-        # Create runner and pass the precomputed qubit_cap
+        # Create runner
         runner = QuantumExperimentRunner(
             config=self.configs,
-            capacity = self.capacity,
+            capacity=self.capacity,
             frames_count=self.frames_count,
             enable_progress=self.enable_progress,
             attack_type=self.configs.attack_type,
@@ -103,17 +241,21 @@ class MultiRunEvaluator:
             experiment_results = runner.run_experiment(
                 frames_count=self.frames_count,
                 models=self.configs.models,
-                qubit_cap=qubit_cap  # critical: pass routing-derived capacities
+                qubit_cap=qubit_cap
             )
-            experiment_results['attack_category'] = attack_category
-            experiment_results['exp_id'] = exp_id
+            experiment_results["attack_category"] = attack_category
+            experiment_results["exp_id"] = exp_id
             self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
-            # print(f"Experiment {exp_id} completed successfully in environment {self.configs.attack_type}")
+            print(f"Experiment {exp_id} completed successfully.")
         except Exception as e:
-            print(f"Experiment {exp_id} failed: {e}")
+            # self.save()
+            print(f"❌ Experiment {exp_id} failed: {e}")
             raise
+
         finally:
-            del runner
+            # Always save progress
+            # runner.save()
+            # del runner
             gc.collect()
 
         return self.env_experiments[self.configs.attack_type][exp_id]
@@ -139,6 +281,7 @@ class MultiRunEvaluator:
         for i in range(0, self.configs.runs):
             self.run_experiment(exp_no=i, attack_category=attack_category)
         self.total_time = time.time() - self.start_time
+        self.save()
 
         print(f"Total experiment time: {self.total_time:05.1f}s")
         print(f"Experiments completed for {self.configs.attack_type}")
@@ -591,7 +734,6 @@ class MultiRunEvaluator:
 
     def update_configs(self, runs=None, models=None, scenarios=None, attack_type=None, intensity=None, attack_rate=None):
         self.configs.update_configs(runs, models, scenarios, attack_rate, intensity, attack_rate)
-
         if self.configs.attack_type not in self.env_experiments:
             self.env_experiments[self.configs.attack_type] = {}
         
@@ -629,11 +771,17 @@ class MultiRunEvaluator:
 
         self.frames_count = self.base_frames + (exp_no * self.frame_step)
         self.capacity = self.base_frames if self.configs.base_capacity else self.frames_count
+
         
         print("\n\n", "-" * 100)
         exp_id = exp_no + 1
         print(f"EXPERIMENT {exp_id}: {self.frames_count} frames  <>  SCALED-CAPACITY: {self.capacity*self.configs.scale} frames")
         print("-" * 100)
+
+        # Skip if already completed (resume-safe)
+        if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
+            print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
+            return self.env_experiments[self.configs.attack_type][exp_id]
 
         self.configs.set_attack_strategy(
             attack_rate=self.configs.attack_rate,
@@ -678,6 +826,7 @@ class MultiRunEvaluator:
             print(f"Experiment {exp_id} failed: {e}")
             raise
         finally:
+            # runner.save()
             del runner
             gc.collect()
 
@@ -752,3 +901,6 @@ class MultiRunEvaluator:
         print(f"\n\t⏱️  Total multi-run time: {self.total_time:05.1f}s")
         print(f"\tExperiments completed for {self.configs.attack_type}")
         return self.env_experiments[self.configs.attack_type]
+    
+    def __repr__(self):
+        return self.__class__.__name__

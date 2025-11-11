@@ -576,7 +576,33 @@ class QuantumEvaluatorVisualizer:
         self._plot_framework_summary(axes[1,2], stochastic_data)
 
         plt.tight_layout()
-        plt.savefig('quantum_mab_models_stochastic_evaluation.png', dpi=300, bbox_inches='tight')
+
+
+
+        # --- Build comparison results directory ---
+        allocator_type = str(self.allocator) if self.allocator else "None"
+        stoch_results = stochastic_data['averaged'] if stochastic_data else None
+        model_category = self._detect_model_category(
+            list(stoch_results['results'].keys()) if stoch_results else []
+        )
+
+        # Create unified "comparison" directory under /results
+        exp_dir = (
+            self.output_dir /
+            "comparison" /
+            allocator_type /
+            model_category
+        )
+        exp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Use timestamped filename for traceability
+        timestamp = self.session_timestamp
+        baseline_suffix = f"quantum_mab_models_{scenario}_evaluation" if baseline else ""
+        capacity_type = "T" if self.config.base_capacity else f"{self.config.scale}T"
+        scenario_conditions = f"{alloc_type}_{baseline_suffix}_{capacity_type}"
+        plot_filename = f"{scenario_conditions}_{self.config._env_params.get('frame_length', 100)}frames_{timestamp}.png"
+        plot_path = exp_dir / plot_filename
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         plt.show()
 
         # Generate numerical summary
@@ -1044,7 +1070,7 @@ class QuantumEvaluatorVisualizer:
 
 
         # --- Build comparison results directory ---
-        alloc_type = str(self.allocator) if self.allocator else "None"
+        allocator_type = str(self.allocator) if self.allocator else "None"
         model_category = self._detect_model_category(
             list(scenario_results['results'].keys()) if scenario_results else []
         )
@@ -1053,7 +1079,7 @@ class QuantumEvaluatorVisualizer:
         exp_dir = (
             self.output_dir /
             "comparison" /
-            alloc_type /
+            allocator_type /
             model_category
         )
         exp_dir.mkdir(parents=True, exist_ok=True)
@@ -1061,7 +1087,9 @@ class QuantumEvaluatorVisualizer:
         # Use timestamped filename for traceability
         baseline_suffix = f"_vs_{baseline}" if baseline else ""
         timestamp = self.session_timestamp
-        plot_filename = f"{alloc_type}_{scenario}{baseline_suffix}_{self.config._env_params.get('frame_length', 100)}frames_{timestamp}.png"
+        capacity_type = "T" if self.config.base_capacity else f"{self.config.scale}T"
+        scenario_conditions = f"{allocator_type}_{scenario}{baseline_suffix}_{capacity_type}"
+        plot_filename = f"{scenario_conditions}_{self.config._env_params.get('frame_length', 100)}frames_{timestamp}.png"
         plot_path = exp_dir / plot_filename
 
         plt.tight_layout()
@@ -1154,7 +1182,9 @@ class QuantumEvaluatorVisualizer:
         # Use timestamped filename for traceability
         baseline_suffix = f"_vs_{baseline}_comparison" if baseline else ""
         timestamp = self.session_timestamp
-        plot_filename = f"{allocator_type}_{scenario}{baseline_suffix}_{self.config._env_params.get('frame_length', 100)}_{timestamp}.png"
+        capacity_type = "T" if self.config.base_capacity else f"{self.config.scale}T"
+        scenario_conditions = f"{allocator_type}_{scenario}{baseline_suffix}_{capacity_type}"
+        plot_filename = f"{scenario_conditions}_{self.config._env_params.get('frame_length', 100)}frames_{timestamp}.png"
         plot_path = exp_dir / plot_filename
 
         plt.tight_layout()
@@ -1524,7 +1554,7 @@ class QuantumEvaluatorVisualizer:
         ax.axis('off')
 
 
-    def _create_basic_comparison_plot(self):
+    def _create_basic_comparison_plot(self, scenario='stochastic', baseline='basic'):
         """Create basic comparison plot when no data available."""
         fig, ax = plt.subplots(figsize=(10, 6))
         
@@ -1536,7 +1566,40 @@ class QuantumEvaluatorVisualizer:
         ax.axis('off')
         
         plt.tight_layout()
-        plt.savefig('stochastic_vs_adversarial_comparison.png', dpi=300, bbox_inches='tight')
+
+
+        # --- Build comparison results directory ---
+        allocator_type = str(self.allocator) if self.allocator else "None"
+
+        # Extract BOTH averaged and peak results
+        stochastic_data = self._extract_primary_results(scenario)
+        if not stochastic_data:
+            print("No stochastic evaluation data available.")
+        
+        stoch_results = stochastic_data['averaged'] if stochastic_data else None
+        model_category = self._detect_model_category(
+            list(stoch_results['results'].keys()) if stoch_results else []
+        )
+
+        # Create unified "comparison" directory under /results
+        exp_dir = (
+            self.output_dir /
+            "comparison" /
+            allocator_type /
+            model_category
+        )
+        exp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Use timestamped filename for traceability
+        baseline_suffix = f"_vs_{baseline}_comparison" if baseline else ""
+        timestamp = self.session_timestamp
+        capacity_type = "T" if self.config.base_capacity else f"{self.config.scale}T"
+        scenario_conditions = f"{allocator_type}_{scenario}{baseline_suffix}_{capacity_type}"
+        plot_filename = f"{scenario_conditions}_{self.config._env_params.get('frame_length', 100)}frames_{timestamp}.png"
+        plot_path = exp_dir / plot_filename
+
+        plt.tight_layout()
+        plt.savefig(plot_path, dpi=300, bbox_inches="tight")
         plt.show()  # DISPLAYS in notebook
 
     def cleanup(self, verbose=False, cooldown_seconds=1):

@@ -117,12 +117,18 @@ class MultiRunEvaluator:
         """Defines equality for evaluator or saved dict comparison."""
         # --- dict comparison (used in resume) ---
         if isinstance(other, dict):
+            if "seed" in other.get("key_attrs"):
+                del other.get("key_attrs")["seed"]
             if (
                 self.frame_step   == other.get("frame_step") and
                 self.base_frames  == other.get("base_frames") and
                 self.key_attrs    == other.get("key_attrs")
             ):
                 return True
+            print(self.frame_step, " ", other.get("frame_step"))
+            print(self.base_frames, " ", other.get("base_frames"))
+            print(json.dumps(self.key_attrs))
+            print(json.dumps(other.get("key_attrs")))
             return False
 
         # --- evaluator comparison ---
@@ -155,9 +161,9 @@ class MultiRunEvaluator:
         try:
             with open(self.save_to_dir / self.file_name, 'wb') as f:
                 pickle.dump(save_dict, f)
-            print(f"\tEVALUATOR Saved Succesfully")
+            print(f"\{self} Saved Succesfully")
         except Exception as e:
-            print(f"❌ EVALUATOR Save failed: {e}")
+            print(f"❌ {self} Save failed: {e}")
             raise  # Re-raise to see full traceback
         return str(self.save_to_dir / self.file_name)
 
@@ -171,7 +177,7 @@ class MultiRunEvaluator:
         state_path = Path(f"{self.save_to_dir}/{self.file_name}")
 
         if not state_path.exists() or state_path.stat().st_size == 0:
-            print(f"\t⚠️ No saved state found for {self.save_to_dir}")
+            print(f"\t⚠️ {self} No saved state found for {self.save_to_dir}")
             return False
 
         print(f"\t🔄 Resuming state from: {state_path}")
@@ -181,13 +187,13 @@ class MultiRunEvaluator:
                 # Compare IDs from the loaded dict
                 if (self == loaded_dict):
                     self.__dict__.update(loaded_dict)
-                    print(f"\tState restored from {state_path}")
+                    print(f"\t{self} State restored from {state_path}")
                     return True
 
-                print(f"\t⚠️ ID mismatch - skipping resume")
+                print(f"\t⚠️ {self} ID mismatch - skipping resume")
                 return False
         except Exception as e:
-            print(f"\t❌ Resume failed: {e}")
+            print(f"\t❌ {self} Resume failed: {e}")
             return False
 
     def run_experiment(self, exp_no, offset=100, models=None, attack_category="Stochastic", attack_rate=0.25):
@@ -830,6 +836,7 @@ class MultiRunEvaluator:
             del runner
             gc.collect()
 
+        self.save()
         return self.env_experiments[self.configs.attack_type][exp_id]
 
 
@@ -852,6 +859,7 @@ class MultiRunEvaluator:
         self.start_time = time.time()
         for i in range(0, self.configs.runs):
             self.run_threaded_experiment(exp_no=i, attack_category=attack_category)
+            # self.save()
         self.total_time = time.time() - self.start_time
 
         print(f"Total experiment time: {self.total_time:05.1f}s")
@@ -893,6 +901,7 @@ class MultiRunEvaluator:
                 exp_id = exp_no + 1
                 try:
                     future.result()
+                    # self.save()
                     # print(f"✅ Experiment {exp_id} completed (frames: {self.base_frames + exp_no * self.frame_step})")
                 except Exception as e:
                     print(f"❌ Experiment {exp_id} failed: {e}")

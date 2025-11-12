@@ -80,12 +80,19 @@ class QuantumExperimentRunner:
         """Defines equality for evaluator or saved dict comparison."""
         # --- dict comparison (used in resume) ---
         if isinstance(other, dict):
+            if "seed" in other.get("key_attrs"):
+                del other.get("key_attrs")["seed"]
             if (
                 self.id   == other.get("id") and
-                self.frames_count  == other.get("frames_count") and
+                # self.frames_count  == other.get("frames_count") and
                 self.key_attrs    == other.get("key_attrs")
             ):
                 return True
+            import json
+            print(self.id, " ", other.get("id"))
+            # print(self.frames_count, " ", other.get("frames_count"))
+            print(json.dumps(self.key_attrs))
+            print(json.dumps(other.get("key_attrs")))
             return False
 
         # --- evaluator comparison ---
@@ -118,9 +125,9 @@ class QuantumExperimentRunner:
         try:
             with open( self.save_to_dir / self.file_name, 'wb') as f:
                 pickle.dump(save_dict, f)
-                print(f"\tEVALUATOR Saved Succesfully")
+            print(f"\{self} Saved Succesfully")
         except Exception as e:
-            print(f"❌ EVALUATOR Save failed: {e}")
+            print(f"❌ {self} Save failed: {e}")
             raise  # Re-raise to see full traceback
         return str(self.save_to_dir / self.file_name)
 
@@ -135,7 +142,7 @@ class QuantumExperimentRunner:
         state_path = Path(f"{self.save_to_dir}/{self.file_name}")
 
         if not state_path.exists() or state_path.stat().st_size == 0:
-            print(f"\t⚠️ No saved state found for {self.save_to_dir}")
+            print(f"\t⚠️ {self} No saved state found for {self.save_to_dir}")
             return False
 
         print(f"\t🔄 Resuming state from: {state_path}")
@@ -145,13 +152,13 @@ class QuantumExperimentRunner:
                 # Compare IDs from the loaded dict
                 if (self == loaded_dict):
                     self.__dict__.update(loaded_dict)
-                    print(f"\tState restored from {state_path}")
+                    print(f"\t{self} State restored from {state_path}")
                     return True
 
-                print(f"\t⚠️ ID mismatch - skipping resume")
+                print(f"\t⚠️ {self} ID mismatch - skipping resume")
                 return False
         except Exception as e:
-            print(f"\t❌ Resume failed: {e}")
+            print(f"\t❌ {self} Resume failed: {e}")
             return False
     
     def remove_model(self, model_name):
@@ -191,7 +198,7 @@ class QuantumExperimentRunner:
         # Build and store the environment
         self.environment = self.configs.get_environment()
         self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
-        
+
         print("="*150)
         self.display_experiment_conditions()
         print("="*150)

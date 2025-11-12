@@ -535,7 +535,7 @@ class QuantumEvaluatorVisualizer:
         # Store results
         if results: self.evaluation_results = results
 
-    def create_stochastic_evaluation_plots(self):
+    def create_stochastic_evaluation_plots(self, scenario='stochastic', baseline=''):
         """Create comprehensive stochastic-focused evaluation visualizations."""
         if not self.evaluation_results:
             print("No evaluation results found. Run evaluation first.")
@@ -599,7 +599,7 @@ class QuantumEvaluatorVisualizer:
         timestamp = self.session_timestamp
         baseline_suffix = f"quantum_mab_models_{scenario}_evaluation" if baseline else ""
         capacity_type = "T" if self.config.base_capacity else f"{self.config.scale}T"
-        scenario_conditions = f"{alloc_type}_{baseline_suffix}_{capacity_type}"
+        scenario_conditions = f"{allocator_type}_{baseline_suffix}_{capacity_type}"
         plot_filename = f"{scenario_conditions}_{self.config._env_params.get('frame_length', 100)}frames_{timestamp}.png"
         plot_path = exp_dir / plot_filename
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')

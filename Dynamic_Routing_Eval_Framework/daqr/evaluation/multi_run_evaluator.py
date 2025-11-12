@@ -766,7 +766,7 @@ class MultiRunEvaluator:
         return self
 
     
-    def run_threaded_experiment(self, exp_no, offset=100, models=None, attack_category="Stochastic", attack_rate=0.25, max_workers=4):
+    def run_threaded_experiment(self, exp_no, offset=100, models=None, attack_category="Stochastic", attack_rate=0.25, max_workers=2):
         self.update_configs(models=models, attack_rate=attack_rate)
 
         self.frames_count = self.base_frames + (exp_no * self.frame_step)
@@ -859,7 +859,7 @@ class MultiRunEvaluator:
         return self.env_experiments[self.configs.attack_type]
 
 
-    def run_experiments_parallel(self, runs=None, attack_type=None, models=None, max_workers=3):
+    def run_experiments_parallel(self, runs=None, attack_type=None, models=None, max_workers=1):
         """
         Run experiments in parallel at the multi-run level.
         

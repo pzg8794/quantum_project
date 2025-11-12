@@ -1,0 +1,126 @@
+{
+  "results": {
+    "Oracle": {
+      "final_reward": 3.116686464125328,
+      "avg_reward": 0.3116686464125328,
+      "algorithm": "Oracle",
+      "seed": 15217,
+      "frames_count": 10,
+      "attack_type": "stochastic",
+      "model_results": {
+        "final_regret": 0,
+        "regret_list": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "final_reward": 3.116686464125328,
+        "reward_list": [
+          0.6233372928250656,
+          1.2466745856501311,
+          1.8700118784751967,
+          2.4933491713002622,
+          3.116686464125328
+        ],
+        "path_action_list": [
+          [
+            3,
+            54.0
+          ],
+          [
+            3,
+            54.0
+          ],
+          [
+            3,
+            54.0
+          ],
+          [
+            3,
+            54.0
+          ],
+          [
+            3,
+            54.0
+          ]
+        ],
+        "state": 1,
+        "metadata": {
+          "actual_frames": 5,
+          "frames_processed": 5
+        }
+      },
+      "retries": 0
+    },
+    "GNeuralUCB": {
+      "final_reward": 0.4610422788662802,
+      "avg_reward": 0.04610422788662802,
+      "algorithm": "GNeuralUCB",
+      "seed": 15317,
+      "frames_count": 10,
+      "attack_type": "stochastic",
+      "model_results": {
+        "regret_list": [
+          0.6233372928250656,
+          0.7856323067838509,
+          1.4089695996089164,
+          2.032306892433982,
+          2.6556441852590478
+        ],
+        "reward_list": [
+          0.0,
+          0.4610422788662802,
+          0.4610422788662802,
+          0.4610422788662802,
+          0.4610422788662802
+        ],
+        "path_action_list": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            5.0
+          ],
+          [
+            2.0,
+            54.0
+          ],
+          [
+            3.0,
+            104.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ],
+        "final_regret": 2.6556441852590478,
+        "final_reward": 0.4610422788662802,
+        "oracle_path": 3,
+        "oracle_action": 54,
+        "mode": "neural",
+        "state": 1,
+        "metadata": {
+          "expected_frames": 10,
+          "actual_frames_processed": 5
+        }
+      },
+      "retries": 0,
+      "failed_attempts": {
+        "total": 3,
+        "failed": 0,
+        "under_threshold": 3,
+        "threshold": 0.582
+      },
+      "efficiency": 14.792706426299695,
+      "gap": 85.2072935737003
+    }
+  },
+  "winner": "GNeuralUCB",
+  "attack_category": "Stochastic (Natural Random Failures)",
+  "exp_id": 1
+}

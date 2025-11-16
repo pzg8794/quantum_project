@@ -58,12 +58,10 @@ class CPursuitNeuralUCB(EXPNeuralUCB):
     """
     EXPNeuralUCB with CMAB(Pursuit) replacing EXP3 for group selection
     """
-    
-    def __init__(self, X_n, reward_list, frame_number, mode='cmab', 
-                 gamma_factor=0.1, eta_factor=0.005, beta=0.2, learning_rate=0.1, verbose=True):
-        # Initialize with 'neural' mode to get safe base components
-        super().__init__(X_n, reward_list, frame_number, 'neural', gamma_factor, eta_factor, beta, verbose)
-        
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, 
+                mode='cmab', beta=0.2, gamma_factor=0.1, eta_factor=0.005, learning_rate=0.1, verbose=False):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, 
+                        'neural', beta, gamma_factor, eta_factor, verbose=verbose)   
         # Override mode and add CMAB components
         self.mode = mode
         self.verbose = verbose
@@ -131,14 +129,10 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
     - iCMAB(Pursuit) for informed group selection with ARIMA predictions
     - Neural UCB for action selection
     - Anomaly detection for reward filtering
-    """
-    def __init__(self, X_n, reward_list, frame_number, mode='icmab',
-                 gamma_factor=0.1, eta_factor=0.005, beta=0.2, 
-                 learning_rate=0.1, obs=None, verbose=True,
-                 warmup_frames=50,  # ✅ Configurable
-                 arima_update_interval=200,  # ✅ Configurable
-                 obs_noise=0.1,  # ✅ Configurable
-                 n_experts=4):  # ✅ NEW: Configurable experts
+    """        
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, 
+                capacity, mode='icmab', beta=0.2, gamma_factor=0.1, eta_factor=0.005, 
+                learning_rate=0.1, arima_update_interval=200, warmup_frames=50, obs=None, obs_noise=0.1, n_experts=4, verbose=False):
         """
         Initialize iCPursuitNeuralUCB
         
@@ -152,20 +146,19 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
             obs: Initial observation for iCMAB (optional)
         """
         # Initialize CPursuitNeuralUCB base (gets neural UCB components)
-        super().__init__(X_n, reward_list, frame_number, 'cmab',
-                        gamma_factor, eta_factor, beta, learning_rate, verbose)
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, 
+                        mode, beta, gamma_factor, eta_factor, learning_rate, verbose)
         
-        self.mode = mode
+        self.basemode = mode
         self.n_features = len(X_n[0]) if X_n else 2
         
         # Store configurable parameters
         self.arima_update_interval = arima_update_interval
         self.warmup_frames = warmup_frames
         self.obs_noise = obs_noise
-        self.n_experts = n_experts  # Store experts count
+        self.n_experts = n_experts
         
-        if mode == 'icmab':
-            self._initialize_icmab_components(obs)
+        if mode == 'icmab': self._initialize_icmab_components(obs)
     
     def _initialize_icmab_components(self, obs):
         """Initialize iCMAB(Pursuit) with anomaly detection"""
@@ -209,8 +202,7 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
         # Enable ARIMA after warmup period
         if frame >= self.warmup_frames and not self.use_arima:
             self.use_arima = True
-            if self.verbose:
-                print(f"✓ ARIMA prediction enabled at frame {frame}")
+            if self.verbose: print(f"✓ ARIMA prediction enabled at frame {frame}")
         
         # Use iCMAB to select arm (path)
         selected_group = self.icmab.pickArm()
@@ -265,7 +257,7 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
             super().update_group_selection(selected_path, observed_reward, advice)
 
     
-    def run(self, attack_list, verbose=None):
+    def run(self, attack_list, verbose=False):
         """Enhanced batch runner with progress suppression"""
         if verbose: self.verbose = verbose
         
@@ -345,11 +337,10 @@ class CEXPNeuralUCB(EXPNeuralUCB):
     """
     EXPNeuralUCB with CMAB(EXP4) replacing EXP3 for group selection
     """
-    
-    def __init__(self, X_n, reward_list, frame_number, mode='cmab', 
-                 gamma_factor=0.1, eta_factor=0.005, beta=0.2, n_experts=4, verbose=False):
-        # Initialize with 'neural' mode to get safe base components
-        super().__init__(X_n, reward_list, frame_number, 'neural', gamma_factor, eta_factor, beta, verbose)
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, 
+                mode='cmab', gamma_factor=0.1, eta_factor=0.005, beta=0.2, n_experts=4, verbose=False):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, 
+                        mode, gamma_factor, eta_factor, beta, n_experts, verbose)
         
         # Override mode and add CMAB components
         self.mode = mode
@@ -371,7 +362,7 @@ class CEXPNeuralUCB(EXPNeuralUCB):
             )
             self.expert_advice_history = []        
             if self.verbose:
-                print(f"✓ CMAB(EXP4) initialized with {self.n_experts} experts")
+                print(f"\t✓ CMAB(EXP4) initialized with {self.n_experts} experts")
         except Exception as e:
             print(f"✗ Failed to initialize CMAB: {e}")
             self.cmab = None
@@ -455,7 +446,9 @@ class CMABModelBase(QuantumModel):
     def model_type(self):
         return 'step-wise'
     
-    def __init__(self, X_n, reward_list, frame_number, **kwargs):
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs)
+
         self.X_n = X_n
         self.reward_list = reward_list
         self.frame_number = frame_number
@@ -503,8 +496,8 @@ class CMABModelBase(QuantumModel):
 # =============================================================================
 
 class CEpsilonGreedy(CMABModelBase):
-    def __init__(self, X_n, reward_list, frame_number, **kwargs):
-        super().__init__(X_n, reward_list, frame_number, **kwargs)
+    def __init__(self, configs, X_n, reward_list, frame_number, **kwargs):
+        super().__init__(configs,  X_n, reward_list, frame_number, **kwargs)
         
         # Create CMAB for each path
         self.path_bandits = []
@@ -547,8 +540,8 @@ class CEpsilonGreedy(CMABModelBase):
         self.path_bandits[path].update(reward)
 
 class CPursuit(CMABModelBase):
-    def __init__(self, X_n, reward_list, frame_number, **kwargs):
-        super().__init__(X_n, reward_list, frame_number, **kwargs)
+    def __init__(self, configs, X_n, reward_list, frame_number, **kwargs):
+        super().__init__(configs,  X_n, reward_list, frame_number, **kwargs)
         
         # Create Pursuit bandits for each path
         self.path_bandits = []
@@ -590,8 +583,8 @@ class CPursuit(CMABModelBase):
 
 
 class CEpochGreedy(CMABModelBase):
-    def __init__(self, X_n, reward_list, frame_number, **kwargs):
-        super().__init__(X_n, reward_list, frame_number, **kwargs)
+    def __init__(self, configs, X_n, reward_list, frame_number, **kwargs):
+        super().__init__(configs,  X_n, reward_list, frame_number, **kwargs)
         
         # Create EpochGreedy bandits for each path  
         self.path_bandits = []
@@ -631,8 +624,8 @@ class CEpochGreedy(CMABModelBase):
 
 
 class CThompsonSampling(CMABModelBase):
-    def __init__(self, X_n, reward_list, frame_number, **kwargs):
-        super().__init__(X_n, reward_list, frame_number, **kwargs)
+    def __init__(self, configs, X_n, reward_list, frame_number, **kwargs):
+        super().__init__(configs,  X_n, reward_list, frame_number, **kwargs)
         
         # Create ThompsonSampling bandits for each path
         self.path_bandits = []
@@ -671,8 +664,8 @@ class CThompsonSampling(CMABModelBase):
 # =============================================================================
 
 class CEXP4(CMABModelBase):
-    def __init__(self, X_n, reward_list, frame_number, **kwargs):
-        super().__init__(X_n, reward_list, frame_number, **kwargs)
+    def __init__(self, configs, X_n, reward_list, frame_number, **kwargs):
+        super().__init__(configs,  X_n, reward_list, frame_number, **kwargs)
         
         # Create EXP4 for path selection
         self.path_selector = CMAB(
@@ -731,8 +724,8 @@ class CEXP4(CMABModelBase):
 
 
 class CKernelUCB(CMABModelBase):
-    def __init__(self, X_n, reward_list, frame_number, **kwargs):
-        super().__init__(X_n, reward_list, frame_number, **kwargs)
+    def __init__(self, configs, X_n, reward_list, frame_number, **kwargs):
+        super().__init__(configs,  X_n, reward_list, frame_number, **kwargs)
 
         self.path_bandits = []
         self.path_n_arms = []
@@ -863,8 +856,8 @@ class CKernelUCB(CMABModelBase):
 class iCMABModelBase(CMABModelBase):
     """Base for iCMAB models with ARIMA prediction"""
     
-    def __init__(self, X_n, reward_list, frame_number, **kwargs):
-        super().__init__(X_n, reward_list, frame_number, **kwargs)
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs)
 
         self.path_icmabs = []
         for path_idx in range(self.num_paths):
@@ -907,6 +900,8 @@ class iCMABModelBase(CMABModelBase):
 
 class iCEXP4(iCMABModelBase):
     bandit_type = 'exp4'
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs)
     
     def take_action(self, **kwargs):
         # Use simple path selection for iCMAB
@@ -941,8 +936,11 @@ class iCEXP4(iCMABModelBase):
 
 class iCKernelUCB(iCMABModelBase):
     bandit_type = 'kernelucb'
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs)
 
-    def __init__(self, X_n, reward_list, frame_number, **kwargs):
+    def __init__(self, configs, X_n, reward_list, frame_number, **kwargs):
+        super().__init__(configs,  X_n, reward_list, frame_number, **kwargs)
         # FIXED: Ensure consistent context preprocessing
         if X_n:
             processed_X_n = []
@@ -992,11 +990,11 @@ class iCKernelUCB(iCMABModelBase):
             self.n_features = 2  # Default feature size
             X_n = [np.random.rand(self.n_features) * 0.1 for _ in range(num_paths)]
 
-        super().__init__(X_n, reward_list, frame_number, **kwargs)
+        super().__init__(configs,  X_n, reward_list, frame_number, **kwargs)
         self.round_count = 0
 
         if self.verbose:
-            print(f"✓ iCKernelUCB initialized with {len(X_n)} paths, {self.n_features} features each")
+            print(f"\t✓ iCKernelUCB initialized with {len(X_n)} paths, {self.n_features} features each")
 
     def take_action(self, **kwargs):
         try:
@@ -1069,6 +1067,8 @@ class iCKernelUCB(iCMABModelBase):
 # Individual iCMAB models
 class iCEpsilonGreedy(iCMABModelBase):
     bandit_type = 'epsilongreedy'
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs)
     
     def take_action(self, **kwargs):
         # Simple path selection with exploration
@@ -1091,6 +1091,9 @@ class iCEpsilonGreedy(iCMABModelBase):
 
 class iCPursuit(iCMABModelBase):
     bandit_type = 'pursuit'
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs)
+
     
     def take_action(self, **kwargs):
         selected_path = np.random.randint(0, self.num_paths)
@@ -1100,6 +1103,9 @@ class iCPursuit(iCMABModelBase):
 
 class iCEpochGreedy(iCMABModelBase):
     bandit_type = 'epochgreedy'
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs)
+
     
     def take_action(self, **kwargs):
         selected_path = np.random.randint(0, self.num_paths)
@@ -1117,6 +1123,9 @@ class iCEpochGreedy(iCMABModelBase):
 
 class iCThompsonSampling(iCMABModelBase):
     bandit_type = 'thompsonsampling'
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs)
+
     
     def take_action(self, **kwargs):
         selected_path = np.random.randint(0, self.num_paths)

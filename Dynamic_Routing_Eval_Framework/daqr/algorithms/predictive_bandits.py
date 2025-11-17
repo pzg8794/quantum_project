@@ -273,7 +273,6 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
             print(f"| ARIMA Update:     | Every {self.arima_update_interval} frames |")
             print("=" * 50)
         
-        # ✅ FIX: Add disable parameter for progress bar
         for frame in tqdm(range(self.frame_number), 
                           desc=f"- {self.mode.upper()} Progress",
                           disable=not self.verbose):  # Now respects verbose

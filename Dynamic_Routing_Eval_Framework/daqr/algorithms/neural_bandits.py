@@ -74,15 +74,10 @@ class EXPNeuralUCB(QuantumModel):
         return True  # Override detection since we implement run
     
     def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, mode='hybrid', beta=0.2, gamma_factor=0.01, eta_factor=0.05, verbose=False):
-        
         super().__init__(configs,  X_n, reward_list, frame_number, attack_list, capacity, mode, beta, gamma_factor, eta_factor, verbose)
-
         # Core parameters (shared across all modes)
         self.X_n = X_n
-        self.neuralucb_list = []
-        self.group_rewards = []
         self.reward_list = reward_list
-        self.attack_list = attack_list
         self.frame_number = frame_number
         self.num_groups = len(reward_list)
         self.mode = mode
@@ -100,7 +95,7 @@ class EXPNeuralUCB(QuantumModel):
         self.regret = 0
         self.total_reward = 0
         
-        self.capacity = capacity
+        # self.capacity = capacity
         # Calculate oracle (shared across all modes)
         self.oracle_path, self.oracle_action = self._get_oracle()
         
@@ -108,7 +103,7 @@ class EXPNeuralUCB(QuantumModel):
         self._initialize_mode_specific_components()
         
         if  self.verbose:
-            print(f"\n{self} initialized in '{mode}' mode")
+            print(f"\n\t{self} initialized in '{mode}' mode")
             self._print_mode_description()
 
         self.thresholds = {
@@ -141,46 +136,25 @@ class EXPNeuralUCB(QuantumModel):
         # Neural UCB components (hybrid + neural modes)
         if self.mode in ['hybrid', 'neural']:
             self.neuralucb_list = []
-            # cap = self.capacity
-            # configs, X_n, reward_list, frame_number, attack_list, capacity
-            # cap = self.capacity*2 if self.mode=='hybrid' else self.capacity
-            # # self.configs, self.X_n, self.reward_list, self.frame_number, self.attack_list, self.capacity,
 
-            self.neuralucb_list.append(NeuralUCB(2, len(self.X_n[0]), self.beta, lamb=1,
-                                                 capacity=self.capacity, configs=self.configs, X_n=self.X_n,
-                                                 reward_list=self.reward_list, frame_number=self.frame_number,
-                                                 attack_list=self.attack_list)) # P1:2D
-            self.neuralucb_list.append(NeuralUCB(2, len(self.X_n[1]), self.beta, lamb=1,
-                                                 capacity=self.capacity, configs=self.configs, X_n=self.X_n,
-                                                 reward_list=self.reward_list, frame_number=self.frame_number,
-                                                 attack_list=self.attack_list)) # P2:2D
-            self.neuralucb_list.append(NeuralUCB(3, len(self.X_n[2]), self.beta, lamb=1,
-                                                 capacity=self.capacity, configs=self.configs, X_n=self.X_n,
-                                                 reward_list=self.reward_list, frame_number=self.frame_number,
-                                                 attack_list=self.attack_list)) # P3:3D
-            self.neuralucb_list.append(NeuralUCB(3, len(self.X_n[3]), self.beta, lamb=1,
-                                                 capacity=self.capacity, configs=self.configs, X_n=self.X_n,
-                                                 reward_list=self.reward_list, frame_number=self.frame_number,
-                                                 attack_list=self.attack_list)) # P4:3D
         # Loop through each path and initialize a NeuralUCB instance with current (baseline) dimension logic
-        # for i, path_context in enumerate(self.X_n):
-        #     model = NeuralUCB(
-        #         2 if i < 2 else 3,             # 2D for first 2 paths, 3D for others
-        #         len(path_context),             # Current baseline logic
-        #         self.beta,
-        #         lamb=1,
-        #         capacity=self.capacity,
-        #         configs=self.configs,
-        #         X_n=self.X_n,
-        #         reward_list=self.reward_list,
-        #         frame_number=self.frame_number,
-        #         attack_list=self.attack_list
-        #     )
-        #     model.set_id(f"{model.id}_{i}")
-        #     if self != "GNeuralUCB": model.resume()
-        #     self.neuralucb_list.append(model)
-
-
+        for i, path_context in enumerate(self.X_n):
+            model = NeuralUCB(
+                2 if i < 2 else 3,             # 2D for first 2 paths, 3D for others
+                len(path_context),             # Current baseline logic
+                self.beta,
+                lamb=1,
+                capacity=self.capacity,
+                configs=self.configs,
+                X_n=self.X_n,
+                reward_list=self.reward_list,
+                frame_number=self.frame_number,
+                attack_list=self.attack_list
+            )
+            model.set_id(f"{model.id}_{i}")
+            if self != "GNeuralUCB": model.resume()
+            self.neuralucb_list.append(model)
+        
         # EXP3 components (hybrid + exp3 modes)
         if self.mode in ['hybrid', 'exp3']:
             self.estimate_group_reward = []
@@ -189,7 +163,7 @@ class EXPNeuralUCB(QuantumModel):
             self.prob_list = []
         
         # Simple group selection components (neural mode)
-        if self.mode in ['neural', 'cmab', 'icmab']:
+        if self.mode == 'neural':
             self.group_rewards = [0.0] * self.num_groups
             self.group_counts = [1] * self.num_groups  # Avoid division by zero
         
@@ -229,15 +203,13 @@ class EXPNeuralUCB(QuantumModel):
         """Calculate oracle with clean output"""
         max_graph_action = []
         oracle_graph_list = []
-
         for graph_index in range(self.num_groups):
             max_reward = max(self.reward_list[graph_index])
             oracle_graph_list.append(max_reward)
             max_graph_action.append(self.reward_list[graph_index].index(max_reward))
-
         oracle_path = oracle_graph_list.index(max(oracle_graph_list))
         oracle_action = max_graph_action[oracle_path]
-
+        
         if self.verbose:
             print("\nORACLE ANALYSIS:")
             print("=" * 40)
@@ -245,55 +217,58 @@ class EXPNeuralUCB(QuantumModel):
             print(f"| Optimal Action:    | {oracle_action:<4} |")
             print(f"| Path Performance:  | {oracle_graph_list} |")
             print("=" * 40)
-
+        
         return oracle_path, oracle_action
+
 
     def _get_oracle(self, base_model="Oracle"):
         """
         Get oracle path/action from experiment runner's Oracle instance or saved state.
         Oracle must be run first, so this should always succeed.
-        Uses reward-based fallback instead of attack-aware optimal_actions for efficiency logic.
         """
         oracle_model = None
 
-        # # Preferred: Use base_model directly from configs
-        # if hasattr(self.configs, 'base_model') and isinstance(self.configs.base_model, Oracle):
-        #     oracle_model = self.configs.base_model
+        # Method 1: Use base_model directly from configs (preferred)
+        if hasattr(self.configs, 'base_model') and isinstance(self.configs.base_model, Oracle):
+            oracle_model = self.configs.base_model
+            print(f"\t✓ {base_model} model loaded from configs: {oracle_model}")
 
-        # Try to resume from saved state if not loaded
+        # Method 2: Try to resume from saved state
         if oracle_model is None:
             try:
-                # self.configs.overwrite = True
-                # oracle_model = Oracle(
-                #     configs=self.configs,
-                #     X_n=self.X_n,
-                #     reward_list=self.reward_list,
-                #     frame_number=self.frame_number,
-                #     attack_list=self.attack_list,
-                #     capacity=self.capacity
-                # )
-                # if not oracle_model.resume(): oracle_model = None
-                # self.configs.overwrite = self.overwrite
-                oracle_model = None
+                self.configs.overwrite = True  # Ensure consistent resume behavior
+                oracle_model = Oracle(
+                    configs=self.configs,
+                    X_n=self.X_n,
+                    reward_list=self.reward_list,
+                    frame_number=self.frame_number,
+                    attack_list=self.attack_list,
+                    capacity=self.capacity
+                )
+                if oracle_model.resume(): 
+                    print(f"\t✓ {base_model} model resumed from saved state.")
+                    # pass
+                else: oracle_model = None
+                self.configs.overwrite = self.overwrite
             except Exception as e:
-                if self.verbose:
-                    print(f"⚠️  Could not resume {base_model} model: {e}")
+                if self.verbose: print(f"⚠️  Could not resume {base_model} model: {e}")
                 oracle_model = None
 
-        # Use reward-only oracle (not attack-aware)
-        if oracle_model:
-            oracle_path, oracle_action = oracle_model._calculate_oracle()
+        # Extract first optimal decision from Oracle model
+        if oracle_model and len(oracle_model.optimal_actions) > 0:
+            oracle_path, oracle_action = oracle_model.optimal_actions[0][:2]
             if self.verbose:
-                print(f"\n{base_model.upper()} DECISION (Reward-Based Oracle):")
+                print(f"\n{base_model.upper()} DECISION (Frame 0):")
                 print("=" * 40)
                 print(f"| Optimal Path:      | {oracle_path:<4} |")
                 print(f"| Optimal Action:    | {oracle_action:<4} |")
                 print("=" * 40)
             return oracle_path, oracle_action
 
-        # Last resort fallback
+        # Fallback: Estimate manually (less precise)
         print(f"\t⚠️  {base_model} model not found, using manual fallback...")
         return self._calculate_oracle()
+
 
     def select_group(self, frame):
         if self.mode in ['hybrid', 'exp3']:
@@ -371,60 +346,49 @@ class EXPNeuralUCB(QuantumModel):
         
         # Try to resume from saved state
         if self.overwrite and self.resume():
-            print(f"\n\t✓ {self}: Resuming from saved state - skipping execution")
+            if verbose: print(f"\n\t✓ {self}: Resuming from saved state - skipping execution")
             return  True
-    
-        # ADAPTIVE: Adjust to actual attack_list size
-        actual_frames = len(attack_list)
-        expected_frames = self.frame_number
-        
-        # Use actual frames (whether more or less than expected)
-        frames_to_run = actual_frames
-        
-        # Log adjustment if mismatch
-        if actual_frames != expected_frames:
-            adjustment = "extended" if actual_frames > expected_frames else "reduced"
-            if verbose: print(f"\tℹ️  Frame count {adjustment}: expected={expected_frames}, actual={actual_frames}")
         
         start_time = time.time()
         
         if verbose:
             print(f"\nEXECUTION STARTING:")
             print("=" * 50)
-            print(f"| Mode: {self.mode.upper():<10} | Frames: {frames_to_run:<6} | Paths: {self.num_groups} |")
+            print(f"| Mode:    | {self.mode.upper():<10} | Frames: {self.frame_number:<6} | Paths: {self.num_groups} |")
             print("=" * 50)
 
-        # Run for actual available frames (completes regardless of mismatch)
-        for frame in tqdm(range(frames_to_run), desc=f"- {self.mode.upper()} Progress", disable=not verbose):
-            # Now respects verbose parameter
-            selected_path, prob_array   = self.select_group(frame)
-            selected_action             = self.select_action(selected_path)
+        # FIX: Add disable parameter
+        for frame in tqdm(range(self.frame_number), 
+                        desc=f"- {self.mode.upper()} Progress",
+                        disable=not verbose):  # Now respects verbose parameter
+            selected_path, prob_array = self.select_group(frame)
+            selected_action = self.select_action(selected_path)
             self.path_action_list.append([selected_path, selected_action])
             
-            base_reward         = self.reward_list[selected_path][selected_action]
-            d_t                 = np.random.choice([0, 1], p=[1 - base_reward, base_reward])
-            dt                  = d_t * attack_list[frame][selected_path]
-            observed_reward     = base_reward * attack_list[frame][selected_path]
+            base_reward = self.reward_list[selected_path][selected_action]
+            d_t = np.random.choice([0, 1], p=[1 - base_reward, base_reward])
+            dt = d_t * attack_list[frame][selected_path]
+            observed_reward = base_reward * attack_list[frame][selected_path]
             
             self.update_algorithms(selected_path, selected_action, base_reward, attack_list, frame)
             self.update_group_selection(selected_path, dt, prob_array)
             
-            oracle_reward       = (self.reward_list[self.oracle_path][self.oracle_action] * attack_list[frame][self.oracle_path])
-            oracle_regret       = oracle_reward - observed_reward
-            if oracle_regret    < 0: oracle_regret = 0
+            oracle_reward = (self.reward_list[self.oracle_path][self.oracle_action] *
+                            attack_list[frame][self.oracle_path])
+            oracle_regret = oracle_reward - observed_reward
+            if oracle_regret < 0:
+                oracle_regret = 0
             
-            self.regret         += np.abs(oracle_regret)
-            self.total_reward   += observed_reward
+            self.regret += np.abs(oracle_regret)
+            self.total_reward += observed_reward
             
             self.regret_list.append(self.regret)
             self.reward_list_total.append(self.total_reward)
         
-        end_time        = time.time()
-        elapsed_time    = end_time - start_time
+        end_time = time.time()
+        elapsed_time = end_time - start_time
         if verbose: self._print_experiment_results(elapsed_time)
         if self.overwrite: self.save()
-        return True
-
 
     def _print_experiment_results(self, elapsed_time):
         """Clean tabular results output"""
@@ -447,19 +411,15 @@ class EXPNeuralUCB(QuantumModel):
             'final_reward': copy.deepcopy(self.total_reward),
             'oracle_path': copy.deepcopy(self.oracle_path),
             'oracle_action': copy.deepcopy(self.oracle_action),
-            'mode': copy.deepcopy(self.mode),
-            'state':self.state,
-            'metadata': {
-                'expected_frames': self.frame_number,
-                'actual_frames_processed': len(self.reward_list_total)
-            }
+            'mode': copy.deepcopy(self.mode)
         }
-        if self.mode in ['hybrid', 'exp3']: results['prob_list'] = copy.deepcopy(self.prob_list)
+        if self.mode in ['hybrid', 'exp3']:
+            results['prob_list'] = copy.deepcopy(self.prob_list)
         return results
     
     def cleanup(self, verbose=False):
         """Override for EXP-specific cleanup"""
-        if not verbose: verbose = self.verbose
+        if verbose is None: verbose = self.verbose
         # Custom cleanup
         if hasattr(self, 'prob_list'):
             del self.prob_list
@@ -472,21 +432,18 @@ class EXPNeuralUCB(QuantumModel):
         # 1) Save EXPNeuralUCB itself
         try:
             super().save()
-            # if self.verbose:    print(f"\tSaved EXPNeuralUCB main model: {self.file_name}")
+            if self.verbose:    print(f"\tSaved EXPNeuralUCB main model: {self.file_name}")
         except Exception as e:  print(f"⚠️ Could not save main EXPNeuralUCB model: {e}")
 
         # 2) Save each NeuralUCB instance
         if not hasattr(self, "neuralucb_list"): return True
 
-        # for i, neu_model in enumerate(self.neuralucb_list):
-        #     try:
-        #         neu_model.save()
-        #         # if self.verbose:    print(f"\tSaved NeuralUCB[{i}] → {neu_model.file_name}")
-        #     except Exception as e:  print(f"\t⚠️ Could not save NeuralUCB[{i}]: {e}")
+        for i, neu_model in enumerate(self.neuralucb_list):
+            try:
+                neu_model.save()
+                if self.verbose:    print(f"\tSaved NeuralUCB[{i}] → {neu_model.file_name}")
+            except Exception as e:  print(f"\t⚠️ Could not save NeuralUCB[{i}]: {e}")
         return True
-
-
-
 
 
 

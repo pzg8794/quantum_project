@@ -75,13 +75,14 @@ class QuantumModel(ABC):
         self.reward_list = reward_list
         self.frame_number = frame_number
         self.num_groups = len(reward_list)
+        
         self.mode = mode
         self.beta = beta
         self.verbose = verbose
         
         # EXP3 parameters (used in 'hybrid' and 'exp3' modes)
+        self.capacity = int(capacity*self.configs.scale)
         self.gamma = gamma_factor
-        self.capacity = capacity*self.configs.scale
         self.eta = eta_factor
         self.state = 0
 
@@ -225,7 +226,7 @@ class QuantumModel(ABC):
             # print(f"\t⚠️ {self} No saved state found for {self.save_to_dir}")
             return False
 
-        print(f"\t🔄 Resuming state from: {state_path}")
+        # print(f"\t🔄 Resuming state from: {state_path}")
         try:
             with open(state_path, "rb") as f:
                 loaded_dict = pickle.load(f)
@@ -233,7 +234,7 @@ class QuantumModel(ABC):
                 # Compare using __eq__
                 if (self == loaded_dict):
                     self.__dict__.update(loaded_dict)
-                    # print(f"\t{self} State restored from {state_path}")
+                    print(f"\t{self} State restored from {state_path}")
                     return True
 
                 print(f"\t⚠️ {self} ID mismatch - skipping resume")
@@ -409,7 +410,8 @@ class Oracle(QuantumModel):
     
     def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs):
         super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs)
-        
+        self.state = -1
+        self.verbose = False
         self.X_n = X_n
         self.reward_list = reward_list
         self.attack_list = attack_list
@@ -762,7 +764,7 @@ class NeuralUCB(RandomAlg):
         self.numel = sum(w.numel() for w in self.net.parameters() if w.requires_grad)
         self.sigma_inv = lamb * np.eye(self.numel, dtype=np.float32)
         self.device = device
-        # self.capacity = capacity
+        # self.capacity = capacity*2
         self.theta0 = torch.cat([w.flatten() for w in self.net.parameters() if w.requires_grad])
         self.replay_buffer = ReplayBuffer(d, self.capacity)
 

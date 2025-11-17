@@ -186,7 +186,7 @@ class QuantumExperimentRunner:
         "Display Experiment Conditions"
         print(f"\n{str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Env:{str(self.environment)}, Attack:{str(self.environment.attack)}, Rate:{self.environment.attack_rate}, Frames:{self.environment.frame_length}, QubitAlloc={str(self.configs.allocator)}, SC:{self.capacity*self.configs.scale} (Scale={self.configs.scale} x Cap={self.capacity}), Seed: {self.experiment_seed}")
 
-    def _build_environment_once(self, frames_count: int, qubit_cap: tuple):
+    def _build_environment_once(self, frames_count: float, qubit_cap: tuple):
         """
         Build ONE shared environment for the whole experiment (all models),
         with a seed that is independent of the model being run.
@@ -525,12 +525,12 @@ class QuantumExperimentRunner:
 
         if alg_name in self.results:
             self.configs.overwrite = True
-            results, model = self.run_algorithm(alg_name)
-            model = None  # don't keep this reference
+            # results, model = self.run_algorithm(alg_name)
+            # model = None  # don't keep this reference
         else:
             while (threshold - failed_attempts['threshold'] <= 0) or efficiency <= 0:
                 self.configs.overwrite = False  # always False during retries
-                alg_result, prev_model = self.run_algorithm(alg_name)
+                alg_result, temp_model = self.run_algorithm(alg_name)
                 final_reward = alg_result.get('final_reward', 0.0)
                 failed_attempts['failed'] += alg_result['retries']
                 failed_attempts['total'] += alg_result['retries']
@@ -555,7 +555,7 @@ class QuantumExperimentRunner:
                     best_reward = final_reward
                     best_efficiency = efficiency
                     self.results[alg_name] = alg_result
-                    model = prev_model  # Save the best reference
+                    model = temp_model  # Save the best reference
 
                 self.results[alg_name].update({'failed_attempts': failed_attempts})
                 self.results[alg_name]['final_reward'] = final_reward
@@ -566,8 +566,8 @@ class QuantumExperimentRunner:
 
         # 🔐 Save best model after loop (not last model)
         if model is not None:
-            self.configs.overwrite = True
             try:
+                self.configs.overwrite = True
                 model.save()
                 # print(f"\tBest model for {alg_name} saved.")
             except Exception as e: print(f"⚠️ Could not save best model: {e}")
@@ -607,15 +607,14 @@ class QuantumExperimentRunner:
         if frames_count: self.frames_count = frames_count
 
         self.get_oracle_reward(base_model)
-        scaled_capacity = self.capacity * self.configs.scale
-        self.run_single_model(neuralUCB, base_model, is_parallel=False)
+        scaled_capacity = int(self.capacity * self.configs.scale)
+        # self.run_single_model(neuralUCB, base_model, is_parallel=False)
 
         for alg_name in models:
             if alg_name == base_model: continue
             if alg_name in self.results.keys(): print(f"\t{alg_name} WAS ALREADY PROCESSED")
-            if alg_name != neuralUCB:
-                self.run_single_model(alg_name, base_model, is_parallel=False)
 
+            self.run_single_model(alg_name, base_model, is_parallel=False)
             under_thr = self.results[alg_name]['failed_attempts']['under_threshold']
             threshold = self.results[alg_name]['failed_attempts']['threshold']
             failed = self.results[alg_name]['failed_attempts']['failed']
@@ -643,57 +642,8 @@ class QuantumExperimentRunner:
         # self.results = {}
         # best_reward = -1.0
         self.get_oracle_reward(base_model)
-        scaled_capacity = self.capacity*self.configs.scale
+        scaled_capacity = int(self.capacity*self.configs.scale)
         parallel_models = [m for m in models if m != base_model]
-        
-        # Enhanced parallel execution with live progress
-        # def run_single_model(alg_name, base_model="Oracle"):
-        #     """Run a single model with retry logic"""
-        #     if alg_name == base_model: return {base_model:{}}
-        #     print(f"\n\t🔄 {str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Starting {alg_name:<20} in parallel...")
-            
-        #     threshold = -1
-        #     efficiency = -1
-        #     final_reward = -1
-        #     best_threshold= threshold
-        #     best_reward = final_reward
-        #     best_efficiency = efficiency
-        #     failed_attempts = {'total':0, 'failed':0, 'under_threshold':0, 'threshold':0}
-        #     oracle_reward = self.results[base_model].get('final_reward', 0.0)
-        #     failed_attempts['threshold'] = self._get_min_efficiency(alg_name)
-
-        #     while (threshold-failed_attempts['threshold'] <= 0)  or efficiency <= 0:
-        #         alg_result = self.run_algorithm(alg_name)
-        #         final_reward = alg_result.get('final_reward', 0.0)
-        #         failed_attempts['failed'] += alg_result['retries']
-        #         failed_attempts['total'] += alg_result['retries']
-        #         threshold = final_reward/oracle_reward 
-        #         efficiency = (threshold * 100) if oracle_reward > 0 else self.get_oracle_reward(reset=True)
-        #         gap = 100 - efficiency
-
-        #         if threshold < failed_attempts['threshold']: 
-        #             # print(f"\t\tEXP {self.id} {alg_name.upper()} Threshold: {threshold} \t", f"Expected Threshold: {failed_attempts['threshold']}", f"Efficiency: {efficiency}")
-        #             failed_attempts['under_threshold'] += 1 if threshold > 0 else 0
-        #             failed_attempts['failed'] += 1 if threshold == 0 else 0
-        #             failed_attempts['total'] += 1
-        #             if threshold < best_threshold:
-        #                 final_reward = best_reward
-        #                 threshold = best_threshold
-        #                 efficiency = best_efficiency
-
-        #         if threshold >= best_threshold:
-        #             best_threshold = threshold
-        #             best_reward = final_reward
-        #             best_efficiency = efficiency
-        #             self.results[alg_name] = alg_result
-
-        #         self.results[alg_name].update({'failed_attempts':failed_attempts})
-        #         if failed_attempts['under_threshold'] >= 3: break
-
-        #     self.results[alg_name]['efficiency'] = efficiency
-        #     self.results[alg_name]['gap'] = gap
-        #     self.save()
-        #     return alg_name
 
         # Execute models in parallel with controlled concurrency
         print(f"\n\t🚀{str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Running {len(parallel_models)} models in parallel (max_workers={max_workers})")
@@ -747,21 +697,16 @@ class QuantumExperimentRunner:
             config = self.algorithm_configs[alg_name]
             model_class = config['model_class']
             model_kwargs = config['kwargs'].copy()
-            
-            if alg_name == 'Oracle':
-                model = model_class(
-                    X_n=env_info['contexts'],
-                    reward_list=env_info['reward_functions'],
-                    attack_list=env_info['attack_pattern']
-                )
-            else:
-                model = model_class(
-                    X_n=env_info['contexts'],
-                    reward_list=env_info['reward_functions'],
-                    frame_number=self.frames_count,
-                    **model_kwargs,
-                )
-                model.set_capacity(self.capacity)
+            model = model_class(
+                configs=self.configs,
+                X_n=env_info['contexts'],
+                reward_list=env_info['reward_functions'],
+                frame_number=self.frames_count,
+                attack_list=env_info['attack_pattern'],
+                capacity=self.capacity, 
+                **model_kwargs
+            )
+            # model.set_capacity(self.capacity)
             
             # Cache for reuse (if stateless or has reset capability)
             if hasattr(model, 'reset') or getattr(model, 'stateless', False):

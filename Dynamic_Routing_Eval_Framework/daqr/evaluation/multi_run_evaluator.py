@@ -89,7 +89,7 @@ class MultiRunEvaluator:
         print(f"Environment Type: {attack_type}")
         print(f"Frame Range: {base_frames} -> {base_frames + (self.configs.runs-1)*frame_step} (step: {frame_step})")
 
-    def _build_environment_once(self, frames_count: int, qubit_cap: tuple):
+    def _build_environment_once(self, frames_count: float, qubit_cap: tuple):
         """
         Build ONE shared environment for the whole experiment (all models),
         with a seed that is independent of the model being run.

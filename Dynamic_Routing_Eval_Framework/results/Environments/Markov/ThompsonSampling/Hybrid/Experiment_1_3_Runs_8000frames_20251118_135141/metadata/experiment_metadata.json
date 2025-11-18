@@ -1,0 +1,23 @@
+{
+  "environment": "markov",
+  "experiment_id": 1,
+  "num_runs": 3,
+  "model_category": "Hybrid",
+  "models_tested": [
+    "Oracle",
+    "GNeuralUCB",
+    "EXPNeuralUCB",
+    "CPursuitNeuralUCB",
+    "iCPursuitNeuralUCB"
+  ],
+  "timestamp": "2025-11-18T13:51:49.594697",
+  "session_timestamp": "20251118_135141",
+  "session_id": "20251118_135141",
+  "framework_config": {},
+  "allocator_type": "ThompsonSampling",
+  "allocator_config": {
+    "total_qubits": 35,
+    "num_routes": 4,
+    "min_qubits_per_route": 2
+  }
+}

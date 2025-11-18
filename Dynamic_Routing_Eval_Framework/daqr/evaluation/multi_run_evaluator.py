@@ -85,8 +85,6 @@ class MultiRunEvaluator:
         print(f"Environment Type: {attack_type}")
         print(f"Frame Range: {base_frames} -> {base_frames + (self.configs.runs-1)*frame_step} (step: {frame_step})")
 
-        self.configs._build_backup_registry(force=True)
-
     def _build_environment_once(self, frames_count: float, qubit_cap: tuple):
         """
         Build ONE shared environment for the whole experiment (all models),
@@ -582,7 +580,7 @@ class MultiRunEvaluator:
         return {}
 
 
-    def run_scenario_model_evaluation(self, runs=None, models=None, attack_type=None, threaded=True):
+    def run_scenario_model_evaluation(self, runs=None, models=None, attack_type=None, threaded=False):
         """
         Wrapper to run comprehensive evaluation for a single scenario.
         """
@@ -835,7 +833,7 @@ class MultiRunEvaluator:
         return results
 
 
-    def test_individual_environment(self, attack_type="stochastic", threaded=True):
+    def test_individual_environment(self, attack_type="stochastic", threaded=False):
         """Test a single environment type."""
         self.update_configs(attack_type=attack_type)
 

@@ -78,13 +78,14 @@ class MultiRunEvaluator:
         self.file_name = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{self.base_frames}_{self.frame_step}_{self.runs_id}.pkl"
 
         # NOW resume can work
-        if getattr(self.configs, "resume", False):
-            try:    self.resume()
-            except Exception as e:  print(f"⚠️ Resume failed: {e}")
+        try:    self.resume()
+        except Exception as e:  print(f"⚠️ Resume failed: {e}")
 
         print("Multi-Run Evaluator Initialized")
         print(f"Environment Type: {attack_type}")
         print(f"Frame Range: {base_frames} -> {base_frames + (self.configs.runs-1)*frame_step} (step: {frame_step})")
+
+        self.configs._build_backup_registry(force=True)
 
     def _build_environment_once(self, frames_count: float, qubit_cap: tuple):
         """

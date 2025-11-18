@@ -1,5 +1,7 @@
+from datetime import datetime
 import os
 import math
+import json
 import time
 import copy
 import psutil
@@ -16,6 +18,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+import pickle
+from pathlib import Path
 from scipy.stats import beta, multivariate_normal, norm
 
 import pmdarima as pm  # Real ARIMA dependency
@@ -55,24 +59,40 @@ class QuantumModel(ABC):
     Enhanced minimal interface that every model (policy/algorithm) in the quantum environment obeys.
     Keep methods generic so both 'step-wise' (Oracle) and 'batch' (EXPNeuralUCB) fit.
     """
-    def __init__(self, X_n, reward_list, frame_number, mode='hybrid', 
-                 gamma_factor=0.01, eta_factor=0.05, beta=0.2, verbose=True, capacity=10000, lamb=1):
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list=[], capacity=10000,     mode='hybrid', beta=0.2, gamma_factor=0.01, eta_factor=0.05, lamb=1):
         super().__init__()
+
+        # Directory structure setup
+        self.id = str(self)
+        self.configs = configs
+        self.alg_dir = os.path.dirname(os.path.abspath(__file__))
+        self.overwrite = self.configs.overwrite
         
         # Core parameters (shared across all modes)
         self.X_n = X_n
+        self.attack_list = attack_list
         self.reward_list = reward_list
         self.frame_number = frame_number
         self.num_groups = len(reward_list)
+
         self.mode = mode
         self.beta = beta
-        self.verbose = verbose
-
+        # self.verbose = self.configs.verbose
+        
         # EXP3 parameters (used in 'hybrid' and 'exp3' modes)
+        self.capacity = int(capacity*self.configs.scale)
         self.gamma = gamma_factor
         self.eta = eta_factor
-        self.capacity = capacity
         self.state = 0
+
+        self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
+        self.save_to_dir = Path(f"{self.configs.dir}/model_state/day_{self.configs.day_str}/")
+
+
+        self.allocator_id = str(getattr(self.configs, "allocator", "alloc"))
+        self.env_id       = str(getattr(self.configs, "environment", "env"))
+        self.attack_id    = str(getattr(self.configs, "attack_strategy", "None"))
+        self.file_name = f"{self.id}({self.mode})_{self.capacity}-{self.allocator_id}_{self.env_id }_{self.attack_id}-{self.frame_number}.pkl"
 
         self.thresholds = {
                 'EXPNeuralUCB': {'stochastic': 0.628, 'adversarial': 0.598},
@@ -81,7 +101,153 @@ class QuantumModel(ABC):
                 'iCPursuitNeuralUCB': {'stochastic': 0.712, 'adversarial': 0.689}
             }
         self.path_configs = {0:2, 1:2, 2:3, 3:3, 'lamb':lamb, 'beta':beta}        # Path-specific configs (per path index)
+
+        # # Resume previous evaluator state if configured
+        # if getattr(self.configs, "resume", False):
+        #     try:                    self.resume()
+        #     except Exception as e:  print(f"⚠️ Resume failed: {e}")
+
+    def set_id(self, id):
+        self.id = id
+        return self.set_file_name()
+
+    def set_file_name(self, id=None, mode=None, capacity=None, allocator_id=None, env_id=None, attack_id=None, frame_number=None):
+        """
+        Generates and sets a standardized file name based on model configuration.
+        Allows optional override of any key components.
+        Applies smart logic to avoid environment- and attack-specific filenames for reusable models.
+        """
+        self.id            = id or self.id
+        self.mode          = mode or getattr(self, 'mode', None)
+        self.capacity      = capacity or self.capacity
+        self.allocator_id  = allocator_id or self.allocator_id
+        self.env_id        = env_id or self.env_id
+        self.attack_id     = attack_id or self.attack_id
+        self.frame_number  = frame_number or self.frame_number
+
+        # 🔁 For reusable models (e.g., NeuralUCB), omit both env and attack from the filename
+        is_reusable = isinstance(self, NeuralUCB)
+        env_suffix    = "" if is_reusable else f"_{self.env_id}"
+        attack_suffix = "" if is_reusable else f"_{self.attack_id}"
+
+        self.file_name = f"{self.id}({self.mode})_{self.capacity}-{self.allocator_id}{env_suffix}{attack_suffix}-{self.frame_number}.pkl"
+        return True
+
+    def __eq__(self, other):
+        """Defines equality for model comparison or saved dict comparison."""
+        # --- dict comparison (used in resume) ---
+        if isinstance(other, dict):
+            other_attrs = other.get("key_attrs", {}).copy()
+            # temp fix
+            if not self.configs.base_capacity:
+                if 'runs' in other_attrs: del other_attrs['runs']
+                if 'runs' in self.key_attrs: del self.key_attrs['runs']
+
+            # Check main identifiers
+            if (
+                self.id == other.get("id") and
+                self.frame_number == other.get("frame_number") and
+                self.num_groups == other.get("num_groups") and
+                self.capacity == other.get("capacity") and
+                getattr(self, 'mode', None) == other.get("mode") and
+                self.allocator_id == other.get("allocator_id") and
+                self.env_id == other.get("env_id") and
+                self.attack_id == other.get("attack_id") and
+                self.key_attrs == other_attrs
+            ):
+                return True
+            
+            # Debug output if no match
+            print(f"\n❌ Model comparison failed:")
+            print(f"  Class: {self.id} vs {other.get('id')}")
+            print(f"  Frames: {self.frame_number} vs {other.get('frame_number')}")
+            print(f"  Groups: {self.num_groups} vs {other.get('num_groups')}")
+            print(f"  Capacity: {self.capacity} vs {other.get('capacity')}")
+            print(f"  Mode: {getattr(self, 'mode', None)} vs {other.get('mode')}")
+            print(f"  Allocator: {self.allocator_id} vs {other.get('allocator_id')}")
+            print(f"  Environment: {self.env_id} vs {other.get('env_id')}")
+            print(f"  Attack: {self.attack_id} vs {other.get('attack_id')}")
+            print(f"  Current attrs:\n{json.dumps(self.key_attrs, indent=2)}")
+            print(f"  Loaded attrs:\n{json.dumps(other_attrs, indent=2)}")
+            return False
+
+        # --- model instance comparison ---
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+
+        return (
+            self.frame_number == getattr(other, "frame_number", None) and
+            self.num_groups == getattr(other, "num_groups", None) and
+            self.capacity == getattr(other, "capacity", None) and
+            getattr(self, 'mode', None) == getattr(other, "mode", None) and
+            self.allocator_id == getattr(other, "allocator_id", None) and
+            self.env_id == getattr(other, "env_id", None) and
+            self.attack_id == getattr(other, "attack_id", None) and
+            self.key_attrs == getattr(other, "key_attrs", None)
+        )
+
+    
+    def save(self):
+        """Save model state."""
+        self.save_to_dir.mkdir(parents=True, exist_ok=True)
         
+        # Build pickleable dict
+        save_dict = {}
+        unpickleable = []
+        
+        for attr, value in self.__dict__.items():
+            try:
+                pickle.dumps(value)
+                save_dict[attr] = value
+            except:
+                unpickleable.append(attr)
+        
+        if unpickleable and self.configs.verbose: print(f"\t⚠️ Excluding: {', '.join(unpickleable)}")
+        try:
+            with open(self.save_to_dir / self.file_name, 'wb') as f:
+                pickle.dump(save_dict, f)
+            if self.configs.verbose: print(f"\t{self} Saved Successfully")
+            self.configs.save()
+        except Exception as e:
+            print(f"❌ {self} Save failed: {e}")
+            raise
+        return str(self.save_to_dir / self.file_name)
+
+
+    def resume(self):
+        """
+        Resume model state if saved state exists.
+        Returns:
+            bool: True if successfully resumed, False otherwise.
+        """
+        self.save_to_dir.mkdir(parents=True, exist_ok=True)
+        state_path_str = f"{self.save_to_dir}/{self.file_name}"
+        config_path = self.configs.get_latest_state("model_state", self.file_name)
+        state_path = Path(config_path) if (self.configs.use_last_backup and config_path) else Path(state_path_str)
+        
+        if not state_path.exists() or state_path.stat().st_size == 0:
+            if self.configs.verbose: print(f"\t⚠️ {self} No saved state found for {state_path}")
+            return False
+
+        # print(f"\t🔄 Resuming state from: {state_path}")
+        try:
+            with open(state_path, "rb") as f:
+                loaded_dict = pickle.load(f)
+                
+                # Compare using __eq__
+                if (self == loaded_dict):
+                    self.__dict__.update(loaded_dict)
+                    if self.configs.verbose: print(f"\t{self} State restored from {state_path}")
+                    return True
+
+                print(f"\t⚠️ {self} ID mismatch - skipping resume")
+                return False
+        except Exception as e:
+            print(f"\t❌ {self} Resume failed: {e}")
+            return False
+
+
+            
     def get_cleanup_wait_time(self, frames_count=1000, cooldown_base=3, cooldown_scale_factor=1, cooldown_max=15):
         """
         Calculate frame-scaled cleanup wait time.
@@ -217,7 +383,7 @@ class QuantumModel(ABC):
         
         cleanup_items.append(f"cooldown:{cooldown_seconds}s")
         if cooldown_seconds > 0: time.sleep(cooldown_seconds)
-        if verbose: print(f"✓ {self.__class__.__name__} cleaned: {', '.join(cleanup_items)}")
+        if verbose: print(f"\t✓ {self} cleaned: {', '.join(cleanup_items)}")
 
     def __del__(self):
         """Destructor to ensure cleanup on deletion."""
@@ -245,7 +411,10 @@ class Oracle(QuantumModel):
     def model_type(self):
         return 'step-wise'
     
-    def __init__(self, X_n, reward_list, attack_list):
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs)
+        self.state = -1
+        # self.verbose = False
         self.X_n = X_n
         self.reward_list = reward_list
         self.attack_list = attack_list
@@ -253,6 +422,14 @@ class Oracle(QuantumModel):
             
         # Pre-compute with actual available data
         self.optimal_actions = self._compute_optimal_actions()
+
+        # Extract oracle path/action (attack-aware from first frame)
+        # if len(self.optimal_actions) > 0:
+        #     self.oracle_path, self.oracle_action, _ = self.optimal_actions[0]
+        # else:
+        #     self.oracle_path = 0
+        #     self.oracle_action = 0
+        self.oracle_path, self.oracle_action = self._calculate_oracle()
 
         # Tracking variables
         self.regret_list = []
@@ -358,23 +535,55 @@ class Oracle(QuantumModel):
                 'frames_processed': copy.deepcopy(self.current_frame)
             }
         }
+    
+    def _calculate_oracle(self):
+        """
+        Compute the oracle purely from reward_list (no attack patterns).
+        This restores the original correct behavior:
+            - Pick the path with highest max reward
+            - Pick the action that achieves that max reward
+        """
+        max_graph_action = []
+        oracle_graph_list = []
+
+        for graph_index in range(len(self.reward_list)):
+            path_rewards = self.reward_list[graph_index]
+            max_reward = max(path_rewards)
+            oracle_graph_list.append(max_reward)
+            max_graph_action.append(path_rewards.index(max_reward))
+
+        oracle_path = oracle_graph_list.index(max(oracle_graph_list))
+        oracle_action = max_graph_action[oracle_path]
+
+        if self.configs.verbose:
+            print("\nORACLE (REWARD-BASED) ANALYSIS:")
+            print("=" * 40)
+            print(f"| Optimal Path:      | {oracle_path:<4} |")
+            print(f"| Optimal Action:    | {oracle_action:<4} |")
+            print(f"| Path Performance:  | {oracle_graph_list} |")
+            print("=" * 40)
+
+        return oracle_path, oracle_action
+
 
 # Base Random Algorithm Class
+# RandomAlg
 class RandomAlg(QuantumModel):
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, K, **kwargs):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs)
+        self.K = K
+    
     @property
     def model_type(self):
         return 'step-wise'
-    
-    def __init__(self, K):
-        self.K = K
 
     def take_action(self):
         return np.random.choice(self.K)
 
 # Upper Confidence Bound (UCB) Algorithm
 class UCB(RandomAlg):
-    def __init__(self, K, c=1):
-        super().__init__(K)
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, K, c=1, **kwargs):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, K, **kwargs)
         self.c = c
         self.T = 0
         self.q = np.zeros(K)
@@ -394,8 +603,8 @@ class UCB(RandomAlg):
 
 # Linear Upper Confidence Bound (LinUCB) Algorithm
 class LinUCB(RandomAlg):
-    def __init__(self, d, K, beta=1, lamb=1):
-        super().__init__(K)
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, K, d, beta=1, lamb=1, **kwargs):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, K, **kwargs)
         self.sigma_inv = lamb * np.eye(d)
         self.b = np.zeros((d, 1))
         self.beta = beta
@@ -415,8 +624,8 @@ class LinUCB(RandomAlg):
         self.sigma_inv -= (self.sigma_inv @ v @ v.T @ self.sigma_inv) / (1 + v.T @ self.sigma_inv @ v)
 
 class TS(RandomAlg):
-    def __init__(self, K):
-        super().__init__(K)
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, K, **kwargs):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, K, **kwargs)
         self.alpha = np.ones(K)
         self.beta = np.ones(K)
 
@@ -433,8 +642,8 @@ class TS(RandomAlg):
             self.beta[action] += 1
 
 class LinTS(RandomAlg):
-    def __init__(self, d, K, beta=1, lamb=1):
-        super().__init__(K)
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, K, d, beta=1, lamb=1, **kwargs):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, K, **kwargs)
         self.sigma_inv = lamb * np.eye(d)
         self.b = np.zeros((d, 1))
         self.beta = beta
@@ -480,8 +689,8 @@ class ReplayBuffer:
         return self.buffer['context'][idx], self.buffer['reward'][idx]
 
 class NeuralTS(RandomAlg):
-    def __init__(self, d, K, beta=1, lamb=1, hidden_size=128, lr=3e-4, reg=0.000625):
-        super().__init__(K)
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, K, d, beta=1, lamb=1, hidden_size=128, lr=3e-4, reg=0.000625, **kwargs):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, K, **kwargs)
         self.T = 0
         self.reg = reg
         self.beta = beta
@@ -543,9 +752,11 @@ class NeuralTS(RandomAlg):
                 loss.backward()
                 self.optimizer.step()
 
+
+
 class NeuralUCB(RandomAlg):
-    def __init__(self, d, K, beta=1, lamb=1, hidden_size=128, lr=1e-4, reg=0.000625, capacity=24000):
-        super().__init__(K)
+    def __init__(self, d, K, beta=1, lamb=1, hidden_size=128, lr=1e-4, reg=0.000625, capacity=24000, configs=None, X_n=[], reward_list=[], frame_number=0, attack_list=[]):
+        super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, K)
         self.T = 0
         self.reg = reg
         self.beta = beta
@@ -556,9 +767,9 @@ class NeuralUCB(RandomAlg):
         self.numel = sum(w.numel() for w in self.net.parameters() if w.requires_grad)
         self.sigma_inv = lamb * np.eye(self.numel, dtype=np.float32)
         self.device = device
-        self.capacity = capacity
+        # self.capacity = capacity*2
         self.theta0 = torch.cat([w.flatten() for w in self.net.parameters() if w.requires_grad])
-        self.replay_buffer = ReplayBuffer(d, capacity)
+        self.replay_buffer = ReplayBuffer(d, self.capacity)
 
     def take_action(self, context):
         context = torch.tensor(context, dtype=torch.float32).to(self.device)
@@ -604,3 +815,64 @@ class NeuralUCB(RandomAlg):
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
+
+    def __eq__(self, other):
+        """Defines equality for model comparison or saved dict comparison."""
+
+        # --- dict comparison (used in resume) ---
+        if isinstance(other, dict):
+            other_attrs = other.get("key_attrs", {}).copy()
+
+            # 🔹 Ignore keys for reusable models (shared across attacks & envs)
+            ignore_keys = {"actk_type", "attack", "env_type"}
+            filtered_self_attrs = {k: v for k, v in self.key_attrs.items() if k not in ignore_keys}
+            filtered_other_attrs = {k: v for k, v in other_attrs.items() if k not in ignore_keys}
+
+            # ⚙️ Drop env & attack only for reusable models
+            skip_env_attack = isinstance(self, NeuralUCB)
+
+            if (
+                self.id == other.get("id") and
+                self.frame_number == other.get("frame_number") and
+                self.num_groups == other.get("num_groups") and
+                self.capacity == other.get("capacity") and
+                getattr(self, 'mode', None) == other.get("mode") and
+                self.allocator_id == other.get("allocator_id") and
+                (skip_env_attack or self.env_id == other.get("env_id")) and
+                (skip_env_attack or self.attack_id == other.get("attack_id")) and
+                filtered_self_attrs == filtered_other_attrs
+            ):
+                return True
+
+            # 🔍 Debug output if no match
+            print(f"\n❌ Model comparison failed:")
+            print(f"  Class: {self.id} vs {other.get('id')}")
+            print(f"  Frames: {self.frame_number} vs {other.get('frame_number')}")
+            print(f"  Groups: {self.num_groups} vs {other.get('num_groups')}")
+            print(f"  Capacity: {self.capacity} vs {other.get('capacity')}")
+            print(f"  Mode: {getattr(self, 'mode', None)} vs {other.get('mode')}")
+            print(f"  Allocator: {self.allocator_id} vs {other.get('allocator_id')}")
+            if not skip_env_attack:
+                print(f"  Environment: {self.env_id} vs {other.get('env_id')}")
+                print(f"  Attack: {self.attack_id} vs {other.get('attack_id')}")
+            print(f"  Filtered Current attrs:\n{json.dumps(filtered_self_attrs, indent=2)}")
+            print(f"  Filtered Loaded attrs:\n{json.dumps(filtered_other_attrs, indent=2)}")
+            return False
+
+        # --- model instance comparison ---
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+
+        skip_env_attack = isinstance(self, NeuralUCB)
+
+        return (
+            self.frame_number == getattr(other, "frame_number", None) and
+            self.num_groups == getattr(other, "num_groups", None) and
+            self.capacity == getattr(other, "capacity", None) and
+            getattr(self, 'mode', None) == getattr(other, "mode", None) and
+            self.allocator_id == getattr(other, "allocator_id", None) and
+            (skip_env_attack or self.env_id == getattr(other, "env_id", None)) and
+            (skip_env_attack or self.attack_id == getattr(other, "attack_id", None)) and
+            self.key_attrs == getattr(other, "key_attrs", None)
+        )
+

@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 import pickle
 import threading
-import time, gc, os
+import time, gc, os, json
 import numpy as np, copy
 from pathlib import Path
 from daqr.config.experiment_config import ExperimentConfiguration
@@ -56,9 +56,7 @@ class MultiRunEvaluator:
         self.capacity = self.base_frames
 
         # Set paths
-        self.day_str = datetime.now().strftime("%Y%m%d")
-        self.config_dir = Path(__file__).parent.parent / "config"
-        self.save_to_dir = Path(f"{self.config_dir}/framework_state/day_{self.day_str}/")
+        self.save_to_dir = Path(f"{self.configs.dir}/framework_state/day_{self.configs.day_str}/")
         
         # Update configs FIRST
         self.update_configs(runs, models, attack_type, scenarios, attack_intensity)
@@ -72,11 +70,12 @@ class MultiRunEvaluator:
         self._build_environment_once(frames_count=self.frames_count, qubit_cap=qubit_cap)
 
         # Set filename AFTER configs are ready
-        allocator_id = getattr(self.configs, "allocator", "alloc")
-        env_id       = getattr(self.configs, "environment", "env")
-        runs_id      = getattr(self.configs, "runs", "1")
-        attack_id    = getattr(self.configs, "attack_strategy", "None")
-        self.file_name = f"{self}-{allocator_id}_{env_id}_{attack_id}-{self.base_frames}_{self.frame_step}_{runs_id}.pkl"
+        self.runs_id      = getattr(self.configs, "runs", "1")
+        self.allocator_id = str(getattr(self.configs, "allocator", "alloc"))
+        self.env_id       = str(getattr(self.configs, "environment", "env"))
+        self.attack_id    = str(getattr(self.configs, "attack_strategy", "None"))
+        self.cap_id       = (self.base_frames if self.configs.base_capacity else self.frames_count)*self.configs.scale
+        self.file_name = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{self.base_frames}_{self.frame_step}_{self.runs_id}.pkl"
 
         # NOW resume can work
         if getattr(self.configs, "resume", False):
@@ -87,7 +86,7 @@ class MultiRunEvaluator:
         print(f"Environment Type: {attack_type}")
         print(f"Frame Range: {base_frames} -> {base_frames + (self.configs.runs-1)*frame_step} (step: {frame_step})")
 
-    def _build_environment_once(self, frames_count: int, qubit_cap: tuple):
+    def _build_environment_once(self, frames_count: float, qubit_cap: tuple):
         """
         Build ONE shared environment for the whole experiment (all models),
         with a seed that is independent of the model being run.
@@ -117,18 +116,37 @@ class MultiRunEvaluator:
         """Defines equality for evaluator or saved dict comparison."""
         # --- dict comparison (used in resume) ---
         if isinstance(other, dict):
-            if "seed" in other.get("key_attrs"):
-                del other.get("key_attrs")["seed"]
+            other_attrs = other.get("key_attrs", {}).copy()
+            # temp fix
+            if not self.configs.base_capacity:
+                if 'runs' in other_attrs: del other_attrs['runs']
+                if 'runs' in self.key_attrs: del self.key_attrs['runs']
+
+            if "seed" in other_attrs:
+                del other_attrs["seed"]
+            
             if (
-                self.frame_step   == other.get("frame_step") and
-                self.base_frames  == other.get("base_frames") and
-                self.key_attrs    == other.get("key_attrs")
+                self.frame_step == other.get("frame_step") and
+                self.base_frames == other.get("base_frames") and
+                self.allocator_id == other.get("allocator_id") and
+                self.env_id == other.get("env_id") and
+                self.runs_id == other.get("runs_id") and
+                self.attack_id == other.get("attack_id") and
+                self.cap_id == other.get("cap_id") and
+                self.key_attrs == other_attrs
             ):
                 return True
-            print(self.frame_step, " ", other.get("frame_step"))
-            print(self.base_frames, " ", other.get("base_frames"))
-            print(json.dumps(self.key_attrs))
-            print(json.dumps(other.get("key_attrs")))
+            
+            print(f"\n❌ Evaluator comparison failed:")
+            print(f"  Frame step: {self.frame_step} vs {other.get('frame_step')}")
+            print(f"  Base frames: {self.base_frames} vs {other.get('base_frames')}")
+            print(f"  Allocator: {self.allocator_id} vs {other.get('allocator_id')}")
+            print(f"  Environment: {self.env_id} vs {other.get('env_id')}")
+            print(f"  Runs: {self.runs_id} vs {other.get('runs_id')}")
+            print(f"  Attack: {self.attack_id} vs {other.get('attack_id')}")
+            print(f"  Capacity: {self.cap_id} vs {other.get('cap_id')}")
+            print(f"  Current attrs:\n{json.dumps(self.key_attrs, indent=2)}")
+            print(f"  Loaded attrs:\n{json.dumps(other_attrs, indent=2)}")
             return False
 
         # --- evaluator comparison ---
@@ -136,9 +154,14 @@ class MultiRunEvaluator:
             return NotImplemented
 
         return (
-            self.frame_step   == getattr(other, "frame_step", None)
-            and self.base_frames == getattr(other, "base_frames", None)
-            and self.key_attrs   == getattr(other, "key_attrs", None)
+            self.frame_step == getattr(other, "frame_step", None) and
+            self.base_frames == getattr(other, "base_frames", None) and
+            self.allocator_id == getattr(other, "allocator_id", None) and
+            self.env_id == getattr(other, "env_id", None) and
+            self.runs_id == getattr(other, "runs_id", None) and
+            self.attack_id == getattr(other, "attack_id", None) and
+            self.cap_id == getattr(other, "cap_id", None) and
+            self.key_attrs == getattr(other, "key_attrs", None)
         )
 
     def save(self):
@@ -156,38 +179,45 @@ class MultiRunEvaluator:
             except:
                 unpickleable.append(attr)
         
-        if unpickleable: print(f"\t⚠️ Excluding: {', '.join(unpickleable)}")
-        
+        if unpickleable and self.configs.verbose:print(f"\t⚠️ {self} Excluded unpickleable fields:{', '.join(unpickleable)}")   
+
         try:
-            with open(self.save_to_dir / self.file_name, 'wb') as f:
+            with open( self.save_to_dir / self.file_name, 'wb') as f:
                 pickle.dump(save_dict, f)
-            print(f"\{self} Saved Succesfully")
+            if self.configs.verbose: print(f"\t{self} State saved successfully")
+            self.configs.save()
         except Exception as e:
             print(f"❌ {self} Save failed: {e}")
-            raise  # Re-raise to see full traceback
+            raise
         return str(self.save_to_dir / self.file_name)
 
-    def resume(self, day_str=None):
+
+    def resume(self):
         """
-        Resume evaluator state if configuration layer requests it.
-        Replaces the current object state with the stored one.
+        Resume evaluator state, optionally from latest config backup.
+        
+        Args:
+            day_str (str, optional): Specific date if you want to resume a specific day's state.
+        
         Returns:
             bool: True if successfully resumed, False otherwise.
         """
-        state_path = Path(f"{self.save_to_dir}/{self.file_name}")
+        # Prefer config-tracked state if available
+        config_path = self.configs.get_latest_state("framework_state", self.file_name)
+        state_path = Path(config_path) if config_path else Path(f"{self.save_to_dir}/{self.file_name}")
 
         if not state_path.exists() or state_path.stat().st_size == 0:
-            print(f"\t⚠️ {self} No saved state found for {self.save_to_dir}")
+            print(f"\t⚠️ {self} No saved state found for {state_path}")
             return False
 
-        print(f"\t🔄 Resuming state from: {state_path}")
+        # print(f"\t🔄 Resuming state from: {state_path}")
         try:
             with open(state_path, "rb") as f:
                 loaded_dict = pickle.load(f)
                 # Compare IDs from the loaded dict
                 if (self == loaded_dict):
                     self.__dict__.update(loaded_dict)
-                    print(f"\t{self} State restored from {state_path}")
+                    # print(f"\t{self} State restored from {state_path}")
                     return True
 
                 print(f"\t⚠️ {self} ID mismatch - skipping resume")
@@ -195,76 +225,6 @@ class MultiRunEvaluator:
         except Exception as e:
             print(f"\t❌ {self} Resume failed: {e}")
             return False
-
-    def run_experiment(self, exp_no, offset=100, models=None, attack_category="Stochastic", attack_rate=0.25):
-        self.update_configs(models=models, attack_rate=attack_rate)
-
-        self.frames_count = self.base_frames + (exp_no * self.frame_step)
-        self.capacity = self.base_frames if self.configs.base_capacity else self.frames_count
-        exp_id = exp_no + 1
-
-        # Skip if already completed (resume-safe)
-        if (
-            self.configs.attack_type in self.env_experiments
-            and exp_id in self.env_experiments[self.configs.attack_type]
-        ):
-            print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
-            return self.env_experiments[self.configs.attack_type][exp_id]
-
-        print("-" * 100)
-        print(f"EXPERIMENT {exp_id}: {self.frames_count} frames  <>  SCALED-CAPACITY: "
-            f"{self.capacity*self.configs.scale} frames (CAPACITY:{self.capacity} X SCALE:{self.configs.scale})")
-        print("-" * 100)
-
-        # Configure attack scenario
-        self.configs.set_attack_strategy(
-            attack_rate=self.configs.attack_rate,
-            attack_type=self.configs.attack_type,
-            attack_intensity=self.configs.attack_intensity
-        )
-
-        # Allocator (routing layer)
-        route_stats = {}
-        if hasattr(self.configs, "allocator") and self.configs.allocator is not None:
-            qubit_cap = tuple(self.configs.allocator.allocate(
-                timestep=exp_no,
-                route_stats=route_stats
-            ))
-        else: qubit_cap = (8, 10, 8, 9)
-
-        # Create runner
-        runner = QuantumExperimentRunner(
-            config=self.configs,
-            capacity=self.capacity,
-            frames_count=self.frames_count,
-            enable_progress=self.enable_progress,
-            attack_type=self.configs.attack_type,
-            base_seed=self.base_seed + exp_no * offset,
-            attack_intensity=self.configs.attack_intensity,
-        )
-
-        try:
-            experiment_results = runner.run_experiment(
-                frames_count=self.frames_count,
-                models=self.configs.models,
-                qubit_cap=qubit_cap
-            )
-            experiment_results["attack_category"] = attack_category
-            experiment_results["exp_id"] = exp_id
-            self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
-            print(f"Experiment {exp_id} completed successfully.")
-        except Exception as e:
-            # self.save()
-            print(f"❌ Experiment {exp_id} failed: {e}")
-            raise
-
-        finally:
-            # Always save progress
-            # runner.save()
-            # del runner
-            gc.collect()
-
-        return self.env_experiments[self.configs.attack_type][exp_id]
     
 
     def run_experiments(self, runs=None, attack_type=None, models=None):
@@ -336,7 +296,6 @@ class MultiRunEvaluator:
             print("="*70)
 
 
-
     def calculate_scenarios_performance(self):
         """
         Calculate overall performance metrics for each scenario.
@@ -377,24 +336,130 @@ class MultiRunEvaluator:
         
         return copy.deepcopy(self.scenarios_stats)
     
+    # def calculate_scenario_winner(self, comparison_results, scenario, baseline_model='Oracle', update_results=True):
+    #     """
+    #     FIXED: Calculate efficiency per experiment, then average.
+    #     """
+    #     if scenario not in comparison_results: return {}
+    #     all_experiments = comparison_results[scenario]
+    #     if (not all_experiments) or  (len(all_experiments) == 0): return {}
+
+    #     if scenario not in self.scenarios_stats:
+    #         model_totals = {}
+    #         scenarios_stats = {}
+    #         winner_efficients = {}
+    #         total_oracle_reward = 0
+    #         exps_no = len(all_experiments)
+    #         for exp_data in all_experiments.values():
+    #             exp_oracle = exp_data['results'][baseline_model]['final_reward']
+    #             for model_name, model_result in exp_data['results'].items():
+    #                 if model_name not in model_totals:
+    #                     model_totals[model_name] = {'avg_reward':0, 'avg_gap':0, 'efficiency_list':[], 'wins':0, 'avg_efficiency':0, 'reward_list':[], 'creward_list':[]}
+                    
+    #                 model_reward = model_result.get('final_reward', 0.0)
+    #                 model_totals[model_name]['avg_reward'] += model_reward
+    #                 model_totals[model_name]['reward_list'].append(model_reward)
+    #                 model_totals[model_name]['avg_gap'] += model_result.get('gap', 0)
+    #                 model_totals[model_name]['efficiency_list'].append(model_result.get('efficiency', 0.0))
+    #                 model_totals[model_name]['creward_list'].extend(model_result['model_results']['reward_list'])
+
+    #             total_oracle_reward = total_oracle_reward + exp_oracle    
+    #             model_totals[exp_data.get('winner')]['wins'] = model_totals[exp_data.get('winner')]['wins'] + 1
+
+    #         # Calculate final averages
+    #         for model_name, totals in model_totals.items():
+    #             avg_gap = totals['avg_gap'] / exps_no if totals['avg_gap'] > 0 else 0.0
+    #             avg_reward = totals['avg_reward']/exps_no if totals['avg_reward'] > 0 else 0.0
+    #             avg_efficiency = sum(totals['efficiency_list'])/exps_no if totals['efficiency_list'] else 0.0
+
+    #             model_totals[model_name]['avg_gap'] = float(avg_gap)
+    #             model_totals[model_name]['avg_reward'] = float(avg_reward)
+    #             model_totals[model_name]['avg_efficiency'] = float(avg_efficiency)
+                
+    #             if model_name == 'Oracle': continue
+    #             winner_efficients[model_name] = model_totals[model_name]['avg_efficiency'] 
+
+    #         oracle_avg_reward = total_oracle_reward / exps_no if total_oracle_reward > 0 else float('nan')    
+    #         efficiency_winner = max(winner_efficients, key=winner_efficients.get) if winner_efficients else "N/A"
+            
+    #         scenarios_stats[scenario] = {
+    #             'total_experiments': exps_no,
+    #             'win_counts': winner_efficients,
+    #             'all_model_metrics': model_totals,
+    #             'overall_winner': efficiency_winner,
+    #             'oracle_avg_reward': float(oracle_avg_reward),
+    #             'avg_gap': model_totals[efficiency_winner]['avg_gap'],
+    #             'avg_reward': model_totals[efficiency_winner]['avg_reward'],
+    #             'winner_avg_metrics': model_totals.get(efficiency_winner, {}),
+    #             'avg_efficiency': model_totals[efficiency_winner]['avg_efficiency']
+    #         }
+    #         print(f"Scenario '{scenario}' evaluation completed.")
+
+    #         if update_results:
+    #             self.scenarios_stats[scenario] = scenarios_stats[scenario]
+    #             self.evaluation_results[scenario].update({'avg_efficiency_stats':self.scenarios_stats[scenario]})
+        
+    #     return self.scenarios_stats
+
     def calculate_scenario_winner(self, comparison_results, scenario, baseline_model='Oracle', update_results=True):
         """
         FIXED: Calculate efficiency per experiment, then average.
+        Recalculates winner if None is found in experiment data.
         """
-        if scenario not in comparison_results: return {}
+        if scenario not in comparison_results: 
+            return {}
+        
         all_experiments = comparison_results[scenario]
-        if (not all_experiments) or  (len(all_experiments) == 0): return {}
+        if (not all_experiments) or (len(all_experiments) == 0): 
+            return {}
 
+        if scenario not in self.scenarios_stats:
+            self.scenarios_stats[scenario] = {}
+        
         model_totals = {}
         scenarios_stats = {}
         winner_efficients = {}
         total_oracle_reward = 0
         exps_no = len(all_experiments)
+        
+        # Track how many winners were recalculated
+        recalculated_count = 0
+        
         for exp_data in all_experiments.values():
             exp_oracle = exp_data['results'][baseline_model]['final_reward']
+            
+            # === RECALCULATE WINNER IF NONE ===
+            winner = exp_data.get('winner')
+            if winner is None:
+                # Recalculate winner based on final_reward
+                max_reward = -float('inf')
+                recalculated_winner = None
+                
+                for model_name, model_result in exp_data['results'].items():
+                    if model_name == baseline_model:  # Skip Oracle in winner calculation
+                        continue
+                    model_reward = model_result.get('final_reward', 0.0)
+                    if model_reward > max_reward:
+                        max_reward = model_reward
+                        recalculated_winner = model_name
+                
+                winner = recalculated_winner
+                exp_data['winner'] = winner  # Update the experiment data
+                recalculated_count += 1
+                print(f"  ⚠️  Recalculated winner for experiment: {recalculated_winner} (reward: {max_reward:.2f})")
+            
+            # === ACCUMULATE MODEL STATISTICS ===
             for model_name, model_result in exp_data['results'].items():
                 if model_name not in model_totals:
-                    model_totals[model_name] = {'avg_reward':0, 'avg_gap':0, 'efficiency_list':[], 'wins':0, 'avg_efficiency':0, 'reward_list':[], 'creward_list':[]}
+                    model_totals[model_name] = {
+                        'avg_reward': 0, 
+                        'avg_gap': 0, 
+                        'efficiency_list': [], 
+                        'wins': 0, 
+                        'avg_efficiency': 0, 
+                        'reward_list': [], 
+                        'creward_list': []
+                    }
                 
                 model_reward = model_result.get('final_reward', 0.0)
                 model_totals[model_name]['avg_reward'] += model_reward
@@ -403,23 +468,33 @@ class MultiRunEvaluator:
                 model_totals[model_name]['efficiency_list'].append(model_result.get('efficiency', 0.0))
                 model_totals[model_name]['creward_list'].extend(model_result['model_results']['reward_list'])
 
-            total_oracle_reward = total_oracle_reward + exp_oracle    
-            model_totals[exp_data.get('winner')]['wins'] = model_totals[exp_data.get('winner')]['wins'] + 1
+            total_oracle_reward = total_oracle_reward + exp_oracle
+            
+            # === INCREMENT WIN COUNT (NOW SAFE) ===
+            if winner is not None and winner in model_totals:
+                model_totals[winner]['wins'] = model_totals[winner]['wins'] + 1
+            else:
+                print(f"  ⚠️  Warning: Could not determine valid winner for experiment")
 
-        # Calculate final averages
+        # Print recalculation summary
+        if recalculated_count > 0:
+            print(f"  ℹ️  Recalculated {recalculated_count}/{exps_no} experiment winners in scenario '{scenario}'")
+
+        # === CALCULATE FINAL AVERAGES ===
         for model_name, totals in model_totals.items():
             avg_gap = totals['avg_gap'] / exps_no if totals['avg_gap'] > 0 else 0.0
-            avg_reward = totals['avg_reward']/exps_no if totals['avg_reward'] > 0 else 0.0
-            avg_efficiency = sum(totals['efficiency_list'])/exps_no if totals['efficiency_list'] else 0.0
+            avg_reward = totals['avg_reward'] / exps_no if totals['avg_reward'] > 0 else 0.0
+            avg_efficiency = sum(totals['efficiency_list']) / exps_no if totals['efficiency_list'] else 0.0
 
             model_totals[model_name]['avg_gap'] = float(avg_gap)
             model_totals[model_name]['avg_reward'] = float(avg_reward)
             model_totals[model_name]['avg_efficiency'] = float(avg_efficiency)
             
-            if model_name == 'Oracle': continue
-            winner_efficients[model_name] = model_totals[model_name]['avg_efficiency'] 
+            if model_name == baseline_model:  # Skip Oracle
+                continue
+            winner_efficients[model_name] = model_totals[model_name]['avg_efficiency']
 
-        oracle_avg_reward = total_oracle_reward / exps_no if total_oracle_reward > 0 else float('nan')    
+        oracle_avg_reward = total_oracle_reward / exps_no if total_oracle_reward > 0 else float('nan')
         efficiency_winner = max(winner_efficients, key=winner_efficients.get) if winner_efficients else "N/A"
         
         scenarios_stats[scenario] = {
@@ -428,18 +503,19 @@ class MultiRunEvaluator:
             'all_model_metrics': model_totals,
             'overall_winner': efficiency_winner,
             'oracle_avg_reward': float(oracle_avg_reward),
-            'avg_gap': model_totals[efficiency_winner]['avg_gap'],
-            'avg_reward': model_totals[efficiency_winner]['avg_reward'],
+            'avg_gap': model_totals[efficiency_winner]['avg_gap'] if efficiency_winner in model_totals else 0.0,
+            'avg_reward': model_totals[efficiency_winner]['avg_reward'] if efficiency_winner in model_totals else 0.0,
             'winner_avg_metrics': model_totals.get(efficiency_winner, {}),
-            'avg_efficiency': model_totals[efficiency_winner]['avg_efficiency']
+            'avg_efficiency': model_totals[efficiency_winner]['avg_efficiency'] if efficiency_winner in model_totals else 0.0
         }
-        print(f"Scenario '{scenario}' evaluation completed.")
+        
+        print(f"✓ Scenario '{scenario}' evaluation completed.")
 
         if update_results:
             self.scenarios_stats[scenario] = scenarios_stats[scenario]
-            self.evaluation_results[scenario].update({'avg_efficiency_stats':self.scenarios_stats[scenario]})
+            self.evaluation_results[scenario].update({'avg_efficiency_stats': self.scenarios_stats[scenario]})
         
-        return scenarios_stats
+        return self.scenarios_stats
 
 
     def calculate_scenarios_winner(self, comparison_results, scenarios=None):
@@ -577,7 +653,7 @@ class MultiRunEvaluator:
         print("="*70)
 
 
-    def run_scenarios_model_evaluation(self, runs=None, models=None, attack_type=None, scenarios=None, cal_winner=True):
+    def run_scenarios_model_evaluation(self, runs=None, models=None, attack_type=None, scenarios=None, cal_winner=True, parallel=False):
         """
         Run comprehensive model evaluation in realistic quantum network conditions.
 
@@ -605,7 +681,7 @@ class MultiRunEvaluator:
         self.evaluation_results = {}
         for attack_type in self.configs.test_scenarios.keys():
             self.configs.attack_type = attack_type
-            experiment_results = self.run_scenario_model_evaluation()
+            experiment_results = self.run_scenario_model_evaluation(threaded=parallel)
             self.evaluation_results[attack_type] = copy.deepcopy(experiment_results)
         
         if cal_winner: self.calculate_scenarios_winner(self.evaluation_results)
@@ -744,7 +820,7 @@ class MultiRunEvaluator:
             self.env_experiments[self.configs.attack_type] = {}
         
     # Usage functions
-    def test_stochastic_environment(self, runs=None, models=None, scenarios=None, attack_type='stochastic', cal_winner=True):
+    def test_stochastic_environment(self, runs=None, models=None, scenarios=None, attack_type='stochastic', cal_winner=True, parellel=False):
         """
         Main function to test models in stochastic quantum network conditions.
         
@@ -753,7 +829,7 @@ class MultiRunEvaluator:
         self.update_configs(runs, models, attack_type, scenarios)
         
         # Run the comprehensive evaluation
-        results = self.run_scenarios_model_evaluation(cal_winner=cal_winner,)
+        results = self.run_scenarios_model_evaluation(cal_winner=cal_winner, parallel=parellel)
 
         return results
 
@@ -771,23 +847,92 @@ class MultiRunEvaluator:
         self.print_summary()
         return self
 
+
+
+    def run_experiment(self, exp_no, offset=100, models=None, attack_category="Stochastic", attack_rate=0.25):
+        self.update_configs(models=models, attack_rate=attack_rate)
+
+        self.frames_count = self.base_frames + (exp_no * self.frame_step)
+        self.capacity = self.base_frames if self.configs.base_capacity else self.frames_count
+        exp_id = exp_no + 1
+
+        print("-" * 100)
+        print(f"EXPERIMENT {exp_id}: {self.frames_count} frames  <>  SCALED-CAPACITY: "
+            f"{self.capacity*self.configs.scale} frames (CAPACITY:{self.capacity} X SCALE:{self.configs.scale})")
+        print("-" * 100)
+
+        # Configure attack scenario
+        self.configs.set_attack_strategy(
+            attack_rate=self.configs.attack_rate,
+            attack_type=self.configs.attack_type,
+            attack_intensity=self.configs.attack_intensity
+        )
+
+        # Allocator (routing layer)
+        route_stats = {}
+        if hasattr(self.configs, "allocator") and self.configs.allocator is not None:
+            qubit_cap = tuple(self.configs.allocator.allocate(
+                timestep=exp_no,
+                route_stats=route_stats
+            ))
+        else: qubit_cap = (8, 10, 8, 9)
+
+        # Create runner
+        runner = QuantumExperimentRunner(
+            id = exp_id,
+            config=self.configs,
+            capacity=self.capacity,
+            frames_count=self.frames_count,
+            enable_progress=self.enable_progress,
+            attack_type=self.configs.attack_type,
+            base_seed=self.base_seed + exp_no * offset,
+            attack_intensity=self.configs.attack_intensity,
+        )
+
+        # Skip if already completed (resume-safe)
+        if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
+            print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
+            experiment_results = runner.run_experiment(
+                frames_count=self.frames_count,
+                models=self.configs.models,
+                qubit_cap=qubit_cap
+            )
+            del runner
+            # return self.env_experiments[self.configs.attack_type][exp_id]
+        else:
+            try:
+                experiment_results = runner.run_experiment(
+                    frames_count=self.frames_count,
+                    models=self.configs.models,
+                    qubit_cap=qubit_cap
+                )
+
+                experiment_results["exp_id"] = exp_id
+                experiment_results["attack_category"] = attack_category
+                self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
+                print(f"Experiment {exp_id} completed successfully.")
+            except Exception as e:
+                print(f"❌ Experiment {exp_id} failed: {e}")
+                raise
+
+            finally:
+                del runner
+                gc.collect()
+            self.save()
+
+        return self.env_experiments[self.configs.attack_type][exp_id]
     
     def run_threaded_experiment(self, exp_no, offset=100, models=None, attack_category="Stochastic", attack_rate=0.25, max_workers=2):
         self.update_configs(models=models, attack_rate=attack_rate)
 
         self.frames_count = self.base_frames + (exp_no * self.frame_step)
         self.capacity = self.base_frames if self.configs.base_capacity else self.frames_count
+        exp_id = exp_no + 1
 
         
         print("\n\n", "-" * 100)
-        exp_id = exp_no + 1
         print(f"EXPERIMENT {exp_id}: {self.frames_count} frames  <>  SCALED-CAPACITY: {self.capacity*self.configs.scale} frames")
         print("-" * 100)
-
-        # Skip if already completed (resume-safe)
-        if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
-            print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
-            return self.env_experiments[self.configs.attack_type][exp_id]
 
         self.configs.set_attack_strategy(
             attack_rate=self.configs.attack_rate,
@@ -798,11 +943,10 @@ class MultiRunEvaluator:
         route_stats = {}
         if hasattr(self.configs, 'allocator') and self.configs.allocator is not None:
             qubit_cap = tuple(self.configs.allocator.allocate(
-                timestep=exp_no,
-                route_stats=route_stats
+                route_stats=route_stats,
+                timestep=exp_no
             ))
-        else:
-            qubit_cap = (8, 10, 8, 9)
+        else: qubit_cap = (8, 10, 8, 9)
 
         runner = QuantumExperimentRunner(
             id= exp_id,
@@ -815,28 +959,39 @@ class MultiRunEvaluator:
             attack_intensity=self.configs.attack_intensity,
         )
 
-        try:
+        # Skip if already completed (resume-safe)
+        if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
+            print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
             #  USE PARALLEL VERSION HERE
             experiment_results = runner.run_experiment_parallel(
                 frames_count=self.frames_count,
                 models=self.configs.models,
-                qubit_cap=qubit_cap,
-                max_workers=max_workers  # Models run in parallel within this experiment
+                max_workers=max_workers,  # Models run in parallel within this experiment
+                qubit_cap=qubit_cap
             )
-            
-            experiment_results['attack_category'] = attack_category
-            experiment_results['exp_id'] = exp_id
-            self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
-            # print(f"Experiment {exp_id} completed successfully")
-        except Exception as e:
-            print(f"Experiment {exp_id} failed: {e}")
-            raise
-        finally:
-            # runner.save()
-            del runner
-            gc.collect()
+            # return self.env_experiments[self.configs.attack_type][exp_id]
+        else:
+            try:
+                #  USE PARALLEL VERSION HERE
+                experiment_results = runner.run_experiment_parallel(
+                    frames_count=self.frames_count,
+                    models=self.configs.models,
+                    max_workers=max_workers,  # Models run in parallel within this experiment
+                    qubit_cap=qubit_cap
+                )
+                
+                experiment_results['exp_id'] = exp_id
+                experiment_results['attack_category'] = attack_category
+                self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
+                # print(f"Experiment {exp_id} completed successfully")
+            except Exception as e:
+                print(f"Experiment {exp_id} failed: {e}")
+                raise
+            finally:
+                del runner
+                gc.collect()
+            self.save()
 
-        self.save()
         return self.env_experiments[self.configs.attack_type][exp_id]
 
 

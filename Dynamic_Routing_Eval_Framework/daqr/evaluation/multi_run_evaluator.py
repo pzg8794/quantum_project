@@ -56,9 +56,7 @@ class MultiRunEvaluator:
         self.capacity = self.base_frames
 
         # Set paths
-        self.day_str = datetime.now().strftime("%Y%m%d")
-        self.config_dir = Path(__file__).parent.parent / "config"
-        self.save_to_dir = Path(f"{self.config_dir}/framework_state/day_{self.day_str}/")
+        self.save_to_dir = Path(f"{self.configs.dir}/framework_state/day_{self.configs.day_str}/")
         
         # Update configs FIRST
         self.update_configs(runs, models, attack_type, scenarios, attack_intensity)
@@ -72,12 +70,11 @@ class MultiRunEvaluator:
         self._build_environment_once(frames_count=self.frames_count, qubit_cap=qubit_cap)
 
         # Set filename AFTER configs are ready
-
         self.runs_id      = getattr(self.configs, "runs", "1")
         self.allocator_id = str(getattr(self.configs, "allocator", "alloc"))
         self.env_id       = str(getattr(self.configs, "environment", "env"))
         self.attack_id    = str(getattr(self.configs, "attack_strategy", "None"))
-        self.cap_id       = (self.base_frames if self.configs.base_capacity else self.frames_count) * self.configs.scale
+        self.cap_id       = (self.base_frames if self.configs.base_capacity else self.frames_count)*self.configs.scale
         self.file_name = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{self.base_frames}_{self.frame_step}_{self.runs_id}.pkl"
 
         # NOW resume can work
@@ -120,6 +117,11 @@ class MultiRunEvaluator:
         # --- dict comparison (used in resume) ---
         if isinstance(other, dict):
             other_attrs = other.get("key_attrs", {}).copy()
+            # temp fix
+            if not self.configs.base_capacity:
+                if 'runs' in other_attrs: del other_attrs['runs']
+                if 'runs' in self.key_attrs: del self.key_attrs['runs']
+
             if "seed" in other_attrs:
                 del other_attrs["seed"]
             
@@ -177,38 +179,45 @@ class MultiRunEvaluator:
             except:
                 unpickleable.append(attr)
         
-        if unpickleable: print(f"\t⚠️ Excluding: {', '.join(unpickleable)}")
-        
+        if unpickleable and self.configs.verbose:print(f"\t⚠️ {self} Excluded unpickleable fields:{', '.join(unpickleable)}")   
+
         try:
-            with open(self.save_to_dir / self.file_name, 'wb') as f:
+            with open( self.save_to_dir / self.file_name, 'wb') as f:
                 pickle.dump(save_dict, f)
-            print(f"\t{self} Saved Succesfully")
+            if self.configs.verbose: print(f"\t{self} State saved successfully")
+            self.configs.save()
         except Exception as e:
             print(f"❌ {self} Save failed: {e}")
-            raise  # Re-raise to see full traceback
+            raise
         return str(self.save_to_dir / self.file_name)
 
-    def resume(self, day_str=None):
+
+    def resume(self):
         """
-        Resume evaluator state if configuration layer requests it.
-        Replaces the current object state with the stored one.
+        Resume evaluator state, optionally from latest config backup.
+        
+        Args:
+            day_str (str, optional): Specific date if you want to resume a specific day's state.
+        
         Returns:
             bool: True if successfully resumed, False otherwise.
         """
-        state_path = Path(f"{self.save_to_dir}/{self.file_name}")
+        # Prefer config-tracked state if available
+        config_path = self.configs.get_latest_state("framework_state", self.file_name)
+        state_path = Path(config_path) if config_path else Path(f"{self.save_to_dir}/{self.file_name}")
 
         if not state_path.exists() or state_path.stat().st_size == 0:
-            print(f"\t⚠️ {self} No saved state found for {self.save_to_dir}")
+            print(f"\t⚠️ {self} No saved state found for {state_path}")
             return False
 
-        print(f"\t🔄 Resuming state from: {state_path}")
+        # print(f"\t🔄 Resuming state from: {state_path}")
         try:
             with open(state_path, "rb") as f:
                 loaded_dict = pickle.load(f)
                 # Compare IDs from the loaded dict
                 if (self == loaded_dict):
                     self.__dict__.update(loaded_dict)
-                    print(f"\t{self} State restored from {state_path}")
+                    # print(f"\t{self} State restored from {state_path}")
                     return True
 
                 print(f"\t⚠️ {self} ID mismatch - skipping resume")

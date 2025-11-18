@@ -74,7 +74,7 @@ class EXPNeuralUCB(QuantumModel):
         return True  # Override detection since we implement run
     
     def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, mode='hybrid', beta=0.2, gamma_factor=0.01, eta_factor=0.05, verbose=False):
-        super().__init__(configs,  X_n, reward_list, frame_number, attack_list, capacity, mode, beta, gamma_factor, eta_factor, verbose)
+        super().__init__(configs,  X_n, reward_list, frame_number, attack_list, capacity, mode, beta, gamma_factor, eta_factor)
         # Core parameters (shared across all modes)
         self.X_n = X_n
         self.reward_list = reward_list

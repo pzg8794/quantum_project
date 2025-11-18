@@ -51,9 +51,7 @@ class QuantumExperimentRunner:
 
         # Set paths
         self.key_attrs = {}
-        self.day_str = datetime.now().strftime("%Y%m%d")
-        self.config_dir = Path(__file__).parent.parent / "config"
-        self.save_to_dir = Path(f"{self.config_dir}/framework_state/day_{self.day_str}/")
+        self.save_to_dir = Path(f"{self.configs.dir}/framework_state/day_{self.configs.day_str}/")
         self.configs.update_configs(attack_type=attack_type, attack_intensity=attack_intensity)
 
 
@@ -82,6 +80,11 @@ class QuantumExperimentRunner:
         # --- dict comparison (used in resume) ---
         if isinstance(other, dict):
             other_attrs = other.get("key_attrs", {}).copy()
+            # temp fix
+            if not self.configs.base_capacity:
+                if 'runs' in other_attrs: del other_attrs['runs']
+                if 'runs' in self.key_attrs: del self.key_attrs['runs']
+
             if "seed" in other_attrs:
                 del other_attrs["seed"]
             
@@ -136,29 +139,34 @@ class QuantumExperimentRunner:
             except:
                 unpickleable.append(attr)
         
-        # if unpickleable: print(f"\t⚠️ Excluding: {', '.join(unpickleable)}")
-        
+        if unpickleable and self.configs.verbose:print(f"\t⚠️ {self} Excluded unpickleable fields:{', '.join(unpickleable)}")   
+
         try:
             with open( self.save_to_dir / self.file_name, 'wb') as f:
                 pickle.dump(save_dict, f)
-            # print(f"\t{self} Saved Succesfully")
+            if self.configs.verbose: print(f"\t{self} State saved successfully")
+            self.configs.save()
         except Exception as e:
             print(f"❌ {self} Save failed: {e}")
-            raise  # Re-raise to see full traceback
+            raise
         return str(self.save_to_dir / self.file_name)
 
-    def resume(self, day_str=None):
+    def resume(self):
         """
-        Resume evaluator state if configuration layer requests it.
-        Replaces the current object state with the stored one.
+        Resume evaluator state, optionally from latest config backup.
+        
+        Args:
+            day_str (str, optional): Specific date if you want to resume a specific day's state.
+        
         Returns:
             bool: True if successfully resumed, False otherwise.
         """
-        self.save_to_dir.mkdir(parents=True, exist_ok=True)
-        state_path = Path(f"{self.save_to_dir}/{self.file_name}")
+        # Prefer config-tracked state if available
+        config_path = self.configs.get_latest_state("framework_state", self.file_name)
+        state_path = Path(config_path) if config_path else Path(f"{self.save_to_dir}/{self.file_name}")
 
         if not state_path.exists() or state_path.stat().st_size == 0:
-            print(f"\t⚠️ {self} No saved state found for {self.save_to_dir}")
+            print(f"\t⚠️ {self} No saved state found for {state_path}")
             return False
 
         # print(f"\t🔄 Resuming state from: {state_path}")
@@ -262,24 +270,24 @@ class QuantumExperimentRunner:
 
         if alg_name in self.results.keys(): 
             if self.configs.overwrite: print(f"\t{alg_name} already processed")
-            model = model_class(
-                configs=self.configs,
-                X_n=env_info['contexts'],
-                reward_list=env_info['reward_functions'],
-                frame_number=self.frames_count,
-                attack_list=env_info['attack_pattern'],
-                capacity=self.capacity, 
-                **model_kwargs
-            )
-            if runner_type == 'step-wise':
-                total_reward = self.run_step_wise_oracle(env_info, model, self.frames_count, alg_name)
-            else:
-                result = model.run(attack_list=env_info['attack_pattern'], verbose=False)
+            # model = model_class(
+            #     configs=self.configs,
+            #     X_n=env_info['contexts'],
+            #     reward_list=env_info['reward_functions'],
+            #     frame_number=self.frames_count,
+            #     attack_list=env_info['attack_pattern'],
+            #     capacity=self.capacity, 
+            #     **model_kwargs
+            # )
+            # # Resume previous evaluator state if configured
+            # try:                    model.resume()
+            # except Exception as e:  print(f"⚠️ Resume failed: {e}")
             return self.results[alg_name], model
         else:
             try:
                 while total_reward <= 0.0:
-                    model_kwargs['verbose'] = enable_progress
+                    # model_kwargs['verbose'] = enable_progress
+                    self.configs.verbose = enable_progress
                     model = model_class(
                         configs=self.configs,
                         X_n=env_info['contexts'],

@@ -59,14 +59,13 @@ class QuantumModel(ABC):
     Enhanced minimal interface that every model (policy/algorithm) in the quantum environment obeys.
     Keep methods generic so both 'step-wise' (Oracle) and 'batch' (EXPNeuralUCB) fit.
     """
-    def __init__(self, configs, X_n, reward_list, frame_number, attack_list=[], capacity=10000,     mode='hybrid', beta=0.2, gamma_factor=0.01, eta_factor=0.05, lamb=1, verbose=False):
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list=[], capacity=10000,     mode='hybrid', beta=0.2, gamma_factor=0.01, eta_factor=0.05, lamb=1):
         super().__init__()
 
         # Directory structure setup
         self.id = str(self)
         self.configs = configs
         self.alg_dir = os.path.dirname(os.path.abspath(__file__))
-        self.config_dir = self.alg_dir.replace("algorithms", "config")
         self.overwrite = self.configs.overwrite
         
         # Core parameters (shared across all modes)
@@ -75,10 +74,10 @@ class QuantumModel(ABC):
         self.reward_list = reward_list
         self.frame_number = frame_number
         self.num_groups = len(reward_list)
-        
+
         self.mode = mode
         self.beta = beta
-        self.verbose = verbose
+        # self.verbose = self.configs.verbose
         
         # EXP3 parameters (used in 'hybrid' and 'exp3' modes)
         self.capacity = int(capacity*self.configs.scale)
@@ -87,9 +86,7 @@ class QuantumModel(ABC):
         self.state = 0
 
         self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
-        self.day_str = datetime.now().strftime("%Y%m%d")
-        self.config_dir = Path(__file__).parent.parent / "config"
-        self.save_to_dir = Path(f"{self.config_dir}/model_state/day_{self.day_str}/")
+        self.save_to_dir = Path(f"{self.configs.dir}/model_state/day_{self.configs.day_str}/")
 
 
         self.allocator_id = str(getattr(self.configs, "allocator", "alloc"))
@@ -141,7 +138,11 @@ class QuantumModel(ABC):
         # --- dict comparison (used in resume) ---
         if isinstance(other, dict):
             other_attrs = other.get("key_attrs", {}).copy()
-            
+            # temp fix
+            if not self.configs.base_capacity:
+                if 'runs' in other_attrs: del other_attrs['runs']
+                if 'runs' in self.key_attrs: del self.key_attrs['runs']
+
             # Check main identifiers
             if (
                 self.id == other.get("id") and
@@ -201,12 +202,12 @@ class QuantumModel(ABC):
             except:
                 unpickleable.append(attr)
         
-        # if unpickleable: print(f"\t⚠️ Excluding: {', '.join(unpickleable)}")
-        
+        if unpickleable and self.configs.verbose: print(f"\t⚠️ Excluding: {', '.join(unpickleable)}")
         try:
             with open(self.save_to_dir / self.file_name, 'wb') as f:
                 pickle.dump(save_dict, f)
-            # print(f"\t{self} Saved Successfully")
+            if self.configs.verbose: print(f"\t{self} Saved Successfully")
+            self.configs.save()
         except Exception as e:
             print(f"❌ {self} Save failed: {e}")
             raise
@@ -220,10 +221,12 @@ class QuantumModel(ABC):
             bool: True if successfully resumed, False otherwise.
         """
         self.save_to_dir.mkdir(parents=True, exist_ok=True)
-        state_path = Path(f"{self.save_to_dir}/{self.file_name}")
-
+        state_path_str = f"{self.save_to_dir}/{self.file_name}"
+        config_path = self.configs.get_latest_state("model_state", self.file_name)
+        state_path = Path(config_path) if (self.configs.use_last_backup and config_path) else Path(state_path_str)
+        
         if not state_path.exists() or state_path.stat().st_size == 0:
-            # print(f"\t⚠️ {self} No saved state found for {self.save_to_dir}")
+            if self.configs.verbose: print(f"\t⚠️ {self} No saved state found for {state_path}")
             return False
 
         # print(f"\t🔄 Resuming state from: {state_path}")
@@ -234,7 +237,7 @@ class QuantumModel(ABC):
                 # Compare using __eq__
                 if (self == loaded_dict):
                     self.__dict__.update(loaded_dict)
-                    print(f"\t{self} State restored from {state_path}")
+                    if self.configs.verbose: print(f"\t{self} State restored from {state_path}")
                     return True
 
                 print(f"\t⚠️ {self} ID mismatch - skipping resume")
@@ -411,7 +414,7 @@ class Oracle(QuantumModel):
     def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs):
         super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, **kwargs)
         self.state = -1
-        self.verbose = False
+        # self.verbose = False
         self.X_n = X_n
         self.reward_list = reward_list
         self.attack_list = attack_list
@@ -552,7 +555,7 @@ class Oracle(QuantumModel):
         oracle_path = oracle_graph_list.index(max(oracle_graph_list))
         oracle_action = max_graph_action[oracle_path]
 
-        if self.verbose:
+        if self.configs.verbose:
             print("\nORACLE (REWARD-BASED) ANALYSIS:")
             print("=" * 40)
             print(f"| Optimal Path:      | {oracle_path:<4} |")

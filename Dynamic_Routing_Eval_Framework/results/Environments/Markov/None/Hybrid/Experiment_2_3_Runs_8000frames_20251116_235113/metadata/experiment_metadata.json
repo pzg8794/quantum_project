@@ -1,0 +1,19 @@
+{
+  "environment": "markov",
+  "experiment_id": 2,
+  "num_runs": 3,
+  "model_category": "Hybrid",
+  "models_tested": [
+    "Oracle",
+    "GNeuralUCB",
+    "EXPNeuralUCB",
+    "CPursuitNeuralUCB",
+    "iCPursuitNeuralUCB"
+  ],
+  "timestamp": "2025-11-16T23:51:22.487989",
+  "session_timestamp": "20251116_235113",
+  "session_id": "20251116_235113",
+  "framework_config": {},
+  "allocator_type": "None",
+  "allocator_config": {}
+}

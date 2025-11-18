@@ -4,24 +4,20 @@ import time
 import copy
 import psutil
 import random
-import warnings, gc
+import warnings
+import gc
 import numpy as np
-import pandas as pd
 from tqdm import tqdm
-import seaborn as sns
-from random import choice
-import matplotlib.pyplot as plt
-from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from scipy.stats import beta, multivariate_normal, norm
-# from quantum_base_algorithms import *
-import pmdarima as pm  # Real ARIMA dependency
-# from quantum_config import QuantumExperimentConfig
+
 from daqr.algorithms.CMAB import CMAB, iCMAB
 from daqr.algorithms.neural_bandits import *
+
+warnings.filterwarnings('ignore')
 
 
 # Core Scientific Computing Libraries
@@ -147,7 +143,7 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
         """
         # Initialize CPursuitNeuralUCB base (gets neural UCB components)
         super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, 
-                        mode, beta, gamma_factor, eta_factor, learning_rate, verbose)
+                        mode, beta, gamma_factor, eta_factor, learning_rate)
         
         self.basemode = mode
         self.n_features = len(X_n[0]) if X_n else 2
@@ -339,7 +335,7 @@ class CEXPNeuralUCB(EXPNeuralUCB):
     def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, 
                 mode='cmab', gamma_factor=0.1, eta_factor=0.005, beta=0.2, n_experts=4, verbose=False):
         super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, 
-                        mode, gamma_factor, eta_factor, beta, n_experts, verbose)
+                        mode, gamma_factor, eta_factor, beta, n_experts)
         
         # Override mode and add CMAB components
         self.mode = mode

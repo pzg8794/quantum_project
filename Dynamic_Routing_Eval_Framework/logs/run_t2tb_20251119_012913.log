@@ -1,0 +1,7 @@
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100    41  100    41    0     0  29285      0 --:--:-- --:--:-- --:--:-- 41000
+ERROR: (gcloud.compute.instances.add-metadata) Could not fetch resource:
+ - Request had insufficient authentication scopes.
+
+[2025-11-19 01:29:14] Run: thompson-2tb-exp-1 | Frames: 4000 | Runs: 3 | Step: 2000 | Seed: 12345

@@ -92,7 +92,7 @@ class QuantumModel(ABC):
         self.allocator_id = str(getattr(self.configs, "allocator", "alloc"))
         self.env_id       = str(getattr(self.configs, "environment", "env"))
         self.attack_id    = str(getattr(self.configs, "attack_strategy", "None"))
-        self.file_name = f"{self.id}({self.mode})_{self.capacity}-{self.allocator_id}_{self.env_id }_{self.attack_id}-{self.frame_number}.pkl"
+        self.file_name = f"{self.id}({self.mode})_{int(self.capacity)}-{self.allocator_id}_{self.env_id }_{self.attack_id}-{self.frame_number}.pkl"
 
         self.thresholds = {
                 'EXPNeuralUCB': {'stochastic': 0.628, 'adversarial': 0.598},

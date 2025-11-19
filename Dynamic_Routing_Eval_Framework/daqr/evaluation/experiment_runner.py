@@ -67,7 +67,7 @@ class QuantumExperimentRunner:
         self.allocator_id = str(getattr(self.configs, "allocator", "alloc"))
         self.env_id       = str(getattr(self.configs, "environment", "env"))
         self.attack_id    = str(getattr(self.configs, "attack_strategy", "None"))
-        self.cap_id       = self.capacity*self.configs.scale
+        self.cap_id       = int(self.capacity*self.configs.scale)
         self.file_name = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id }_{self.attack_id}-{self.frames_count}_{self.id}.pkl"
         
         # Resume previous evaluator state if configured

@@ -75,7 +75,7 @@ class MultiRunEvaluator:
         self.env_id       = str(getattr(self.configs, "environment", "env"))
         self.attack_id    = str(getattr(self.configs, "attack_strategy", "None"))
         self.cap_id       = (int(self.base_frames if self.configs.base_capacity else self.frames_count)*self.configs.scale)
-        self.file_name = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{self.base_frames}_{self.frame_step}_{self.runs_id}.pkl"
+        self.file_name = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{self.base_frames}_{int(self.frame_step)}_{self.runs_id}.pkl"
 
         # NOW resume can work
         try:    self.resume()

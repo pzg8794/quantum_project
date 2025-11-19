@@ -71,9 +71,8 @@ class QuantumExperimentRunner:
         self.file_name = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id }_{self.attack_id}-{self.frames_count}_{self.id}.pkl"
         
         # Resume previous evaluator state if configured
-        if getattr(self.configs, "resume", False):
-            try:                    self.resume()
-            except Exception as e:  print(f"⚠️ Resume failed: {e}")
+        try:                    self.resume()
+        except Exception as e:  print(f"⚠️ Resume failed: {e}")
     
     def __eq__(self, other):
         """Defines equality for evaluator or saved dict comparison."""

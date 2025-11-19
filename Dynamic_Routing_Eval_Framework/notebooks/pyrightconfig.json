@@ -1,0 +1,23 @@
+{
+  "exclude": [
+    "**/__pycache__",
+    "**/.venv",
+    "**/checkpoints",
+    "**/logs",
+    "**/outputs",
+    "**/models",
+    "**/quantum",
+    "**/.quantum",
+    "**/results",
+    "hybrid_variable_framework/Eval_Framework_for_Dynamic_Attack",
+    "hybrid_variable_framework/Eval_Framework_for_EXPNeuralUCB",
+    "hybrid_variable_framework/Eval_Framework_for_Hybrid_MABs",
+    "hybrid_variable_framework/Eval_Framework_for_Scenarios",
+    "hybrid_variable_framework/Eval_Framework_for_Models",
+    "hybrid_variable_framework/Eval_Framework_for_iCMAB",
+    "Dynamic_Routing_Eval_Framework/daqr/config/framework_state",
+    "Dynamic_Routing_Eval_Framework/daqr/config/model_state",
+    "Dynamic_Routing_Eval_Framework/logs",
+    "Dynamic_Routing_Eval_Framework/results",
+  ]
+}

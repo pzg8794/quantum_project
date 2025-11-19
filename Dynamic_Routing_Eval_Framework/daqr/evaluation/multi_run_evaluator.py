@@ -78,9 +78,8 @@ class MultiRunEvaluator:
         self.file_name = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{self.base_frames}_{self.frame_step}_{self.runs_id}.pkl"
 
         # NOW resume can work
-        if getattr(self.configs, "resume", False):
-            try:    self.resume()
-            except Exception as e:  print(f"⚠️ Resume failed: {e}")
+        try:    self.resume()
+        except Exception as e:  print(f"⚠️ Resume failed: {e}")
 
         print("Multi-Run Evaluator Initialized")
         print(f"Environment Type: {attack_type}")
@@ -581,7 +580,7 @@ class MultiRunEvaluator:
         return {}
 
 
-    def run_scenario_model_evaluation(self, runs=None, models=None, attack_type=None, threaded=True):
+    def run_scenario_model_evaluation(self, runs=None, models=None, attack_type=None, threaded=False):
         """
         Wrapper to run comprehensive evaluation for a single scenario.
         """
@@ -834,7 +833,7 @@ class MultiRunEvaluator:
         return results
 
 
-    def test_individual_environment(self, attack_type="stochastic", threaded=True):
+    def test_individual_environment(self, attack_type="stochastic", threaded=False):
         """Test a single environment type."""
         self.update_configs(attack_type=attack_type)
 

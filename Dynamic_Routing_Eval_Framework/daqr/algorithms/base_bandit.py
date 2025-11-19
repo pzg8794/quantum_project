@@ -220,7 +220,6 @@ class QuantumModel(ABC):
         Returns:
             bool: True if successfully resumed, False otherwise.
         """
-        self.save_to_dir.mkdir(parents=True, exist_ok=True)
         state_path_str = f"{self.save_to_dir}/{self.file_name}"
         config_path = self.configs.get_latest_state("model_state", self.file_name)
         state_path = Path(config_path) if (self.configs.use_last_backup and config_path) else Path(state_path_str)

@@ -229,7 +229,7 @@ class EXPNeuralUCB(QuantumModel):
         oracle_model = None
 
         # Method 1: Use base_model directly from configs (preferred)
-        if hasattr(self.configs, 'base_model') and isinstance(self.configs.base_model, Oracle):
+        if isinstance(self.configs.base_model, Oracle):
             oracle_model = self.configs.base_model
             print(f"\t✓ {base_model} model loaded from configs: {oracle_model}")
 

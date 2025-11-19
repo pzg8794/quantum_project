@@ -18,6 +18,7 @@ BASE_CAPACITY=$9
 SCENARIOS=${10}
 USE_LAST_BACKUP=${11:-"false"}
 PARALLEL=${12:-"false"}
+OVERWRITE=${12:-"true"}
 
 # Directory setup
 LOG_DIR="${LOG_DIR:-$HOME/quantum_logs}"
@@ -61,6 +62,7 @@ scale = ${SCALE:-2}
 base_capacity = str("${BASE_CAPACITY:-"N"}").lower() in ["y", "yes", "true"]
 use_last_backup = str("${USE_LAST_BACKUP}").lower() == "true"
 parallel = str("${PARALLEL}").lower() == "true"
+overwrite = str("${OVERWRITE}").lower() == "true"
 
 # Quick test mode overrides
 if "quick-test" in exp_id:
@@ -121,7 +123,7 @@ custom_config = ExperimentConfiguration(
     scale=scale, 
     base_capacity=base_capacity, 
     use_last_backup=use_last_backup,
-    overwrite=True
+    overwrite=overwrite
 )
 
 # Create evaluator

@@ -245,7 +245,7 @@ class QuantumExperimentRunner:
             total_reward = oracle_results['final_reward']
         return total_reward
     
-    def run_algorithm(self, alg_name: str, enable_progress=False):
+    def run_algorithm(self, alg_name: str, enable_progress=False, base_model="Oracle"):
         """
         Run a single algorithm assuming the environment has already been built
         for this experiment with the provided qubit_cap.
@@ -269,18 +269,19 @@ class QuantumExperimentRunner:
 
         if alg_name in self.results.keys(): 
             if self.configs.overwrite: print(f"\t{alg_name} already processed")
-            # model = model_class(
-            #     configs=self.configs,
-            #     X_n=env_info['contexts'],
-            #     reward_list=env_info['reward_functions'],
-            #     frame_number=self.frames_count,
-            #     attack_list=env_info['attack_pattern'],
-            #     capacity=self.capacity, 
-            #     **model_kwargs
-            # )
-            # # Resume previous evaluator state if configured
-            # try:                    model.resume()
-            # except Exception as e:  print(f"⚠️ Resume failed: {e}")
+            if alg_name == base_model:
+                model = model_class(
+                    configs=self.configs,
+                    X_n=env_info['contexts'],
+                    reward_list=env_info['reward_functions'],
+                    frame_number=self.frames_count,
+                    attack_list=env_info['attack_pattern'],
+                    capacity=self.capacity, 
+                    **model_kwargs
+                )
+                # Resume previous evaluator state if configured
+                try:                    model.resume()
+                except Exception as e:  print(f"{alg_name}\t⚠️ Resume failed: {e}")
             return self.results[alg_name], model
         else:
             try:

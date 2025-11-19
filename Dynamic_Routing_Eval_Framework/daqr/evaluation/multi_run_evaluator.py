@@ -891,13 +891,13 @@ class MultiRunEvaluator:
         # Skip if already completed (resume-safe)
         if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
             print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
-            experiment_results = runner.run_experiment(
-                frames_count=self.frames_count,
-                models=self.configs.models,
-                qubit_cap=qubit_cap
-            )
+            # experiment_results = runner.run_experiment(
+            #     frames_count=self.frames_count,
+            #     models=self.configs.models,
+            #     qubit_cap=qubit_cap
+            # )
             del runner
-            # return self.env_experiments[self.configs.attack_type][exp_id]
+            return self.env_experiments[self.configs.attack_type][exp_id]
         else:
             try:
                 experiment_results = runner.run_experiment(
@@ -962,13 +962,13 @@ class MultiRunEvaluator:
         if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
             print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
             #  USE PARALLEL VERSION HERE
-            experiment_results = runner.run_experiment_parallel(
-                frames_count=self.frames_count,
-                models=self.configs.models,
-                max_workers=max_workers,  # Models run in parallel within this experiment
-                qubit_cap=qubit_cap
-            )
-            # return self.env_experiments[self.configs.attack_type][exp_id]
+            # experiment_results = runner.run_experiment_parallel(
+            #     frames_count=self.frames_count,
+            #     models=self.configs.models,
+            #     max_workers=max_workers,  # Models run in parallel within this experiment
+            #     qubit_cap=qubit_cap
+            # )
+            return self.env_experiments[self.configs.attack_type][exp_id]
         else:
             try:
                 #  USE PARALLEL VERSION HERE

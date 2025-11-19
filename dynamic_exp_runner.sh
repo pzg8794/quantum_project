@@ -5,7 +5,7 @@ gcloud compute instances add-metadata "$(hostname)" \
   
 set +e
 
-# Script arguments
+# Script arguments - 12 TOTAL, NO DUPLICATES
 BASE_FRAMES=$1
 EXP_NUM=$2
 FRAME_STEP=$3
@@ -16,8 +16,8 @@ ALLOCATOR=$7
 SCALE=$8
 BASE_CAPACITY=$9
 SCENARIOS=${10}
-USE_LAST_BACKUP=${11:-"false"}  # NEW: Default to false
-PARALLEL=${12:-"false"}          # NEW: Default to false
+USE_LAST_BACKUP=${11:-"false"}
+PARALLEL=${12:-"false"}
 
 # Directory setup
 LOG_DIR="${LOG_DIR:-$HOME/quantum_logs}"
@@ -57,45 +57,33 @@ models = config.NEURAL_MODELS
 # Parse bash arguments
 base_frames = ${BASE_FRAMES}
 exp_id = str("${EXP_ID}")
-res_dir = "${RES_DIR}"
 scale = ${SCALE:-2}
-base_capacity_arg = str("${BASE_CAPACITY:-"Y"}").lower()
-base_capacity = base_capacity_arg == "y"
-use_last_backup = str("${USE_LAST_BACKUP}").lower() == "true"  # NEW
-parallel = str("${PARALLEL}").lower() == "true"                 # NEW
+base_capacity = str("${BASE_CAPACITY:-"N"}").lower() in ["y", "yes", "true"]
+use_last_backup = str("${USE_LAST_BACKUP}").lower() == "true"
+parallel = str("${PARALLEL}").lower() == "true"
 
-# ==============================================================================
-# MODIFICATION BLOCK: Override settings for quick-test and test modes
-# ==============================================================================
+# Quick test mode overrides
 if "quick-test" in exp_id:
     base_frames = 100
     models = ["Oracle", "GNeuralUCB"]
-    print("✓ QUICK-TEST mode detected. Overriding: frames=100, models=['Oracle', 'GNeuralUCB']")
+    print("✓ QUICK-TEST mode: frames=100, models=['Oracle', 'GNeuralUCB']")
 elif "test" in exp_id:
     base_frames = 1000
-    print("✓ TEST mode detected. Overriding: frames=1000")
-# ==============================================================================
+    print("✓ TEST mode: frames=1000")
 
 FRAMEWORK_CONFIG = {
     'test_mode': True, 'base_frames': base_frames, 'exp_num': ${EXP_NUM}, 
     'frame_step': ${FRAME_STEP}, 'models': models, 'prod_frames': 4000,
-    'prod_experiments': 10, 'frame_steps': [], 'main_env': 'stochastic',
-    'eval_mod': 'comprehensive', 'main_model': 'CEXPNeuralUCB',
-    'routing_strategy': 'fixed', 'enable_routing_comparison': False,
-    'alg_attrs': {'lambda_reg': 1.0, 'gamma': 0.1, 'network_width': 128,
-                  'network_depth': 2, 'gradient_steps': 8, 'learning_rate': 1e-4},
+    'prod_experiments': 10, 'main_env': 'stochastic',
+    'eval_mod': 'comprehensive',
     'env_attrs': {'intensity': ${INTENSITY:-0.25}, 'base_seed': ${BASE_SEED}, 'reproducible': True},
-    'scenarios': {'exp_focus': ['stochastic'], 'stochastic_vs_baseline': ['none', 'stochastic'],
-                  'comprehensive': ['none', 'stochastic', 'markov', 'adaptive'],
-                  'adversarial': ['markov', 'adaptive', 'onlineadaptive']}
 }
 
 test_scenarios_arg = "${SCENARIOS:-None}"
 attack_intensity = FRAMEWORK_CONFIG['env_attrs']['intensity']
-current_experiments = (FRAMEWORK_CONFIG['exp_num'] if FRAMEWORK_CONFIG['test_mode'] 
-                       else FRAMEWORK_CONFIG['prod_experiments'])
+current_experiments = FRAMEWORK_CONFIG['exp_num'] if FRAMEWORK_CONFIG['test_mode'] else FRAMEWORK_CONFIG['prod_experiments']
 
-# 3. Define evaluation scenarios
+# Define evaluation scenarios
 evaluation_type = "STOCHASTIC-FOCUSED"
 if test_scenarios_arg == "None" and FRAMEWORK_CONFIG['main_env'] == 'stochastic':
     test_scenarios = {
@@ -105,7 +93,6 @@ if test_scenarios_arg == "None" and FRAMEWORK_CONFIG['main_env'] == 'stochastic'
         'onlineadaptive': 'Online Adaptive Attack',
         'none': 'Baseline (Optimal Conditions)'
     }
-    evaluation_type = "STOCHASTIC-FOCUSED"
 else:
     test_scenarios = {
         'stochastic': 'Stochastic (Natural Network Failures)', 
@@ -113,38 +100,31 @@ else:
     }
     evaluation_type = "COMPARATIVE"
 
-# 4. Dynamic Allocator Selection
+# Allocator setup
 allocator_arg = "${ALLOCATOR:-None}"
 allocator = None
 if allocator_arg.lower() == "thompson":
-    allocator = ThompsonSamplingAllocator(
-        total_qubits=35, num_routes=4, min_qubits_per_route=2
-    )
+    allocator = ThompsonSamplingAllocator(total_qubits=35, num_routes=4, min_qubits_per_route=2)
 elif allocator_arg.lower() == "dynamic":
-    allocator = DynamicQubitAllocator(
-        total_qubits=35, num_routes=4, min_qubits_per_route=2, exploration_bonus=2.0
-    )
+    allocator = DynamicQubitAllocator(total_qubits=35, num_routes=4, min_qubits_per_route=2, exploration_bonus=2.0)
 elif allocator_arg.lower() == "random":
     allocator = RandomQubitAllocator(epsilon=1.0, seed=42)
-else:
-    allocator = None
-    print(f"[WARN] Unknown or missing allocator '{allocator_arg}'. Defaulting to None.")
 
-# 5. Create configuration
+# Create configuration
 custom_config = ExperimentConfiguration(
     runs=current_experiments, 
     allocator=allocator, 
     env_type=FRAMEWORK_CONFIG['main_env'], 
     scenarios=test_scenarios, 
-    use_last_backup=use_last_backup,  # NEW: Pass through
     models=models, 
     attack_intensity=attack_intensity, 
     scale=scale, 
     base_capacity=base_capacity, 
+    use_last_backup=use_last_backup,
     overwrite=True
 )
 
-# 6. Create evaluator
+# Create evaluator
 evaluator = MultiRunEvaluator(
     configs=custom_config, 
     base_frames=FRAMEWORK_CONFIG['base_frames'], 
@@ -152,123 +132,71 @@ evaluator = MultiRunEvaluator(
 )
 
 print("\n" + "=" * 70)
-print("QUANTUM MAB MODELS EVALUATION FRAMEWORK - STOCHASTIC FOCUS")
+print("QUANTUM MAB MODELS EVALUATION FRAMEWORK")
 print("=" * 70)
-print("\n✓ Framework Configuration:")
-print(f"  • Primary Environment: {FRAMEWORK_CONFIG['main_env'].upper()}")
-print(f"  • Evaluation Mode: {FRAMEWORK_CONFIG['eval_mod'].upper()}")
-print(f"  • Models to Test: {len(models)}")
-print(f"  • Use Last Backup: {use_last_backup}")  # NEW
-print(f"  • Parallel Execution: {parallel}")      # NEW
+print(f"  • Environment: {FRAMEWORK_CONFIG['main_env'].upper()}")
+print(f"  • Models: {len(models)}")
+print(f"  • Scale: {scale}")
+print(f"  • Base Capacity: {base_capacity}")
+print(f"  • Use Last Backup: {use_last_backup}")
+print(f"  • Parallel: {parallel}")
 print("=" * 70)
 
-print(f"\n▶ Executing {evaluation_type.upper()} EVALUATION:")
+print(f"\n▶ {evaluation_type} EVALUATION:")
 for scenario, description in test_scenarios.items():
     print(f"  • {scenario.upper():<20} {description}")
 print("=" * 70)
 
-# 7. Execute framework evaluation
+# Run evaluation
 try:
-    print("\n⚙ Running Quantum MAB Models Evaluation...")
-    
-    comparison_results = evaluator.test_stochastic_environment(
-        cal_winner=True, 
-        parellel=parallel  # NEW: Pass parallel flag
-    )
+    print("\n⚙ Running evaluation...")
+    comparison_results = evaluator.test_stochastic_environment(cal_winner=True, parellel=parallel)
     evaluator.calculate_scenario_performance(scenario=FRAMEWORK_CONFIG['main_env'])
-    last_exp_comparison_results = evaluator.get_evaluation_results(FRAMEWORK_CONFIG['main_env'])
-    
-    print(f"\n✓ Quantum MAB Models Evaluation Framework - {evaluation_type.upper()} evaluation completed!")
-    
+    print(f"\n✓ Evaluation completed!")
 except Exception as e:
-    print(f"\n❌ Evaluation error: {e}")
-    print("⚠ This may indicate missing framework components or configuration issues")
+    print(f"\n❌ Error: {e}")
     import traceback
     traceback.print_exc()
 
-# 8. Robustness Analysis and Quantification
+# Visualization
 print("\n" + "=" * 70)
 print("ROBUSTNESS ANALYSIS")
 print("=" * 70)
 
 try:
-    # Full comparison plot (all scenarios together)
-    viz = QuantumEvaluatorVisualizer(
-        comparison_results, 
-        allocator=allocator, 
-        config=custom_config  # Removed output_dir - uses config default
-    )
+    viz = QuantumEvaluatorVisualizer(comparison_results, allocator=allocator, config=custom_config)
     viz.plot_stochastic_vs_adversarial_comparison()
 
-    # Get list of all scenarios
-    scenario_list = list(test_scenarios.keys())
+    for scenario in test_scenarios.keys():
+        if scenario.lower() != 'stochastic':
+            print(f"\n📊 Plotting: {scenario.upper()}")
+            evaluator.calculate_scenario_performance(scenario=scenario)
+            viz.plot_scenarios_comparison(scenario=scenario)
 
-    # Plot each scenario individually
-    for scenario in scenario_list:
-        if scenario.lower() == 'stochastic': 
-            pass
-        print(f"\n📊 Generating plots for scenario: {scenario.upper()}")
-        evaluator.calculate_scenario_performance(scenario=scenario)
-        
-        # Get ALL results for this scenario
-        all_scenario_results = evaluator.get_evaluation_results(scenario=scenario)
-        
-        # Plot scenario
-        viz.plot_scenarios_comparison(scenario=scenario)
-
-    print("\n✓ All scenario plots generated!")
+    print("\n✓ Plots generated!")
     
-    print("\n✓ Stochastic Analysis Generated:")
-    print("  → quantum_mab_models_stochastic_evaluation.png")
-    
-    # Use viz.get_viz_data() to access pre-computed averaged results
     stoch_data = viz.get_viz_data('stochastic_data')
-    
     if stoch_data and 'averaged' in stoch_data:
         stoch_results = stoch_data['averaged']
-        
         print("\n" + "=" * 70)
-        print("STOCHASTIC PERFORMANCE METRICS")
+        print("PERFORMANCE METRICS")
         print("=" * 70)
         
-        oracle_reward = stoch_results.get('oracle_reward', 1)
         winner = stoch_results.get('winner', 'N/A')
-        
         for alg in models:
             if alg in stoch_results['results']:
                 model_data = stoch_results['results'][alg]
-                
-                # Use PRE-COMPUTED metrics
-                stoch_reward = model_data.get('final_reward', 0)
                 efficiency = model_data.get('efficiency', 0)
                 gap = model_data.get('gap', float('inf'))
                 
                 print(f"\n{alg}:")
-                print(f"  • Stochastic Performance: {stoch_reward:.3f}")
-                print(f"  • Oracle Efficiency: {efficiency:.1f}%")
-                print(f"  • Oracle Gap: {gap:.1f}%")
-                
-                if efficiency > 90:     classification = "EXCELLENT"
-                elif efficiency > 80:   classification = "GOOD"
-                elif efficiency > 70:   classification = "MODERATE"
-                else:                   classification = "NEEDS IMPROVEMENT"
-                
-                print(f"  • Classification: {classification}")
-                
+                print(f"  • Efficiency: {efficiency:.1f}%")
+                print(f"  • Gap: {gap:.1f}%")
                 if alg == winner:
                     print(f"  ★ WINNER ★")
-        
-        print("\n" + "=" * 70)
-        print("STOCHASTIC ENVIRONMENT INSIGHTS")
-        print("=" * 70)
-        print("  • Natural quantum decoherence and network failures")
-        print("  • Performance metrics validate theoretical predictions")
-        print("  • Baseline for future adversarial robustness studies")
-    else:
-        print("⚠ No stochastic averaged results available")
 
 except Exception as e:
-    print(f"❌ Error in robustness analysis: {e}")
+    print(f"❌ Visualization error: {e}")
     import traceback
     traceback.print_exc()
 

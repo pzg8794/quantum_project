@@ -351,8 +351,8 @@ class QuantumExperimentRunner:
                     **model_kwargs
                 )
                 # Resume previous evaluator state if configured
-                try:                    model.resume()
-                except Exception as e:  print(f"\t⚠️ {self}-{alg_name} Resume failed: {e}")
+                # try:                    model.resume()
+                # except Exception as e:  print(f"\t⚠️ {self}-{alg_name} Resume failed: {e}")
             return self.results[alg_name], model
         else:
             try:

@@ -64,6 +64,10 @@ Thumbs.db
 *.h5
 *.ckpt
 
+Dynamic_Routing_Eval_Framework/daqr/config/model_state/
+Dynamic_Routing_Eval_Framework/daqr/config/framework_state/
+Dynamic_Routing_Eval_Framework/results/
+*.pkl
 
 # macOS Icon files
 Icon?

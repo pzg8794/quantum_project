@@ -238,7 +238,7 @@ class MultiRunEvaluator:
                 return False
 
             if not exists or size == 0:
-                print(f"[WARN] No saved state at {state_path}")
+                print(f"\t[WARN] No saved state at {state_path}")
                 return False
 
             # --- TRACE 4: LOAD PICKLE ---
@@ -277,7 +277,7 @@ class MultiRunEvaluator:
                 for k, v in list(self.__dict__.items())[:10]: print(f"  - {k}: {type(v)}")
                 return True
 
-            print(f"[WARN] ID mismatch for {self}, skipping resume.")
+            print(f"\t[WARN] ID mismatch for {self}, skipping resume.")
         return False
     
 
@@ -861,7 +861,7 @@ class MultiRunEvaluator:
             if verbose:
                 print(f"✓ MultiRunEvaluator cleaned: \t{', '.join(cleanup_items)}")
         except Exception as e:
-            print(f"[WARNING] Cleanup failed: {e}")
+            print(f"\t[WARNING] Cleanup failed: {e}")
             import traceback
             traceback.print_exc()
     

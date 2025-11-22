@@ -61,7 +61,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
             date_str = None
             for p in parts:
                 if p.startswith("day_"):
-                    date_str = p
+                    date_str = self.normalize_day_prefix(p)
                     break
 
             if not date_str:
@@ -93,8 +93,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
 
     def save_file(self, component, filename, file_data):
         """Exactly the same behavior you already had — no locks."""
-        self.date_str = self.date_str or datetime.now().strftime("%Y%m%d")
-        if "day_" not in self.date_str: self.date_str = f"day_{self.date_str}"
+        self.date_str = self.normalize_day_prefix(self.date_str or f"day_{datetime.now().strftime('%Y%m%d')}")
         save_dir = self.dir / component / self.date_str
         save_dir.mkdir(parents=True, exist_ok=True)
         file_path = save_dir / filename
@@ -148,6 +147,13 @@ class LocalBackupManager(GoogleDriveBackupManager):
         #   B) new style → "/path/to/file.pkl"
 
         local_path = entry.get("local_path") if isinstance(entry, dict) else entry
+        if local_path:
+            parts = Path(local_path).parts
+            fixed_parts = []
+            for p in parts:
+                if "day" in p: fixed_parts.append(self.normalize_day_prefix(p))
+                else: fixed_parts.append(p)
+            local_path = str(Path(*fixed_parts))
 
         if local_path and Path(local_path).exists():
             with open(local_path, "rb") as f:

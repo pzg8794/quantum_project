@@ -33,7 +33,7 @@ class ExperimentConfiguration:
         self.environment = None
         self.overwrite = overwrite
         self.seed_offset = seed_offset
-        self.day_str = f"day_{datetime.now().strftime("%Y%m%d")}"
+        self.day_str = f"day_{datetime.now().strftime('%Y%m%d')}"
         self.dir = os.path.dirname(os.path.abspath(__file__))
         
         self.runs = runs

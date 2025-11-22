@@ -263,7 +263,7 @@ class QuantumModel(ABC):
                 return False
 
             if not exists or size == 0:
-                print(f"[WARN] No saved state at {state_path}")
+                print(f"\t[WARN] No saved state at {state_path}")
                 return False
             
             # --- TRACE 4: LOAD PICKLE ---
@@ -436,7 +436,7 @@ class QuantumModel(ABC):
             if cooldown_seconds > 0: time.sleep(cooldown_seconds)
             if verbose: print(f"\t✓ {self} cleaned: {', '.join(cleanup_items)}")
         except Exception as e:
-            print(f"[WARNING] Cleanup for {self} failed: {e}")
+            print(f"\t[WARNING] Cleanup for {self} failed: {e}")
             traceback.print_exc()
 
     def __del__(self):
@@ -444,7 +444,7 @@ class QuantumModel(ABC):
         try:
             self.cleanup(verbose=False)
         except Exception as e:
-            print(f"Warning: Cleanup in destructor failed: {e}")
+            print(f"\tWarning: Cleanup in destructor failed: {e}")
 
     def __repr__(self):
         env = self.__class__.__name__

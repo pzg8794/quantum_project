@@ -3,7 +3,7 @@ import os, io, json, pickle
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
-
+import re
 import time
 import random
 from googleapiclient.errors import HttpError
@@ -12,7 +12,9 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
-
+DAY_REGEX = re.compile(
+    r'(?:(?P<day>day_)?(?P<date>\d{8}))$'
+)
 class GoogleDriveBackupManager:
     """Unified JSON registry backup to Google Drive Shared Drive."""
 
@@ -27,6 +29,7 @@ class GoogleDriveBackupManager:
         self.dir = Path(config_dir)
         self.dir.mkdir(parents=True, exist_ok=True)
 
+        self.date_str = self.normalize_day_prefix(self.date_str)
         self.backup_registry_path = self.dir / "backup_registry.json"
         self.backup_pickle_path  = self.dir / "backup_registry.pkl"
         self.framework_state_path = self.dir / "framework_state"
@@ -478,7 +481,8 @@ class GoogleDriveBackupManager:
         # 3. Ensure date folder
         #    e.g. quantum_data_lake/framework_state/day_20251120
         # ---------------------------------------------------------------
-        day_folder_name = f"day_{date_str}" if "day" not in date_str else date_str
+        day_folder_name = f"day_{date_str}" if "day_" not in date_str else date_str
+        day_folder_name = self.normalize_day_prefix(day_folder_name)
         day_folder_id = self._ensure_drive_folder(day_folder_name, comp_folder_id)
 
         # ---------------------------------------------------------------
@@ -553,6 +557,7 @@ class GoogleDriveBackupManager:
         # 3. Resolve date folder
         # ---------------------------------------------------------------
         day_folder_name = f"day_{date_str}" if "day" not in date_str else date_str
+        day_folder_name = self.normalize_day_prefix(day_folder_name)
         day_folder_id = self._ensure_drive_folder(day_folder_name, comp_folder_id)
 
         # ---------------------------------------------------------------
@@ -671,7 +676,7 @@ class GoogleDriveBackupManager:
             for filename, local_path in files.items():
                 # auto-extract date from parent folder
                 if Path(local_path).exists():
-                    date_str = str(Path(local_path).parent.name)
+                    date_str = self.normalize_day_prefix(str(Path(local_path).parent.name))
                     self._upload_file_to_drive(
                         component=component,
                         date_str=date_str,
@@ -719,8 +724,8 @@ class GoogleDriveBackupManager:
             file_id = file_meta["id"]
             actual_name = file_meta["name"]
 
-            # 🔥 Save using the ACTUAL filename (prevent silent mislabels)
-            local_dir = self.dir / component / folder["name"]
+            # Save using the ACTUAL filename (prevent silent mislabels)
+            local_dir = self.dir / component / self.normalize_day_prefix(folder["name"])
             local_dir.mkdir(parents=True, exist_ok=True)
             local_path = local_dir / actual_name
 
@@ -735,6 +740,24 @@ class GoogleDriveBackupManager:
 
         return None
 
+    def normalize_day_prefix(self, value: str) -> str:
+        """
+        Normalize any string ending with:
+        - 20251120
+        - day_20251120
+        - day_day_20251120
+        - anything...20251120
+
+        Using named regex groups for exact extraction.
+        """
+        s = str(value).strip()
+        m = DAY_REGEX.search(s)
+
+        if not m:
+            return "day_unknown"
+
+        date = m.group("date")   # the eight digits
+        return f"day_{date}"
     
     def __repr__(self):
         env = self.__class__.__name__

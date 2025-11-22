@@ -210,7 +210,7 @@ class QuantumExperimentRunner:
                 return False
 
             if not exists or size == 0:
-                print(f"[WARN] No saved state at {state_path}")
+                print(f"\t[WARN] No saved state at {state_path}")
                 return False
             
             # --- TRACE 4: LOAD PICKLE ---
@@ -248,7 +248,7 @@ class QuantumExperimentRunner:
                 # for k, v in list(self.__dict__.items())[:10]: print(f"  - {k}: {type(v)}")
                 return True
 
-            print(f"[WARN] ID mismatch for {self}, skipping resume.")
+            print(f"\t[WARN] ID mismatch for {self}, skipping resume.")
             return False
     
     def remove_model(self, model_name):
@@ -460,7 +460,7 @@ class QuantumExperimentRunner:
             if verbose:
                 print(f"\t✓ ExperimentRunner cleaned: \t{', '.join(cleanup_items)}")
         except Exception as e:
-            print(f"[WARNING] Cleanup failed: {e}")
+            print(f"\t[WARNING] Cleanup failed: {e}")
             import traceback
             traceback.print_exc()
 

@@ -8,7 +8,7 @@ import numpy as np
 
 import os
 import json
-import pickle
+import pickle, torch, traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -1604,41 +1604,46 @@ class QuantumEvaluatorVisualizer:
 
     def cleanup(self, verbose=False, cooldown_seconds=1):
         """Clean up visualizer resources."""
-        cleanup_items = []
-        
-        plt.close('all')  # Close all figures
-        cleanup_items.append("all matplotlib figures")
-        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
-        
-        if hasattr(self, 'evaluators'):
-            for eval_key, evaluator in self.evaluators.items():
-                if hasattr(evaluator, 'cleanup'):
-                    evaluator.cleanup(verbose=verbose)
-            self.evaluators.clear()
-            cleanup_items.append("evaluators")
-        
-        if hasattr(self, 'evaluation_results'):
-            if isinstance(self.evaluation_results, dict):
-                self.evaluation_results.clear()
-            cleanup_items.append("evaluation_results")
-        
-        if hasattr(self, 'model_rankings'):
-            self.model_rankings.clear()
-        
         try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-                cleanup_items.append("CUDA cache")
-        except ImportError:
-            pass
-        
-        collected = gc.collect()
-        cleanup_items.append(f"GC:{collected} objects")
-        
-        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
-        if verbose: print(f"✓ QuantumEvaluatorVisualizer cleaned: {', '.join(cleanup_items)}")
+            cleanup_items = []
+            plt.close('all')  # Close all figures
+            cleanup_items.append("all matplotlib figures")
+            if cooldown_seconds > 0: time.sleep(cooldown_seconds)
+            
+            if hasattr(self, 'evaluators'):
+                for eval_key, evaluator in self.evaluators.items():
+                    if hasattr(evaluator, 'cleanup'):
+                        try:
+                            evaluator.cleanup(verbose=verbose)
+                        except Exception as e:
+                            if verbose:
+                                print(f"\t[WARN] Evaluator {eval_key} cleanup failed: {e}")
+                self.evaluators.clear()
+                cleanup_items.append("evaluators")
+            
+            if hasattr(self, 'evaluation_results'):
+                if isinstance(self.evaluation_results, dict):
+                    self.evaluation_results.clear()
+                cleanup_items.append("evaluation_results")
+            
+            if hasattr(self, 'model_rankings'):
+                self.model_rankings.clear()
+            
+            try:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    cleanup_items.append("CUDA cache")
+            except ImportError: pass
+            
+            collected = gc.collect()
+            cleanup_items.append(f"GC:{collected} objects")
+            
+            if cooldown_seconds > 0: time.sleep(cooldown_seconds)
+            if verbose: print(f"✓ QuantumEvaluatorVisualizer cleaned: {', '.join(cleanup_items)}")
+        except Exception as e:
+            print(f"[WARNING] Visualizer cleanup failed: {e}")
+            traceback.print_exc()
 
 
     def __del__(self):

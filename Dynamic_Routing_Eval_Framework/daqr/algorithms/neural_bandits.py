@@ -76,31 +76,21 @@ class EXPNeuralUCB(QuantumModel):
     def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, mode='hybrid', beta=0.2, gamma_factor=0.01, eta_factor=0.05, verbose=False):
         super().__init__(configs,  X_n, reward_list, frame_number, attack_list, capacity, mode, beta, gamma_factor, eta_factor)
         # Core parameters (shared across all modes)
-        self.X_n = X_n
-        self.reward_list = reward_list
-        self.frame_number = frame_number
-        self.num_groups = len(reward_list)
-        self.mode = mode
-        self.beta = beta
         self.verbose = verbose
         
-        # EXP3 parameters (used in 'hybrid' and 'exp3' modes)
-        self.gamma = gamma_factor
-        self.eta = eta_factor
-        
         # Shared tracking variables
+        self.neuralucb_list = []
         self.regret_list = []
         self.reward_list_total = []
         self.path_action_list = []
-        self.regret = 0
         self.total_reward = 0
+        self.regret = 0
         
-        # self.capacity = capacity
-        # Calculate oracle (shared across all modes)
-        self.oracle_path, self.oracle_action = self._get_oracle()
-        
-        # Mode-specific initialization
-        self._initialize_mode_specific_components()
+        if self.state != 1: 
+            # Calculate oracle (shared across all modes)
+            self.oracle_path, self.oracle_action = self._get_oracle()
+            # Mode-specific initialization
+            self._initialize_mode_specific_components()
         
         if  self.verbose:
             print(f"\n\t{self} initialized in '{mode}' mode")
@@ -134,8 +124,8 @@ class EXPNeuralUCB(QuantumModel):
     def _initialize_mode_specific_components(self):
         """Initialize components based on selected mode"""
         # Neural UCB components (hybrid + neural modes)
-        if self.mode in ['hybrid', 'neural']:
-            self.neuralucb_list = []
+        # if self.mode in ['hybrid', 'neural']:
+        self.neuralucb_list = []
 
         # Loop through each path and initialize a NeuralUCB instance with current (baseline) dimension logic
         for i, path_context in enumerate(self.X_n):
@@ -152,7 +142,9 @@ class EXPNeuralUCB(QuantumModel):
                 attack_list=self.attack_list
             )
             model.set_id(f"{model.id}_{i}")
-            if self != "GNeuralUCB": model.resume()
+            
+            try: model.resume()
+            except Exception as e: print(f"[RESUME SKIPPED] {model.id}: {e}")
             self.neuralucb_list.append(model)
         
         # EXP3 components (hybrid + exp3 modes)

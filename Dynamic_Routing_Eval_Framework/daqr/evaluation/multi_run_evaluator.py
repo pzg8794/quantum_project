@@ -79,7 +79,7 @@ class MultiRunEvaluator:
 
         # NOW resume can work
         try:    self.resume()
-        except Exception as e:  print(f"⚠️ Resume failed: {e}")
+        except Exception as e:  print(f"⚠️ {self} Resume failed: {e}")
 
         print("Multi-Run Evaluator Initialized")
         print(f"Environment Type: {attack_type}")
@@ -115,11 +115,12 @@ class MultiRunEvaluator:
         """Defines equality for evaluator or saved dict comparison."""
         # --- dict comparison (used in resume) ---
         if isinstance(other, dict):
+            print("EQUAL METHOD")
             other_attrs = other.get("key_attrs", {}).copy()
             # temp fix
-            if not self.configs.base_capacity:
-                if 'runs' in other_attrs: del other_attrs['runs']
-                if 'runs' in self.key_attrs: del self.key_attrs['runs']
+            # if not self.configs.base_capacity:
+            if 'runs' in other_attrs: del other_attrs['runs']
+            if 'runs' in self.key_attrs: del self.key_attrs['runs']
 
             if "seed" in other_attrs:
                 del other_attrs["seed"]
@@ -180,11 +181,25 @@ class MultiRunEvaluator:
         
         if unpickleable and self.configs.verbose:print(f"\t⚠️ {self} Excluded unpickleable fields:{', '.join(unpickleable)}")   
 
+        save_path = self.save_to_dir / self.file_name
         try:
-            with open( self.save_to_dir / self.file_name, 'wb') as f:
-                pickle.dump(save_dict, f)
-            if self.configs.verbose: print(f"\t{self} State saved successfully")
-            self.configs.save()
+            self.configs.backup_mgr.load_new_entries()
+            # Only write if overwrite=True OR file doesn't exist
+            if self.configs.overwrite or not save_path.exists():
+
+                with open(save_path, 'wb') as f:
+                    pickle.dump(save_dict, f)
+
+                if self.configs.verbose:
+                    print(f"\t{self} State saved successfully")
+
+                # Registry save (unchanged)
+                self.configs.save()
+
+            else:
+                if self.configs.verbose:
+                    print(f"\t{self} Skipped save (exists + overwrite=False)")
+
         except Exception as e:
             print(f"❌ {self} Save failed: {e}")
             raise
@@ -192,38 +207,78 @@ class MultiRunEvaluator:
 
 
     def resume(self):
-        """
-        Resume evaluator state, optionally from latest config backup.
-        
-        Args:
-            day_str (str, optional): Specific date if you want to resume a specific day's state.
-        
-        Returns:
-            bool: True if successfully resumed, False otherwise.
-        """
-        # Prefer config-tracked state if available
-        config_path = self.configs.get_latest_state("framework_state", self.file_name)
-        state_path = Path(config_path) if config_path else Path(f"{self.save_to_dir}/{self.file_name}")
+        print("\n================ RESUME TRACE ================\n")
 
-        if not state_path.exists() or state_path.stat().st_size == 0:
-            print(f"\t⚠️ {self} No saved state found for {state_path}")
-            return False
+        # --- TRACE 1: CONFIG PATH ---
+        # print(self.file_name)
+        config_path = self.configs.get_latest_state("framework_state", self.file_name) or f"{self.save_to_dir}/{self.file_name}"
+        if config_path:
+            print(f"[TRACE] config_path = {config_path!r} (type={type(config_path)})")
 
-        # print(f"\t🔄 Resuming state from: {state_path}")
-        try:
-            with open(state_path, "rb") as f:
-                loaded_dict = pickle.load(f)
-                # Compare IDs from the loaded dict
-                if (self == loaded_dict):
-                    self.__dict__.update(loaded_dict)
-                    # print(f"\t{self} State restored from {state_path}")
-                    return True
-
-                print(f"\t⚠️ {self} ID mismatch - skipping resume")
+            # --- TRACE 2: STATE PATH CONSTRUCTION ---
+            try:
+                if isinstance(config_path, Path): config_path = str(config_path)
+                if isinstance(config_path, dict): config_path = config_path.get('local_path', str(config_path))
+                print(f"[TRACE] config_path = {config_path!r} (type={type(config_path)})")
+                state_path = Path(config_path)
+            except Exception as e:
+                print(f"[ERROR] Failed converting config_path to Path: {e}")
+                print(f"[TRACE] config_path was: {config_path!r}")
                 return False
-        except Exception as e:
-            print(f"\t❌ {self} Resume failed: {e}")
-            return False
+
+            print(f"[TRACE] state_path = {state_path!r} (type={type(state_path)})")
+
+            # --- TRACE 3: FILE EXISTENCE ---
+            try:
+                exists = state_path.exists()
+                size = state_path.stat().st_size if exists else "N/A"
+                print(f"[TRACE] state_path.exists() = {exists}, size = {size}")
+            except Exception as e:
+                print(f"[ERROR] Checking path existence failed: {e}")
+                return False
+
+            if not exists or size == 0:
+                print(f"[WARN] No saved state at {state_path}")
+                return False
+
+            # --- TRACE 4: LOAD PICKLE ---
+            eq_result = None
+            try:
+                with open(state_path, "rb") as f:
+                    loaded_dict = pickle.load(f)
+
+                    print(f"[TRACE] loaded_dict type: {type(loaded_dict)}")
+                    if isinstance(loaded_dict, dict): print(f"[TRACE] loaded_dict keys: {list(loaded_dict.keys())}")
+
+                    # --- TRACE 5: EQUALITY CHECK ---
+                    try:
+                        eq_result = (self == loaded_dict)
+                        print(f"[TRACE] self == loaded_dict → {eq_result!r} (type={type(eq_result)})")
+                    except Exception as e:
+                        print(f"[ERROR] Equality comparison failed: {e}")
+                        return False                
+            except Exception as e:
+                print(f"[ERROR] Failed loading pickle from {state_path}: {e}")
+                return False
+
+            # --- TRACE 6: UPDATE ---
+            if eq_result:
+                # print("[TRACE] Updating self.__dict__ ...")
+                print(f"\t🔄 {self} Resuming state from: {state_path}")
+                try:
+                    self.__dict__.update(loaded_dict)
+                except Exception as e:
+                    print(f"[ERROR] __dict__.update failed: {e}")
+                    print(f"[TRACE] loaded_dict = {loaded_dict!r}")
+                    return False
+
+                # Final check: list a few attributes so we know nothing got corrupted
+                print("[TRACE] Post-update attribute types:")
+                for k, v in list(self.__dict__.items())[:10]: print(f"  - {k}: {type(v)}")
+                return True
+
+            print(f"[WARN] ID mismatch for {self}, skipping resume.")
+        return False
     
 
     def run_experiments(self, runs=None, attack_type=None, models=None):
@@ -731,79 +786,84 @@ class MultiRunEvaluator:
     def cleanup(self, verbose=False, cooldown_seconds=1):
         """
         Clean up multi-run evaluator resources.
-        
+
         This is critical for long-running batch experiments that create
         many evaluators sequentially.
-        
+
         Args:
             verbose: If True, print detailed cleanup information
         """
-        cleanup_items = []
-        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
-        
-        # 1. Deep clean env_experiments (nested dictionaries with results)
-        if hasattr(self, 'env_experiments'):
-            for attack_type, experiments in self.env_experiments.items():
-                if isinstance(experiments, dict):
-                    for exp_id, exp_data in experiments.items():
-                        if isinstance(exp_data, dict):
-                            # Clear nested experiment data
-                            exp_data.clear()
-                    experiments.clear()
-                cleanup_items.append(f"env_experiments[{attack_type}]")
-            self.env_experiments.clear()
-        
-        # 2. Clear all_results (list of result dictionaries)
-        if hasattr(self, 'all_results'):
-            if isinstance(self.all_results, list):
-                self.all_results.clear()
-            cleanup_items.append("all_results")
-        
-        # 3. Clear gap_analysis (algorithm performance tracking)
-        if hasattr(self, 'gap_analysis'):
-            if isinstance(self.gap_analysis, dict):
-                for alg_name, gaps in self.gap_analysis.items():
-                    if isinstance(gaps, list):
-                        gaps.clear()
-                self.gap_analysis.clear()
-            cleanup_items.append("gap_analysis")
-        
-        # 4. Clear evaluation results (from comprehensive evaluation)
-        if hasattr(self, 'evaluation_results'):
-            if isinstance(self.evaluation_results, dict):
-                self.evaluation_results.clear()
-            cleanup_items.append("evaluation_results")
-        
-        # 5. Clear scenario statistics
-        if hasattr(self, 'scenarios_stats'):
-            if isinstance(self.scenarios_stats, dict):
-                self.scenarios_stats.clear()
-            cleanup_items.append("scenarios_stats")
-        
-        # 6. Reset timing information
-        if hasattr(self, 'start_time'):
-            self.start_time = None
-        if hasattr(self, 'total_time'):
-            self.total_time = 0
-        
-        # 7. PyTorch CUDA cleanup (in case models were cached)
         try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-                cleanup_items.append("CUDA cache")
-        except ImportError:
-            pass
-        
-        # 8. Force garbage collection
-        collected = gc.collect()
-        cleanup_items.append(f"GC:{collected} objects")
-        
-        # Mandatory cooldown
-        cleanup_items.append(f"cooldown:{cooldown_seconds}s")
-        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
-        if verbose: print(f"✓ MultiRunEvaluator cleaned: \t{', '.join(cleanup_items)}")
+            cleanup_items = []
+            if cooldown_seconds > 0: time.sleep(cooldown_seconds)
+            
+            # 1. Deep clean env_experiments (nested dictionaries with results)
+            if hasattr(self, 'env_experiments'):
+                for attack_type, experiments in self.env_experiments.items():
+                    if isinstance(experiments, dict):
+                        for exp_id, exp_data in experiments.items():
+                            if isinstance(exp_data, dict):
+                                exp_data.clear()
+                        experiments.clear()
+                    cleanup_items.append(f"env_experiments[{attack_type}]")
+                self.env_experiments.clear()
+            
+            # 2. Clear all_results (list of result dictionaries)
+            if hasattr(self, 'all_results'):
+                if isinstance(self.all_results, list):
+                    self.all_results.clear()
+                cleanup_items.append("all_results")
+            
+            # 3. Clear gap_analysis (algorithm performance tracking)
+            if hasattr(self, 'gap_analysis'):
+                if isinstance(self.gap_analysis, dict):
+                    for alg_name, gaps in self.gap_analysis.items():
+                        if isinstance(gaps, list):
+                            gaps.clear()
+                    self.gap_analysis.clear()
+                cleanup_items.append("gap_analysis")
+            
+            # 4. Clear evaluation results (from comprehensive evaluation)
+            if hasattr(self, 'evaluation_results'):
+                if isinstance(self.evaluation_results, dict):
+                    self.evaluation_results.clear()
+                cleanup_items.append("evaluation_results")
+            
+            # 5. Clear scenario statistics
+            if hasattr(self, 'scenarios_stats'):
+                if isinstance(self.scenarios_stats, dict):
+                    self.scenarios_stats.clear()
+                cleanup_items.append("scenarios_stats")
+            
+            # 6. Reset timing information
+            if hasattr(self, 'start_time'):
+                self.start_time = None
+            if hasattr(self, 'total_time'):
+                self.total_time = 0
+            
+            # 7. PyTorch CUDA cleanup (in case models were cached)
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    cleanup_items.append("CUDA cache")
+            except ImportError:
+                pass
+            
+            # 8. Force garbage collection
+            collected = gc.collect()
+            cleanup_items.append(f"GC:{collected} objects")
+            
+            # Mandatory cooldown
+            cleanup_items.append(f"cooldown:{cooldown_seconds}s")
+            if cooldown_seconds > 0: time.sleep(cooldown_seconds)
+            if verbose:
+                print(f"✓ MultiRunEvaluator cleaned: \t{', '.join(cleanup_items)}")
+        except Exception as e:
+            print(f"[WARNING] Cleanup failed: {e}")
+            import traceback
+            traceback.print_exc()
     
     def __del__(self):
         """Destructor to ensure cleanup on deletion."""
@@ -896,7 +956,8 @@ class MultiRunEvaluator:
             #     models=self.configs.models,
             #     qubit_cap=qubit_cap
             # )
-            del runner
+            # del runner
+            # self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
             return self.env_experiments[self.configs.attack_type][exp_id]
         else:
             try:
@@ -917,7 +978,7 @@ class MultiRunEvaluator:
             finally:
                 del runner
                 gc.collect()
-            self.save()
+            # self.save()
 
         return self.env_experiments[self.configs.attack_type][exp_id]
     
@@ -989,7 +1050,7 @@ class MultiRunEvaluator:
             finally:
                 del runner
                 gc.collect()
-            self.save()
+            # self.save()
 
         return self.env_experiments[self.configs.attack_type][exp_id]
 
@@ -1013,8 +1074,8 @@ class MultiRunEvaluator:
         self.start_time = time.time()
         for i in range(0, self.configs.runs):
             self.run_threaded_experiment(exp_no=i, attack_category=attack_category)
-            # self.save()
         self.total_time = time.time() - self.start_time
+        self.save()
 
         print(f"Total experiment time: {self.total_time:05.1f}s")
         print(f"Experiments completed for {self.configs.attack_type}")

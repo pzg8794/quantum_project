@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import pickle
+import pickle, traceback
 from pathlib import Path
 from scipy.stats import beta, multivariate_normal, norm
 
@@ -86,7 +86,7 @@ class QuantumModel(ABC):
         self.state = 0
 
         self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
-        self.save_to_dir = Path(f"{self.configs.dir}/model_state/day_{self.configs.day_str}/")
+        self.save_to_dir = Path(f"{self.configs.dir}/model_state/{self.configs.day_str}/")
 
 
         self.allocator_id = str(getattr(self.configs, "allocator", "alloc"))
@@ -102,9 +102,10 @@ class QuantumModel(ABC):
             }
         self.path_configs = {0:2, 1:2, 2:3, 3:3, 'lamb':lamb, 'beta':beta}        # Path-specific configs (per path index)
 
-        # # Resume previous evaluator state if configured
+        # Resume previous evaluator state if configured
         # if getattr(self.configs, "resume", False):
-        #     try:                    self.resume()
+        #     try:                    
+        #         if self.resume(): self.state = 1
         #     except Exception as e:  print(f"⚠️ Resume failed: {e}")
 
     def set_id(self, id):
@@ -149,7 +150,7 @@ class QuantumModel(ABC):
                 self.frame_number == other.get("frame_number") and
                 self.num_groups == other.get("num_groups") and
                 self.capacity == other.get("capacity") and
-                getattr(self, 'mode', None) == other.get("mode") and
+                # getattr(self, 'mode', None) == other.get("mode") and
                 self.allocator_id == other.get("allocator_id") and
                 self.env_id == other.get("env_id") and
                 self.attack_id == other.get("attack_id") and
@@ -163,7 +164,7 @@ class QuantumModel(ABC):
             print(f"  Frames: {self.frame_number} vs {other.get('frame_number')}")
             print(f"  Groups: {self.num_groups} vs {other.get('num_groups')}")
             print(f"  Capacity: {self.capacity} vs {other.get('capacity')}")
-            print(f"  Mode: {getattr(self, 'mode', None)} vs {other.get('mode')}")
+            # print(f"  Mode: {getattr(self, 'mode', None)} vs {other.get('mode')}")
             print(f"  Allocator: {self.allocator_id} vs {other.get('allocator_id')}")
             print(f"  Environment: {self.env_id} vs {other.get('env_id')}")
             print(f"  Attack: {self.attack_id} vs {other.get('attack_id')}")
@@ -203,15 +204,28 @@ class QuantumModel(ABC):
                 unpickleable.append(attr)
         
         if unpickleable and self.configs.verbose: print(f"\t⚠️ Excluding: {', '.join(unpickleable)}")
+
+        save_path = self.save_to_dir / self.file_name
         try:
-            with open(self.save_to_dir / self.file_name, 'wb') as f:
-                pickle.dump(save_dict, f)
-            if self.configs.verbose: print(f"\t{self} Saved Successfully")
-            self.configs.save()
+            # Only write if overwrite=True OR file doesn't exist
+            if self.configs.overwrite or not save_path.exists():
+                with open(save_path, 'wb') as f:
+                    pickle.dump(save_dict, f)
+
+                if self.configs.verbose:
+                    print(f"\t{self} Saved Successfully")
+
+                # self.configs.save()
+            else:
+                if self.configs.verbose:
+                    print(f"\t{self} Save skipped (exists + overwrite=False)")
+
         except Exception as e:
             print(f"❌ {self} Save failed: {e}")
             raise
-        return str(self.save_to_dir / self.file_name)
+
+        return str(save_path)
+
 
 
     def resume(self):
@@ -220,29 +234,74 @@ class QuantumModel(ABC):
         Returns:
             bool: True if successfully resumed, False otherwise.
         """
-        state_path_str = f"{self.save_to_dir}/{self.file_name}"
-        config_path = self.configs.get_latest_state("model_state", self.file_name)
-        state_path = Path(config_path) if (self.configs.use_last_backup and config_path) else Path(state_path_str)
-        
-        if not state_path.exists() or state_path.stat().st_size == 0:
-            if self.configs.verbose: print(f"\t⚠️ {self} No saved state found for {state_path}")
-            return False
-
-        # print(f"\t🔄 Resuming state from: {state_path}")
-        try:
-            with open(state_path, "rb") as f:
-                loaded_dict = pickle.load(f)
-                
-                # Compare using __eq__
-                if (self == loaded_dict):
-                    self.__dict__.update(loaded_dict)
-                    if self.configs.verbose: print(f"\t{self} State restored from {state_path}")
-                    return True
-
-                print(f"\t⚠️ {self} ID mismatch - skipping resume")
+        state_path_str = Path(self.save_to_dir) / self.file_name
+        config_path = self.configs.get_latest_state("model_state", self.file_name) or state_path_str
+        # print(Path(config_path))
+        if config_path:
+            # print(f"\t[TRACE] config_path = {config_path!r} (type={type(config_path)})")
+            # --- TRACE 2: STATE PATH CONSTRUCTION ---
+            try:
+                # 🔥 FIX: Ensure config_path is string before 'in' check
+                if isinstance(config_path, Path): config_path = str(config_path)
+                if isinstance(config_path, dict): config_path = config_path.get('local_path', str(config_path))
+                # print(f"[TRACE] config_path = {config_path!r} (type={type(config_path)})")
+                state_path = Path(config_path)
+            except Exception as e:
+                print(f"[ERROR] Failed converting config_path to Path: {e}")
+                print(f"[TRACE] config_path was: {config_path!r}")
                 return False
-        except Exception as e:
-            print(f"\t❌ {self} Resume failed: {e}")
+
+            # print(f"\t[TRACE] state_path = {state_path!r} (type={type(state_path)})")
+
+            # --- TRACE 3: FILE EXISTENCE ---
+            try:
+                exists = state_path.exists()
+                size = state_path.stat().st_size if exists else "N/A"
+                # print(f"\t[TRACE] state_path.exists() = {exists}, size = {size}")
+            except Exception as e:
+                print(f"[ERROR] Checking path existence failed: {e}")
+                return False
+
+            if not exists or size == 0:
+                print(f"[WARN] No saved state at {state_path}")
+                return False
+            
+            # --- TRACE 4: LOAD PICKLE ---
+            eq_result = None
+            try:
+                with open(state_path, "rb") as f:
+                    loaded_dict = pickle.load(f)
+                    # print(f"\t[TRACE] loaded_dict type: {type(loaded_dict)}")
+                    # if isinstance(loaded_dict, dict): print(f"[TRACE] loaded_dict keys: {list(loaded_dict.keys())}")
+
+                    # --- TRACE 5: EQUALITY CHECK ---
+                    try:
+                        eq_result = (self == loaded_dict)
+                        # print(f"\t[TRACE] self == loaded_dict → {eq_result!r} (type={type(eq_result)})")
+                    except Exception as e:
+                        print(f"[ERROR] Equality comparison failed: {e}")
+                        return False                
+            except Exception as e:
+                print(f"[ERROR] Failed loading pickle from {state_path}: {e}")
+                return False
+
+            # --- TRACE 6: UPDATE ---
+            if eq_result:
+                # print("[TRACE] Updating self.__dict__ ...")
+                # print(f"\t🔄 {self} Resuming state from: {state_path}")
+                try:
+                    self.__dict__.update(loaded_dict)
+                except Exception as e:
+                    print(f"[ERROR] __dict__.update failed: {e}")
+                    print(f"[TRACE] loaded_dict = {loaded_dict!r}")
+                    return False
+
+                # Final check: list a few attributes so we know nothing got corrupted
+                # print("[TRACE] Post-update attribute types:")
+                # for k, v in list(self.__dict__.items())[:10]: print(f"  - {k}: {type(v)}")
+                return True
+
+            print(f"\t[WARN] ID mismatch for {self}, skipping resume.")
             return False
 
 
@@ -312,7 +371,6 @@ class QuantumModel(ABC):
             "module": self.__class__.__module__
         }
     
-    
     def cleanup(self, verbose=False, cooldown_seconds=1):
         """
         Universal cleanup for all quantum models.
@@ -321,68 +379,65 @@ class QuantumModel(ABC):
         Args:
             verbose: If True, print cleanup details
         """
-        cleanup_items = []
-        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
-        
-        # 1. Neural network components (for hybrid models)
-        if hasattr(self, 'algorithms'):
-            for i, alg in enumerate(self.algorithms):
-                if hasattr(alg, 'neural_net'):
-                    del alg.neural_net
-                    cleanup_items.append(f"algorithms[{i}].neural_net")
-                if hasattr(alg, 'optimizer'):
-                    del alg.optimizer
-                    cleanup_items.append(f"algorithms[{i}].optimizer")
-        
-        # 2. Direct neural components
-        if hasattr(self, 'neural_net'):
-            del self.neural_net
-            cleanup_items.append("neural_net")
-        if hasattr(self, 'optimizer'):
-            del self.optimizer
-            cleanup_items.append("optimizer")
-        if hasattr(self, 'net'):
-            del self.net
-            cleanup_items.append("net")
-        
-        # 3. Neural UCB lists (EXPNeuralUCB variants)
-        if hasattr(self, 'neuralucb_list'):
-            for i, neural_ucb in enumerate(self.neuralucb_list):
-                if hasattr(neural_ucb, 'net'):
-                    del neural_ucb.net
-                if hasattr(neural_ucb, 'optimizer'):
-                    del neural_ucb.optimizer
-            cleanup_items.append("neuralucb_list")
-        
-        # 4. Large data structures
-        for attr in ['history', 'reward_history', 'action_history', 
-                     'context_history', 'prob_list', 'ucb_values']:
-            if hasattr(self, attr):
-                delattr(self, attr)
-                cleanup_items.append(attr)
-        
-        # 5. ARIMA models (for iCMAB models)
-        if hasattr(self, 'arima_models'):
-            self.arima_models.clear()
-            cleanup_items.append("arima_models")
-        
-        # 6. PyTorch CUDA cleanup
         try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-                cleanup_items.append("CUDA cache")
-        except ImportError:
-            pass
-        
-        # 7. Force garbage collection
-        collected = gc.collect()
-        cleanup_items.append(f"GC:{collected} objects")
-        
-        cleanup_items.append(f"cooldown:{cooldown_seconds}s")
-        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
-        if verbose: print(f"\t✓ {self} cleaned: {', '.join(cleanup_items)}")
+            cleanup_items = []
+            if cooldown_seconds > 0: time.sleep(cooldown_seconds)
+            
+            # 1. Neural network components (for hybrid models)
+            if hasattr(self, 'algorithms'):
+                for i, alg in enumerate(self.algorithms):
+                    if hasattr(alg, 'neural_net'):
+                        del alg.neural_net
+                        cleanup_items.append(f"algorithms[{i}].neural_net")
+                    if hasattr(alg, 'optimizer'):
+                        del alg.optimizer
+                        cleanup_items.append(f"algorithms[{i}].optimizer")
+            
+            # 2. Direct neural components
+            for attr in ['neural_net', 'optimizer', 'net']:
+                if hasattr(self, attr):
+                    delattr(self, attr)
+                    cleanup_items.append(attr)
+            
+            # 3. Neural UCB lists (EXPNeuralUCB variants)
+            if hasattr(self, 'neuralucb_list'):
+                for i, neural_ucb in enumerate(self.neuralucb_list):
+                    if hasattr(neural_ucb, 'net'):
+                        del neural_ucb.net
+                    if hasattr(neural_ucb, 'optimizer'):
+                        del neural_ucb.optimizer
+                cleanup_items.append("neuralucb_list")
+            
+            # 4. Large data structures
+            for attr in ['history', 'reward_history', 'action_history', 
+                        'context_history', 'prob_list', 'ucb_values']:
+                if hasattr(self, attr):
+                    delattr(self, attr)
+                    cleanup_items.append(attr)
+            
+            # 5. ARIMA models (for iCMAB models)
+            if hasattr(self, 'arima_models'):
+                self.arima_models.clear()
+                cleanup_items.append("arima_models")
+            
+            # 6. PyTorch CUDA cleanup
+            try:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    cleanup_items.append("CUDA cache")
+            except ImportError:
+                pass
+            
+            # 7. Force garbage collection
+            collected = gc.collect()
+            cleanup_items.append(f"GC:{collected} objects")
+            cleanup_items.append(f"cooldown:{cooldown_seconds}s")
+            if cooldown_seconds > 0: time.sleep(cooldown_seconds)
+            if verbose: print(f"\t✓ {self} cleaned: {', '.join(cleanup_items)}")
+        except Exception as e:
+            print(f"[WARNING] Cleanup for {self} failed: {e}")
+            traceback.print_exc()
 
     def __del__(self):
         """Destructor to ensure cleanup on deletion."""
@@ -821,11 +876,10 @@ class NeuralUCB(RandomAlg):
         # --- dict comparison (used in resume) ---
         if isinstance(other, dict):
             other_attrs = other.get("key_attrs", {}).copy()
-
             # 🔹 Ignore keys for reusable models (shared across attacks & envs)
-            ignore_keys = {"actk_type", "attack", "env_type"}
-            filtered_self_attrs = {k: v for k, v in self.key_attrs.items() if k not in ignore_keys}
+            ignore_keys = {"actk_type", "attack", "env_type", "runs"}
             filtered_other_attrs = {k: v for k, v in other_attrs.items() if k not in ignore_keys}
+            filtered_self_attrs = {k: v for k, v in self.key_attrs.items() if k not in ignore_keys}
 
             # ⚙️ Drop env & attack only for reusable models
             skip_env_attack = isinstance(self, NeuralUCB)
@@ -835,7 +889,7 @@ class NeuralUCB(RandomAlg):
                 self.frame_number == other.get("frame_number") and
                 self.num_groups == other.get("num_groups") and
                 self.capacity == other.get("capacity") and
-                getattr(self, 'mode', None) == other.get("mode") and
+                # getattr(self, 'mode', None) == other.get("mode") and
                 self.allocator_id == other.get("allocator_id") and
                 (skip_env_attack or self.env_id == other.get("env_id")) and
                 (skip_env_attack or self.attack_id == other.get("attack_id")) and
@@ -849,7 +903,7 @@ class NeuralUCB(RandomAlg):
             print(f"  Frames: {self.frame_number} vs {other.get('frame_number')}")
             print(f"  Groups: {self.num_groups} vs {other.get('num_groups')}")
             print(f"  Capacity: {self.capacity} vs {other.get('capacity')}")
-            print(f"  Mode: {getattr(self, 'mode', None)} vs {other.get('mode')}")
+            # print(f"  Mode: {getattr(self, 'mode', None)} vs {other.get('mode')}")
             print(f"  Allocator: {self.allocator_id} vs {other.get('allocator_id')}")
             if not skip_env_attack:
                 print(f"  Environment: {self.env_id} vs {other.get('env_id')}")

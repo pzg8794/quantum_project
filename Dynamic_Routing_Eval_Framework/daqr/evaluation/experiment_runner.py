@@ -72,7 +72,7 @@ class QuantumExperimentRunner:
         
         # Resume previous evaluator state if configured
         try:                    self.resume()
-        except Exception as e:  print(f"⚠️ Resume failed: {e}")
+        except Exception as e:  print(f"⚠️ {self} Resume failed: {e}")
     
     def __eq__(self, other):
         """Defines equality for evaluator or saved dict comparison."""
@@ -80,9 +80,9 @@ class QuantumExperimentRunner:
         if isinstance(other, dict):
             other_attrs = other.get("key_attrs", {}).copy()
             # temp fix
-            if not self.configs.base_capacity:
-                if 'runs' in other_attrs: del other_attrs['runs']
-                if 'runs' in self.key_attrs: del self.key_attrs['runs']
+            # if not self.configs.base_capacity:
+            if 'runs' in other_attrs: del other_attrs['runs']
+            if 'runs' in self.key_attrs: del self.key_attrs['runs']
 
             if "seed" in other_attrs:
                 del other_attrs["seed"]
@@ -140,15 +140,36 @@ class QuantumExperimentRunner:
         
         if unpickleable and self.configs.verbose:print(f"\t⚠️ {self} Excluded unpickleable fields:{', '.join(unpickleable)}")   
 
+        save_path = self.save_to_dir / self.file_name
+
         try:
-            with open( self.save_to_dir / self.file_name, 'wb') as f:
-                pickle.dump(save_dict, f)
-            if self.configs.verbose: print(f"\t{self} State saved successfully")
-            self.configs.save()
+            # ───────────────────────────────────────────────
+            # Only save if overwrite=True OR file doesn't exist
+            # ───────────────────────────────────────────────
+            if self.configs.overwrite or not save_path.exists():
+
+                with open(save_path, 'wb') as f:
+                    pickle.dump(save_dict, f)
+
+                if self.configs.verbose:
+                    print(f"\t{self} State saved successfully")
+
+                # print(save_path)
+                # print(f"\t{self} Saved Successfully")
+                # Save registry (unchanged)
+                # self.configs.save()
+
+            else:
+                # Completely silent unless verbose
+                if self.configs.verbose:
+                    print(f"\t{self} Skipped save (exists + overwrite=False)")
+
         except Exception as e:
             print(f"❌ {self} Save failed: {e}")
             raise
-        return str(self.save_to_dir / self.file_name)
+
+        return str(save_path)
+
 
     def resume(self):
         """
@@ -161,27 +182,73 @@ class QuantumExperimentRunner:
             bool: True if successfully resumed, False otherwise.
         """
         # Prefer config-tracked state if available
-        config_path = self.configs.get_latest_state("framework_state", self.file_name)
-        state_path = Path(config_path) if config_path else Path(f"{self.save_to_dir}/{self.file_name}")
-
-        if not state_path.exists() or state_path.stat().st_size == 0:
-            print(f"\t⚠️ {self} No saved state found for {state_path}")
-            return False
-
-        # print(f"\t🔄 Resuming state from: {state_path}")
-        try:
-            with open(state_path, "rb") as f:
-                loaded_dict = pickle.load(f)
-                # Compare IDs from the loaded dict
-                if (self == loaded_dict):
-                    self.__dict__.update(loaded_dict)
-                    # print(f"\t{self} State restored from {state_path}")
-                    return True
-
-                print(f"\t⚠️ {self} ID mismatch - skipping resume")
+        # print(self.file_name)
+        config_path = self.configs.get_latest_state("framework_state", self.file_name) or f"{self.save_to_dir}/{self.file_name}"
+        # print(config_path)
+        if config_path:
+            # print(f"[TRACE] config_path = {config_path!r} (type={type(config_path)})")
+            # --- TRACE 2: STATE PATH CONSTRUCTION ---
+            try:
+                if isinstance(config_path, Path): config_path = str(config_path)
+                if isinstance(config_path, dict): config_path = config_path.get('local_path', str(config_path))
+                # print(f"[TRACE] config_path = {config_path!r} (type={type(config_path)})")
+                state_path = Path(config_path)
+            except Exception as e:
+                print(f"[ERROR] Failed converting config_path to Path: {e}")
+                print(f"[TRACE] config_path was: {config_path!r}")
                 return False
-        except Exception as e:
-            print(f"\t❌ {self} Resume failed: {e}")
+
+            # print(f"[TRACE] state_path = {state_path!r} (type={type(state_path)})")
+
+            # --- TRACE 3: FILE EXISTENCE ---
+            try:
+                exists = state_path.exists()
+                size = state_path.stat().st_size if exists else "N/A"
+                # print(f"[TRACE] state_path.exists() = {exists}, size = {size}")
+            except Exception as e:
+                print(f"[ERROR] Checking path existence failed: {e}")
+                return False
+
+            if not exists or size == 0:
+                print(f"[WARN] No saved state at {state_path}")
+                return False
+            
+            # --- TRACE 4: LOAD PICKLE ---
+            eq_result = None
+            try:
+                with open(state_path, "rb") as f:
+                    loaded_dict = pickle.load(f)
+                    # print(f"[TRACE] loaded_dict type: {type(loaded_dict)}")
+                    # if isinstance(loaded_dict, dict): print(f"[TRACE] loaded_dict keys: {list(loaded_dict.keys())}")
+
+                    # --- TRACE 5: EQUALITY CHECK ---
+                    try:
+                        eq_result = (self == loaded_dict)
+                        # print(f"[TRACE] self == loaded_dict → {eq_result!r} (type={type(eq_result)})")
+                    except Exception as e:
+                        print(f"[ERROR] Equality comparison failed: {e}")
+                        return False                
+            except Exception as e:
+                print(f"[ERROR] Failed loading pickle from {state_path}: {e}")
+                return False
+
+            # --- TRACE 6: UPDATE ---
+            if eq_result:
+                # print("[TRACE] Updating self.__dict__ ...")
+                print(f"\t🔄 {self} Resuming state from: {state_path}")
+                try:
+                    self.__dict__.update(loaded_dict)
+                except Exception as e:
+                    print(f"[ERROR] __dict__.update failed: {e}")
+                    print(f"[TRACE] loaded_dict = {loaded_dict!r}")
+                    return False
+
+                # Final check: list a few attributes so we know nothing got corrupted
+                # print("[TRACE] Post-update attribute types:")
+                # for k, v in list(self.__dict__.items())[:10]: print(f"  - {k}: {type(v)}")
+                return True
+
+            print(f"[WARN] ID mismatch for {self}, skipping resume.")
             return False
     
     def remove_model(self, model_name):
@@ -243,7 +310,7 @@ class QuantumExperimentRunner:
         oracle_results = model.get_results()
         if oracle_results and 'final_reward' in oracle_results:
             total_reward = oracle_results['final_reward']
-        return total_reward
+        return float(total_reward)
     
     def run_algorithm(self, alg_name: str, enable_progress=False, base_model="Oracle"):
         """
@@ -268,7 +335,8 @@ class QuantumExperimentRunner:
         model = None
 
         if alg_name in self.results.keys(): 
-            if self.configs.overwrite: print(f"\t{alg_name} already processed")
+            # if self.configs.overwrite: 
+            print(f"\t{alg_name} already processed")
             if alg_name == base_model:
                 model = model_class(
                     configs=self.configs,
@@ -281,7 +349,7 @@ class QuantumExperimentRunner:
                 )
                 # Resume previous evaluator state if configured
                 try:                    model.resume()
-                except Exception as e:  print(f"{alg_name}\t⚠️ Resume failed: {e}")
+                except Exception as e:  print(f"\t⚠️ {self}-{alg_name} Resume failed: {e}")
             return self.results[alg_name], model
         else:
             try:
@@ -298,24 +366,19 @@ class QuantumExperimentRunner:
                         **model_kwargs
                     )
                 
-                    model.state = -1
-                    if enable_progress: self.validate_quantum_model(model)
                     try:
+                        result = None
+                        if enable_progress: self.validate_quantum_model(model)
                         if runner_type == 'step-wise':
-                            total_reward = self.run_step_wise_oracle(env_info, model, self.frames_count, alg_name)
-                        else:
-                            result = model.run(attack_list=env_info['attack_pattern'], verbose=enable_progress)
-                            if result is not None:
-                                total_reward = float(result)
-                            else:
-                                mr = model.get_results() if hasattr(model, 'get_results') else {}
-                                if mr and 'final_reward' in mr:
-                                    total_reward = float(mr['final_reward'])
+                            total_reward = float(self.run_step_wise_oracle(env_info, model, self.frames_count, alg_name))
+                        else: result = model.run(attack_list=env_info['attack_pattern'], verbose=enable_progress)
+                        if result is None:
+                            mr = model.get_results() if hasattr(model, 'get_results') else {}
+                            if mr and 'final_reward' in mr: total_reward = float(mr['final_reward'])
 
                         enable_progress = False
                         avg_reward = total_reward / self.frames_count if (self.frames_count > 0 and total_reward > 0) else 0.0
 
-                        model.state = 1
                         results = {
                             'final_reward': float(total_reward),
                             'avg_reward': float(avg_reward),
@@ -326,15 +389,16 @@ class QuantumExperimentRunner:
                             'model_results': model.get_results(),
                             'retries': attempts
                         }
+                        if model.state == 1: return results, model
                     except Exception as e: 
                         model = None
                         attempts += 1
                         print(f"\t❌ Runtime error in {alg_name}: {e}")
                     finally:
+                        model.state = 1
                         pass
                         # del model
                         # gc.collect()
-
             except Exception as e:
                 print(f"\t❌ Failed to create {alg_name}: {e}")
                 results = {'final_reward': 0.0, 'error': str(e)}
@@ -351,43 +415,54 @@ class QuantumExperimentRunner:
     def cleanup(self, verbose=False, cooldown_seconds=1):
         """Enhanced cleanup with parallel execution support."""
         import gc
-        cleanup_items = []
-        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
-        
-        # YOUR EXISTING CLEANUP (keep as-is)
-        if hasattr(self, 'environment') and self.environment:
-            if hasattr(self.environment, 'cleanup'):
-                self.environment.cleanup(verbose=verbose)
-            del self.environment
-            # del model
-            self.environment = None
-            cleanup_items.append("environment")
-        
-        # ADD: Clean up model cache
-        if hasattr(self, '_model_cache'):
-            for model_name, model in self._model_cache.items():
-                if hasattr(model, 'cleanup'):
-                    model.cleanup(verbose=verbose)
-            self._model_cache.clear()
-            cleanup_items.append("model_cache")
-        
-        # YOUR EXISTING PYTORCH/GC CLEANUP (keep as-is)
         try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-                cleanup_items.append("CUDA cache")
-        except ImportError:
-            pass
-        
-        collected = gc.collect()
-        cleanup_items.append(f"GC:{collected} objects")
-        cleanup_items.append(f"cooldown:{cooldown_seconds}s")
-        
-        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
-        if verbose: print(f"\t✓ ExperimentRunner cleaned: \t{', '.join(cleanup_items)}")
+            cleanup_items = []
+            if cooldown_seconds > 0: time.sleep(cooldown_seconds)
 
+            # Clean up environment
+            if hasattr(self, 'environment') and self.environment:
+                if hasattr(self.environment, 'cleanup'):
+                    try:
+                        self.environment.cleanup(verbose=verbose)
+                    except Exception as e:
+                        if verbose:
+                            print(f"\t[WARN] Environment cleanup failed: {e}")
+                del self.environment
+                self.environment = None
+                cleanup_items.append("environment")
+            
+            # Clean up model cache
+            if hasattr(self, '_model_cache'):
+                for model_name, model in self._model_cache.items():
+                    if hasattr(model, 'cleanup'):
+                        try:
+                            model.cleanup(verbose=verbose)
+                        except Exception as e:
+                            if verbose:
+                                print(f"\t[WARN] Model {model_name} cleanup failed: {e}")
+                self._model_cache.clear()
+                cleanup_items.append("model_cache")
+            
+            # PyTorch/GC cleanup (keep as-is)
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    cleanup_items.append("CUDA cache")
+            except ImportError:
+                pass
+            
+            collected = gc.collect()
+            cleanup_items.append(f"GC:{collected} objects")
+            cleanup_items.append(f"cooldown:{cooldown_seconds}s")
+            if cooldown_seconds > 0: time.sleep(cooldown_seconds)
+            if verbose:
+                print(f"\t✓ ExperimentRunner cleaned: \t{', '.join(cleanup_items)}")
+        except Exception as e:
+            print(f"[WARNING] Cleanup failed: {e}")
+            import traceback
+            traceback.print_exc()
 
 
     def __del__(self):
@@ -531,11 +606,12 @@ class QuantumExperimentRunner:
         if alg_name == base_model: return base_model
         print(f"\n\t🔄 {str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Starting {alg_name:<20} in {'parallel' if is_parallel else 'sequence'}...")
 
-        if alg_name in self.results:
-            self.configs.overwrite = True
+        overwrite = self.configs.overwrite
+        if alg_name not in self.results:
+            # self.configs.overwrite = True
             # results, model = self.run_algorithm(alg_name)
             # model = None  # don't keep this reference
-        else:
+        # else:
             while (threshold - failed_attempts['threshold'] <= 0) or efficiency <= 0:
                 self.configs.overwrite = False  # always False during retries
                 alg_result, temp_model = self.run_algorithm(alg_name)
@@ -570,7 +646,7 @@ class QuantumExperimentRunner:
                 self.results[alg_name]['efficiency'] = efficiency
                 self.results[alg_name]['gap'] = gap
 
-                if failed_attempts['under_threshold'] >= 3:break
+                if failed_attempts['under_threshold'] >= 3 or temp_model.state == 1:break
 
         # 🔐 Save best model after loop (not last model)
         if model is not None:
@@ -581,6 +657,7 @@ class QuantumExperimentRunner:
             except Exception as e: print(f"⚠️ Could not save best model: {e}")
             del model
             gc.collect()
+        self.configs.overwrite = overwrite
 
         # Determine if this is the new winner
         alg_rewards = self.results[alg_name]["final_reward"]
@@ -592,21 +669,24 @@ class QuantumExperimentRunner:
 
 
     def get_oracle_reward(self, base_model, oracle_reward=0.0, reset=False):
+        # if base_model in self.results: return self.results[base_model].get('final_reward', 0.0)
         print(f"\t{'Getting' if not reset else 'Resetting'} Oracle Rewards ...")
         model = None
+        overwrite = self.configs.overwrite
         while oracle_reward <= 0:
             self.configs.overwrite = False
             self.results[base_model], model = self.run_algorithm(base_model)
             oracle_reward = self.results[base_model].get('final_reward', 0.0)
         
-        self.configs.overwrite = True
         if model is not None:
+            self.configs.overwrite = True
             # Store only Oracle results in configs (lightweight)
             self.configs.base_model = model
             # Save and cleanup
             model.save()
             del model
             gc.collect()
+        self.configs.overwrite = overwrite
         return oracle_reward
     
     def run_experiment(self, frames_count=None, models=None, base_model='Oracle', attack_type=None, qubit_cap=None, neuralUCB='GNeuralUCB'):

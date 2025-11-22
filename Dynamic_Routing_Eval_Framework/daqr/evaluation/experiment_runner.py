@@ -240,7 +240,9 @@ class QuantumExperimentRunner:
                 # print("[TRACE] Updating self.__dict__ ...")
                 print(f"\t🔄 {self} Resuming state from: {state_path}")
                 try:
+                    configs = self.configs
                     self.__dict__.update(loaded_dict)
+                    self.configs = configs
                 except Exception as e:
                     print(f"[ERROR] __dict__.update failed: {e}")
                     print(f"[TRACE] loaded_dict = {loaded_dict!r}")

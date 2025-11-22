@@ -376,6 +376,7 @@ class GoogleDriveBackupManager:
             return None
 
         path = entry.get("local_path") if isinstance(entry, dict) else entry
+        path = self.normalize_path(path, project_root=self.dir)
         if not os.path.exists(path):
             return None
 
@@ -633,6 +634,7 @@ class GoogleDriveBackupManager:
                 
                 # Check if already exists locally
                 local_entry = self.backup_registry.get(component, {}).get(filename)
+                local_entry = self.normalize_path(local_entry, project_root=self.dir)
                 if local_entry and Path(local_entry).exists():
                     print("local entry check ", local_entry)
                     restored[component][filename] = local_entry
@@ -758,6 +760,35 @@ class GoogleDriveBackupManager:
 
         date = m.group("date")   # the eight digits
         return f"day_{date}"
+
+    def normalize_path(self, path: str, project_root: str = None) -> str:
+        """
+        Normalize absolute paths stored from another machine (Mac/VM/Colab).
+        Converts them into the correct local project-relative path.
+        """
+
+        if path is None:
+            return None
+
+        p = Path(path)
+
+        # 1) If path already exists → valid, return it
+        if p.exists():
+            return str(p)
+
+        # 2) Determine current environment's project root
+        if project_root is None:
+            project_root = str(Path(__file__).resolve().parents[2])   # Dynamic_Routing_Eval_Framework root
+
+        # 3) Extract only the tail (file name) from the incoming path
+        fname = p.name                     # e.g., QuantumExperimentRunner_1.pkl
+        date_folder = p.parent.name        # e.g., day_20251118
+        component = p.parent.parent.name   # framework_state or model_state
+
+        # 4) Reconstruct a correct, portable path:
+        new_path = Path(project_root) / "daqr" / "config" / component / date_folder / fname
+
+        return str(new_path)
     
     def __repr__(self):
         env = self.__class__.__name__

@@ -25,7 +25,7 @@ class GoogleDriveBackupManager:
         self.new_entries = {}
         self.verbose = verbose
         self.backup_registry = {}
-        self.date_str = date_str or f"day_{datetime.now().strftime("%Y%m%d")}"
+        self.date_str = date_str or f"day_{datetime.now().strftime('%Y%m%d')}"
         self.dir = Path(config_dir)
         self.dir.mkdir(parents=True, exist_ok=True)
 

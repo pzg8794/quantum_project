@@ -126,7 +126,9 @@ class QuantumExperimentRunner:
 
     def save(self):
         """Save evaluator state for the current day."""
-        self.save_to_dir.mkdir(parents=True, exist_ok=True)
+        target = Path(self.configs.backup_mgrnormalize_path(str(self.save_to_dir), project_root=self.configs.dir))
+        target.mkdir(parents=True, exist_ok=True)
+        self.save_to_dir = target
         
         # Build pickleable dict
         save_dict = {}

@@ -173,19 +173,19 @@ class MultiRunEvaluator:
 
     def save(self):
         """Save evaluator state for the current day."""
-        self.save_to_dir.mkdir(parents=True, exist_ok=True)
+        target = Path(self.configs.backup_mgr.normalize_path(str(self.save_to_dir), project_root=self.configs.dir))
+        target.mkdir(parents=True, exist_ok=True)
+        self.save_to_dir = target
         
         # Build pickleable dict
-        save_dict = {}
-        unpickleable = []
+        unpickleable= []
+        save_dict   = {}
         
         for attr, value in self.__dict__.items():
             try:
                 pickle.dumps(value)
                 save_dict[attr] = value
-            except:
-                unpickleable.append(attr)
-        
+            except: unpickleable.append(attr)
         if unpickleable and self.configs.verbose:print(f"\t⚠️ {self} Excluded unpickleable fields:{', '.join(unpickleable)}")   
 
         save_path = self.save_to_dir / self.file_name
@@ -197,16 +197,12 @@ class MultiRunEvaluator:
                 with open(save_path, 'wb') as f:
                     pickle.dump(save_dict, f)
 
-                if self.configs.verbose:
-                    print(f"\t{self} State saved successfully")
-
+                if self.configs.verbose: print(f"\t{self} State saved successfully")
                 # Registry save (unchanged)
                 self.configs.save()
 
             else:
-                if self.configs.verbose:
-                    print(f"\t{self} Skipped save (exists + overwrite=False)")
-
+                if self.configs.verbose: print(f"\t{self} Skipped save (exists + overwrite=False)")
         except Exception as e:
             print(f"❌ {self} Save failed: {e}")
             raise

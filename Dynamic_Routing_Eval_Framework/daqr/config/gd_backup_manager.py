@@ -27,9 +27,9 @@ class GoogleDriveBackupManager:
         self.verbose = verbose
         self.backup_registry = {}
         self.in_share_drive = True
-        self.date_str = date_str or f"day_{datetime.now().strftime('%Y%m%d')}"
         self.dir = Path(config_dir)
         self.dir.mkdir(parents=True, exist_ok=True)
+        self.date_str = self.normalize_day_prefix(date_str)
 
         self.quantum_logs_file_name = f"quantum_quick-run_log_{self.date_str}.txt"
         parent_dir                  = self.dir.parent.parent.parent.parent
@@ -39,7 +39,6 @@ class GoogleDriveBackupManager:
             self.in_share_drive     = False
 
         self.quantum_logs_path      = Path(self.normalize_path("quantum_logs", project_root=parent_dir))
-        self.date_str               = self.normalize_day_prefix(self.date_str)
         self.backup_registry_path   = self.dir / "backup_registry.json"
         self.backup_pickle_path     = self.dir / "backup_registry.pkl"
         self.framework_state_path   = self.dir / "framework_state"
@@ -541,8 +540,8 @@ class GoogleDriveBackupManager:
         # ---------------------------------------------------------------
         # 3. Resolve date folder
         # ---------------------------------------------------------------
-        day_folder_name = f"day_{date_str}" if "day" not in date_str else date_str
-        day_folder_name = self.normalize_day_prefix(day_folder_name)
+        # day_folder_name = f"day_{date_str}" if "day" not in date_str else date_str
+        day_folder_name = self.normalize_day_prefix(date_str)
         day_folder_id = self._ensure_drive_folder(day_folder_name, comp_folder_id)
 
         # ---------------------------------------------------------------
@@ -738,9 +737,7 @@ class GoogleDriveBackupManager:
         """
         s = str(value).strip()
         m = DAY_REGEX.search(s)
-
-        if not m:
-            return "day_unknown"
+        if not m: return "day_unknown"
 
         date = m.group("date")   # the eight digits
         return f"day_{date}"
@@ -748,26 +745,40 @@ class GoogleDriveBackupManager:
     def normalize_path(self, path: str, project_root: str = None) -> str:
         """
         Normalize absolute paths stored from another machine (Mac/VM/Colab).
-        Converts them into the correct local project-relative path.
+        Rebuilds a safe, correct local path without nesting.
         """
+        if not path:
+            return None
 
-        if path is None: return None
         p = Path(path)
 
-        # 1) If path already exists → valid, return it
-        if p.exists(): return str(p)
+        # 1) If path already valid, return as-is
+        if p.exists():
+            return str(p)
 
-        # 2) Determine current environment's project root
-        if project_root is None: project_root = str(Path(__file__).resolve().parents[2])   # Dynamic_Routing_Eval_Framework root
+        # 2) Determine project root (Dynamic_Routing_Eval_Framework)
+        if project_root is None:
+            # __file__ = daqr/config/backup_manager.py
+            project_root = Path(__file__).resolve().parents[2]
 
-        # 3) Extract only the tail (file name) from the incoming path
-        fname       = p.name                    # e.g., QuantumExperimentRunner_1.pkl
-        date_folder = p.parent.name             # e.g., day_20251118
-        component   = p.parent.parent.name      # framework_state or model_state
+        # 3) Extract only the semantic parts of the filename
+        fname       = p.name
+        date_folder = p.parent.name          # day_YYYYMMDD
+        component   = p.parent.parent.name   # framework_state / model_state / logs
 
-        # 4) Reconstruct a correct, portable path:
-        new_path    = Path(project_root) / "daqr" / "config" / component / date_folder / fname
-        return      str(new_path)
+        # 4) Build the correct target path RELATIVE to project_root
+        # BUT avoid nesting "daqr/config" if project_root already contains it
+        base = Path(project_root)
+
+        # If project_root already ends in "daqr/config" → don't append it again
+        if base.name == "config" and base.parent.name == "daqr":
+            base_dir = base
+        else:
+            base_dir = base / "daqr" / "config"
+
+        new_path = base_dir / component / date_folder / fname
+        return str(new_path)
+
     
     def __repr__(self):
         env = self.__class__.__name__

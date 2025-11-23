@@ -51,8 +51,8 @@ class QuantumExperimentRunner:
 
         # Set paths
         self.key_attrs = {}
-        self.save_to_dir = Path(f"{self.configs.dir}/framework_state/day_{self.configs.day_str}/")
-        self.save_to_dir = Path(self.configs.backup_mgr.normalize_path(str(self.save_to_dir), project_root=self.configs.dir))
+        self.save_to_dir = Path(f"{self.configs.dir}/framework_state/{self.configs.day_str}/")
+        self.save_to_dir = Path(self.configs.backup_mgr.normalize_path(str(self.save_to_dir)))
         self.configs.update_configs(attack_type=attack_type, attack_intensity=attack_intensity)
 
 
@@ -126,7 +126,7 @@ class QuantumExperimentRunner:
 
     def save(self):
         """Save evaluator state for the current day."""
-        target = Path(self.configs.backup_mgr.normalize_path(str(self.save_to_dir), project_root=self.configs.dir))
+        target = Path(self.configs.backup_mgr.normalize_path(str(self.save_to_dir)))
         target.mkdir(parents=True, exist_ok=True)
         self.save_to_dir = target
         

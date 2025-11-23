@@ -173,7 +173,7 @@ class MultiRunEvaluator:
 
     def save(self):
         """Save evaluator state for the current day."""
-        target = Path(self.configs.backup_mgr.normalize_path(str(self.save_to_dir), project_root=self.configs.dir))
+        target = Path(self.configs.backup_mgr.normalize_path(str(self.save_to_dir)))
         target.mkdir(parents=True, exist_ok=True)
         self.save_to_dir = target
         

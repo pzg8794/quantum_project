@@ -75,7 +75,14 @@ class MultiRunEvaluator:
         self.env_id       = str(getattr(self.configs, "environment", "env"))
         self.attack_id    = str(getattr(self.configs, "attack_strategy", "None"))
         self.cap_id       = (int(self.base_frames if self.configs.base_capacity else self.frames_count)*self.configs.scale)
-        self.file_name = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{self.base_frames}_{int(self.frame_step)}_{self.runs_id}.pkl"
+        self.file_name    = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{self.base_frames}_{int(self.frame_step)}_{self.runs_id}.pkl"
+
+        scenarios_no        = len(self.configs.test_scenarios)
+        has_stochastic_env  = "stochastic" in self.configs.test_scenario
+        has_adversarial_env = "Adversarial" in self.configs.test_scenario
+        attack_id           = f"{scenarios_no}_attacks" if scenarios > 0 else self.attack_id
+        env_id              = "all-envs" if has_stochastic_env and has_adversarial_env else self.env_id 
+        self.log_name       = f"{self.cap_id}-{self.allocator_id}_{env_id}_{attack_id}-{self.base_frames}_{int(self.frame_step)}_{self.runs_id}"
 
         # NOW resume can work
         try:    self.resume()
@@ -286,28 +293,42 @@ class MultiRunEvaluator:
     def run_experiments(self, runs=None, attack_type=None, models=None):
         """
         Run experiments for a specific environment type.
-
-        Args:
-            attack_type: Override default attack type
-            exps_num: Number of frame count experiments (default: 3)
-            algorithms: List of algorithms to test
         """
         self.update_configs(runs, models, attack_type)
 
-        print(f"\nSTARTING EXPERIMENTS: {self.configs.attack_type.upper()}")
-        attack_category = self.configs.category_map.get(self.configs.attack_type, 'Unknown')
-        print(f"Category: {attack_category}")
-        print("="*60)
+        # -----------------------------
+        # START LOGGING (UNIQUE NAME)
+        # -----------------------------
+        self.configs.backup_mgr.init_logging_redirect(file_name=self.log_name)
 
-        self.start_time = time.time()
-        for i in range(0, self.configs.runs):
-            self.run_experiment(exp_no=i, attack_category=attack_category)
-        self.total_time = time.time() - self.start_time
-        self.save()
+        try:
+            print(f"\nSTARTING EXPERIMENTS: {self.configs.attack_type.upper()}")
+            attack_category = self.configs.category_map.get(self.configs.attack_type, 'Unknown')
+            print(f"Category: {attack_category}")
+            print("="*60)
 
-        print(f"Total experiment time: {self.total_time:05.1f}s")
-        print(f"Experiments completed for {self.configs.attack_type}")
-        return self.env_experiments[self.configs.attack_type]
+            self.start_time = time.time()
+
+            for i in range(0, self.configs.runs):
+                self.run_experiment(exp_no=i, attack_category=attack_category)
+
+            self.total_time = time.time() - self.start_time
+            self.save()
+
+            print(f"Total experiment time: {self.total_time:05.1f}s")
+            print(f"Experiments completed for {self.configs.attack_type}")
+            return self.env_experiments[self.configs.attack_type]
+
+        except Exception as e:
+            print(f"❌ Multi-run failed: {e}")
+            raise
+
+        finally:
+            # ------------------------------------
+            # ALWAYS STOP LOGGING CLEANLY
+            # ------------------------------------
+            self.configs.backup_mgr.stop_logging_redirect()
+
 
     def calculate_scenario_performance(self, scenario):
         """

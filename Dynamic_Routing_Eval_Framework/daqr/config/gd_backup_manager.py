@@ -25,9 +25,15 @@ class GoogleDriveBackupManager:
         self.new_entries = {}
         self.verbose = verbose
         self.backup_registry = {}
+        self.in_share_drive = True
         self.date_str = date_str or f"day_{datetime.now().strftime('%Y%m%d')}"
         self.dir = Path(config_dir)
         self.dir.mkdir(parents=True, exist_ok=True)
+        self.quantum_logs_file_name = f"quantum_quick-run_log_{self.date_str}.txt"
+        self.quantum_logs_path = self.dir.parent.parent.parent.parent / "quantum_logs"
+        if not self.quantum_logs_path.exists(): 
+            self.in_share_drive = False
+            self.quantum_logs_path = self.dir
 
         self.date_str = self.normalize_day_prefix(self.date_str)
         self.backup_registry_path = self.dir / "backup_registry.json"

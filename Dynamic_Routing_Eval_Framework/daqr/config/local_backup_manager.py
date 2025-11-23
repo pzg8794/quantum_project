@@ -1,10 +1,9 @@
-from pathlib import Path
-from collections import defaultdict
 import json
 import pickle
-import os
+import os, sys
+from pathlib import Path
 from datetime import datetime
-
+from collections import defaultdict
 from .gd_backup_manager import GoogleDriveBackupManager
 
 
@@ -163,3 +162,64 @@ class LocalBackupManager(GoogleDriveBackupManager):
             print(f"\t⚠️ Missing local file: {local_path}")
 
         return None
+
+    def init_logging_redirect(self, file_name="quantum_quick_runs"):
+        """
+        Redirect stdout/stderr to a timestamped log file in:
+        {project_root}/quantum_data_lake/logs/
+        """
+        self.quantum_logs_file_name = f"quantum_{file_name}_log_{self.date_str}.txt"
+        logfile = self.quantum_logs_path / self.quantum_logs_file_name
+        self.quantum_logs_path.mkdir(parents=True, exist_ok=True)
+
+        # Save originals only once
+        self._orig_stdout = sys.stdout
+        self._orig_stderr = sys.stderr
+
+        # Open log file
+        f = open(logfile, "w")
+        self._log_file = f
+
+        sys.stdout = f
+        sys.stderr = f
+
+        print(f"[Logging Redirect Initialized]")
+        print(f"Log File: {logfile}")
+
+        return logfile
+
+    def stop_logging_redirect(self):
+        """
+        Restore stdout/stderr after a redirect created by init_logging_redirect().
+        Safe to call even if logging was never initialized.
+        """
+        try:
+            # If no prior redirect saved, do nothing
+            if not hasattr(self, "_orig_stdout") or not hasattr(self, "_orig_stderr"):
+                return
+
+            # Restore the streams
+            sys.stdout = self._orig_stdout
+            sys.stderr = self._orig_stderr
+
+            # Close log file if we opened it
+            if hasattr(self, "_log_file") and self._log_file:
+                try:    self._log_file.close()
+                except: pass
+            
+            if self.in_share_drive:
+                logfile = self.quantum_logs_path / self.quantum_logs_file_name
+                try:    self.upload_file_to_drive(logfile)
+                except: pass
+
+            # Clean attributes so multiple redirects won't break things
+            del self._orig_stdout
+            del self._orig_stderr
+            del self._log_file
+
+            print("[Logging Redirect Stopped]")
+
+        except Exception as e:
+            # Never crash the system over logging cleanup
+            try:    print(f"[Warning] stop_logging_redirect encountered an issue: {e}")
+            except: pass

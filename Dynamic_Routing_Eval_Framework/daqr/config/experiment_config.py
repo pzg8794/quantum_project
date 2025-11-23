@@ -243,7 +243,7 @@ class ExperimentConfiguration:
         # ---------------------------------------------------------------
         parts = rest.split("-")
 
-        cap_id = int(parts[0])
+        cap_id = int(round(float(parts[0])))
         alloc_env_attack = parts[1]
         base_frames, frame_step, runs_id = map(int, parts[2].split("_"))
         allocator_id, env_id, attack_id = alloc_env_attack.split("_")

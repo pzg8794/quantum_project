@@ -34,21 +34,23 @@ class ExperimentConfiguration:
         self.overwrite = overwrite
         self.seed_offset = seed_offset
         self.dir = os.path.dirname(os.path.abspath(__file__))
+        self.quantum_datalake_path = Path(self.dir).parent.parent.parent.parent / "quantum_data_lake"
+        if not self.quantum_datalake_path.exists(): self.quantum_datalake_path = self.dir
         
-        self.runs = runs
-        self.scale = scale
-        self.env_type = env_type
-        self.base_seed = base_seed
-        self.attack_rate = attack_rate
-        self.base_capacity = base_capacity
-        self.day_str = f"day_{datetime.now().strftime('%Y%m%d')}"
+        
+        self.runs               = runs
+        self.scale              = scale
+        self.env_type           = env_type
+        self.base_seed          = base_seed
+        self.attack_rate        = attack_rate
+        self.base_capacity      = base_capacity
+        self.day_str            = f"day_{datetime.now().strftime('%Y%m%d')}"
 
-        self.attack_mapping = {}
-        self.environ_mapping = {}
-
-        self.attack_strategy = None  # Will be instantiated by set_attack_strategy
-        self.attack_type = attack_type.lower()
-        self.attack_intensity = attack_intensity
+        self.attack_mapping     = {}
+        self.environ_mapping    = {}
+        self.attack_strategy    = None
+        self.attack_type        = attack_type.lower()
+        self.attack_intensity   = attack_intensity
 
         # Single unified manager - handles everything
         self.backup_mgr = LocalBackupManager(date_str=self.day_str, config_dir=self.quantum_datalake_path, verbose=self.verbose)

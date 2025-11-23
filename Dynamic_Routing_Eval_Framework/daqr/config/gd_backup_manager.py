@@ -473,47 +473,40 @@ class GoogleDriveBackupManager:
         # ---------------------------------------------------------------
         # 1. Root folder (quantum_data_lake or quantum_logs)
         # ---------------------------------------------------------------
-        root_id         =   self._ensure_drive_folder(parent_dir, self.DRIVE_FOLDER_ID)
+        root_id                 =   self._ensure_drive_folder(parent_dir, self.DRIVE_FOLDER_ID)
 
         # ---------------------------------------------------------------
-        # 2. Component folder
-        #    e.g. quantum_data_lake/framework_state
-        #         quantum_logs   /logs
+        # 2. Component folder — ONLY IF USING quantum_data_lake
         # ---------------------------------------------------------------
-        comp_folder_id =    self._ensure_drive_folder(component, root_id)
-
-        # ---------------------------------------------------------------
-        # 3. Optional date folder (ONLY for data lake)
-        # ---------------------------------------------------------------
-        if parent_dir           !=  "quantum_logs":
+        if component is not None:   
+            comp_folder_id      =   self._ensure_drive_folder(component, root_id)
             day_folder_name     =   self.normalize_day_prefix(date_str)
             parent_folder_id    =   self._ensure_drive_folder(day_folder_name, comp_folder_id)
-        else: parent_folder_id  =   comp_folder_id
+        else: parent_folder_id  =   root_id
 
         # ---------------------------------------------------------------
         # 4. Check if file already exists
         # ---------------------------------------------------------------
-        query           =   (f"name='{filename}' and '{parent_folder_id}' in parents")
-        if component    ==  "model_state":
-            safe_prefix =   filename.split("(")[0]
-            query       =   f"name contains '{safe_prefix}' and '{parent_folder_id}' in parents"
+        query                   =   (f"name='{filename}' and '{parent_folder_id}' in parents")
+        if component            ==  "model_state":
+            safe_prefix         =   filename.split("(")[0]
+            query               =   f"name contains '{safe_prefix}' and '{parent_folder_id}' in parents"
 
-        response        =   self._retry_drive(
-            lambda: self.drive.files().list(
-                q=query,
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True
-            ).execute()
-        )
+        response                =   self._retry_drive(
+                                        lambda: self.drive.files().list(
+                                            q=query, supportsAllDrives=True,
+                                            includeItemsFromAllDrives=True
+                                        ).execute()
+                                    )
 
-        files   =   response.get("files", [])
-        file_id =   files[0]["id"] if files else None
+        files           =   response.get("files", [])
+        file_id         =   files[0]["id"] if files else None
 
         # ---------------------------------------------------------------
         # 5. Upload or update
         # ---------------------------------------------------------------
-        media   =   MediaFileUpload(local_path, resumable=True)
-        if file_id: self.drive.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
+        media           =   MediaFileUpload(local_path, resumable=True)
+        if file_id:         self.drive.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
         else:
             metadata    =   {"name": filename, "parents": [parent_folder_id]}
             self.drive.files().create(body=metadata, media_body=media, supportsAllDrives=True).execute()
@@ -529,9 +522,7 @@ class GoogleDriveBackupManager:
 
         This mirrors the same structure created by _upload_file_to_drive.
         """
-
-        if not self.remote_available or not self.drive:
-            return None
+        if not self.remote_available or not self.drive: return None
 
         # ---------------------------------------------------------------
         # 1. Resolve quantum_data_lake root

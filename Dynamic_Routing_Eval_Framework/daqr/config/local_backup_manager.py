@@ -207,7 +207,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
             
             if self.in_share_drive:
                 logfile = self.quantum_logs_path / self.quantum_logs_file_name
-                try:    self.upload_file_to_drive(logfile)
+                try:    self._upload_file_to_drive(None, local_path=logfile, file_name=self.quantum_logs_file_name, parent_dir="quantum_logs")
                 except: pass
 
             # Clean attributes so multiple redirects won't break things

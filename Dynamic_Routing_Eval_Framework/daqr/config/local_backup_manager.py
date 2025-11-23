@@ -44,6 +44,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
                 abs_path = str(dir_path / fname)
                 temp[component][fname] = abs_path
                 if load_to_drive:
+                    self.download_drive_metadata()
                     try:    
                         self.metadata[fname]
                         print(f"\t→ Files {fname} was already stored")

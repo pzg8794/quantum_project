@@ -33,9 +33,7 @@ class ExperimentConfiguration:
         self.environment = None
         self.overwrite = overwrite
         self.seed_offset = seed_offset
-        self.quantum_datalake_path = Path(self.dir).parent.parent.parent.parent / "quantum_data_lake"
-        if not self.quantum_datalake_path.exists(): self.quantum_datalake_path = self.dir
-        
+        self.dir = os.path.dirname(os.path.abspath(__file__))
         
         self.runs = runs
         self.scale = scale
@@ -54,8 +52,6 @@ class ExperimentConfiguration:
 
         # Single unified manager - handles everything
         self.backup_mgr = LocalBackupManager(date_str=self.day_str, config_dir=self.quantum_datalake_path, verbose=self.verbose)
-        self.dir = os.path.dirname(os.path.abspath(__file__))
-        # self.dir = self.backup_mgr.normalize_path(self.dir, self.dir)
 
         self.category_map = {
             'none': 'Baseline (No Attacks)',

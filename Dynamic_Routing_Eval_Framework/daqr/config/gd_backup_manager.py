@@ -37,7 +37,7 @@ class GoogleDriveBackupManager:
             parent_dir              = self.dir
             self.in_share_drive     = False
 
-        self.quantum_logs_path      = self.normalize_path("quantum_logs", project_root=parent_dir)
+        self.quantum_logs_path      = Path(self.normalize_path("quantum_logs", project_root=parent_dir))
         self.date_str               = self.normalize_day_prefix(self.date_str)
         self.backup_registry_path   = self.dir / "backup_registry.json"
         self.backup_pickle_path     = self.dir / "backup_registry.pkl"

@@ -164,29 +164,27 @@ class LocalBackupManager(GoogleDriveBackupManager):
         return None
 
     def init_logging_redirect(self, file_name="quantum_quick_runs"):
-        """
-        Redirect stdout/stderr to a timestamped log file in:
-        {project_root}/quantum_data_lake/logs/
-        """
         self.quantum_logs_file_name = f"quantum_{file_name}_log_{self.date_str}.txt"
         logfile = self.quantum_logs_path / self.quantum_logs_file_name
         self.quantum_logs_path.mkdir(parents=True, exist_ok=True)
 
-        # Save originals only once
+        # Save originals
         self._orig_stdout = sys.stdout
         self._orig_stderr = sys.stderr
 
-        # Open log file
+        # Open file
         f = open(logfile, "w")
         self._log_file = f
 
-        sys.stdout = f
-        sys.stderr = f
+        # Tee to both terminal AND file
+        sys.stdout = TeeStream(self._orig_stdout, f)
+        sys.stderr = TeeStream(self._orig_stderr, f)
 
         print(f"[Logging Redirect Initialized]")
         print(f"Log File: {logfile}")
 
         return logfile
+
 
     def stop_logging_redirect(self):
         """
@@ -223,3 +221,17 @@ class LocalBackupManager(GoogleDriveBackupManager):
             # Never crash the system over logging cleanup
             try:    print(f"[Warning] stop_logging_redirect encountered an issue: {e}")
             except: pass
+
+
+class TeeStream:
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, message):
+        for s in self.streams:
+            s.write(message)
+            s.flush()
+
+    def flush(self):
+        for s in self.streams:
+            s.flush()

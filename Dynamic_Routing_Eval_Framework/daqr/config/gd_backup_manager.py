@@ -29,17 +29,20 @@ class GoogleDriveBackupManager:
         self.date_str = date_str or f"day_{datetime.now().strftime('%Y%m%d')}"
         self.dir = Path(config_dir)
         self.dir.mkdir(parents=True, exist_ok=True)
-        self.quantum_logs_file_name = f"quantum_quick-run_log_{self.date_str}.txt"
-        self.quantum_logs_path = self.dir.parent.parent.parent.parent / "quantum_logs"
-        if not self.quantum_logs_path.exists(): 
-            self.in_share_drive = False
-            self.quantum_logs_path = self.dir
 
-        self.date_str = self.normalize_day_prefix(self.date_str)
-        self.backup_registry_path = self.dir / "backup_registry.json"
-        self.backup_pickle_path  = self.dir / "backup_registry.pkl"
-        self.framework_state_path = self.dir / "framework_state"
-        self.model_state_path = self.dir / "model_state"
+        self.quantum_logs_file_name = f"quantum_quick-run_log_{self.date_str}.txt"
+        parent_dir                  = self.dir.parent.parent.parent.parent
+        self.quantum_logs_path      = parent_dir / "quantum_logs"
+        if not self.quantum_logs_path.exists(): 
+            parent_dir              = self.dir
+            self.in_share_drive     = False
+
+        self.quantum_logs_path      = self.normalize_path("quantum_logs", project_root=parent_dir)
+        self.date_str               = self.normalize_day_prefix(self.date_str)
+        self.backup_registry_path   = self.dir / "backup_registry.json"
+        self.backup_pickle_path     = self.dir / "backup_registry.pkl"
+        self.framework_state_path   = self.dir / "framework_state"
+        self.model_state_path       = self.dir / "model_state"
 
         # ------------------------------------------------------------
         # Credential auto-discovery

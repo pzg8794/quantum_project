@@ -33,9 +33,9 @@ class ExperimentConfiguration:
         self.environment = None
         self.overwrite = overwrite
         self.seed_offset = seed_offset
-        self.dir = os.path.dirname(os.path.abspath(__file__))
         self.quantum_datalake_path = Path(self.dir).parent.parent.parent.parent / "quantum_data_lake"
         if not self.quantum_datalake_path.exists(): self.quantum_datalake_path = self.dir
+        
         
         self.runs = runs
         self.scale = scale
@@ -51,6 +51,11 @@ class ExperimentConfiguration:
         self.attack_strategy = None  # Will be instantiated by set_attack_strategy
         self.attack_type = attack_type.lower()
         self.attack_intensity = attack_intensity
+
+        # Single unified manager - handles everything
+        self.backup_mgr = LocalBackupManager(date_str=self.day_str, config_dir=self.quantum_datalake_path, verbose=self.verbose)
+        self.dir = os.path.dirname(os.path.abspath(__file__))
+        # self.dir = self.backup_mgr.normalize_path(self.dir, self.dir)
 
         self.category_map = {
             'none': 'Baseline (No Attacks)',
@@ -193,12 +198,6 @@ class ExperimentConfiguration:
         self.backup_registry = {}
         self.expected_keys = {}
         
-        # Single unified manager - handles everything
-        self.backup_mgr = LocalBackupManager(
-            date_str=self.day_str,
-            config_dir=self.quantum_datalake_path,
-            verbose=self.verbose
-        )
         self._build_backup_registry(force=self.overwrite)
         # print( self.backup_registry.keys())
 

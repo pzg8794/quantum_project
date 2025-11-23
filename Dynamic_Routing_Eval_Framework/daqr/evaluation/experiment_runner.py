@@ -394,13 +394,13 @@ class QuantumExperimentRunner:
                             'model_results': model.get_results(),
                             'retries': attempts
                         }
-                        if model.state == 1: return results, model
+                        # if model.state == 1: return results, model
                     except Exception as e: 
                         model = None
                         attempts += 1
                         print(f"\t❌ Runtime error in {alg_name}: {e}")
                     finally:
-                        model.state = 1
+                        # model.state = 1
                         pass
                         # del model
                         # gc.collect()
@@ -651,7 +651,8 @@ class QuantumExperimentRunner:
                 self.results[alg_name]['efficiency'] = efficiency
                 self.results[alg_name]['gap'] = gap
 
-                if failed_attempts['under_threshold'] >= 3 or temp_model.state == 1:break
+                if failed_attempts['under_threshold'] >= 3:break
+                # if failed_attempts['under_threshold'] >= 3 or temp_model.state == 1:break
 
         # 🔐 Save best model after loop (not last model)
         if model is not None:

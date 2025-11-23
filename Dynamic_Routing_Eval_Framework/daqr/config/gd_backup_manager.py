@@ -22,6 +22,7 @@ class GoogleDriveBackupManager:
 
     def __init__(self, date_str, config_dir, verbose=False):
         self.drive = None
+        self.metadata = {}
         self.new_entries = {}
         self.verbose = verbose
         self.backup_registry = {}

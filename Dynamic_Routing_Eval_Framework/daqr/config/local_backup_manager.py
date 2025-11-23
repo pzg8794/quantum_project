@@ -1,9 +1,10 @@
 import json
 import pickle
-import os, sys
+import os, sys, io
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
+from googleapiclient.http import MediaIoBaseDownload
 from .gd_backup_manager import GoogleDriveBackupManager
 
 
@@ -222,6 +223,174 @@ class LocalBackupManager(GoogleDriveBackupManager):
             try:    print(f"[Warning] stop_logging_redirect encountered an issue: {e}")
             except: pass
 
+
+
+    def _build_metadata_local(self, parent_dir="quantum_logs"):
+        """Scan the local folder structure and build metadata dict."""
+        root = self.quantum_logs_path if parent_dir == "quantum_logs" else self.quantum_data_lake_path
+        if not root.exists() or len(self.metadata) != 0: return False
+
+        for comp in root.iterdir():
+            if not comp.is_dir(): continue
+            comp_key = comp.name
+            self.metadata.setdefault(comp_key, {})
+
+            for day in comp.iterdir():
+                if not day.is_dir(): continue
+                date_key = day.name
+                self.metadata[comp_key].setdefault(date_key, {})
+
+                for f in day.iterdir():
+                    if f.is_file(): self.metadata[comp_key][date_key][f.name] = {"local_path": str(f)}
+
+        return True
+
+    def _build_metadata_remote(self, parent_dir="quantum_logs"):
+        """Scan Drive folder structure and build metadata dict."""
+        if not self.remote_available or not self.drive or len(self.metadata) != 0: return False
+        root_id = self._ensure_drive_folder(parent_dir, self.DRIVE_FOLDER_ID)
+
+        # list component folders
+        comp_folders = self._retry_drive(
+            lambda: self.drive.files().list(
+                q=f"'{root_id}' in parents and mimeType='application/vnd.google-apps.folder'",
+                fields="files(id,name)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True
+            ).execute()
+        ).get("files", [])
+
+        for comp in comp_folders:
+            comp_key = comp["name"]
+            comp_id  = comp["id"]
+            self.metadata.setdefault(comp_key, {})
+
+            # list day folders
+            day_folders = self._retry_drive(
+                lambda: self.drive.files().list(
+                    q=f"'{comp_id}' in parents and mimeType='application/vnd.google-apps.folder'",
+                    fields="files(id,name)", supportsAllDrives=True, includeItemsFromAllDrives=True
+                ).execute()
+            ).get("files", [])
+
+            for day in day_folders:
+                day_key = day["name"]
+                day_id  = day["id"]
+                self.metadata[comp_key].setdefault(day_key, {})
+
+                # files under the day folder
+                files = self._retry_drive(
+                    lambda: self.drive.files().list(
+                        q=f"'{day_id}' in parents", fields="files(id,name)",
+                        supportsAllDrives=True, includeItemsFromAllDrives=True
+                    ).execute()
+                ).get("files", [])
+                for f in files: self.metadata[comp_key][day_key][f["name"]] = {"drive_id": f["id"]}
+
+        return True
+
+    def build_drive_metadata(self, parent_dir="quantum_logs"):
+        """
+        Build metadata by scanning the actual folder structure.
+        If in shared drive → list local files.
+        Else → list Drive files.
+        Returns:
+            metadata = { component_or_None : { date : { filename : {drive_id/local_path} } } }
+        """
+
+        # If metadata already exists (or download returned True), don't rebuild
+        if self.download_drive_metadata(): return self.metadata
+
+        # =======================================================
+        # CASE 1: Running INSIDE shared drive → read local folder
+        # =======================================================
+        if self.in_share_drive: return self._build_metadata_local(parent_dir)
+
+        # =======================================================
+        # CASE 2: Running OUTSIDE shared drive → use Drive API
+        # =======================================================
+        return self._build_metadata_remote(parent_dir)
+
+    def _download_metadata_local(self, filename="metadata.json"):
+        """Load metadata.json from local quantum_logs directory."""
+        metadata_path = self.quantum_logs_path / filename
+        if not metadata_path.exists(): return False
+        
+        with open(metadata_path, "r") as f:
+            self.metadata = json.load(f)
+        return True
+
+    def _download_metadata_remote(self, parent_dir="quantum_logs", filename="metadata.json"):
+        """Download metadata.json from Drive."""
+        root_id = self._ensure_drive_folder(parent_dir, self.DRIVE_FOLDER_ID)
+        query   = f"name='{filename}' and '{root_id}' in parents"
+        response= self.drive.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+
+        files   = response.get("files", [])
+        if not files: return False
+        file_id = files[0]["id"]
+        request = self.drive.files().get_media(fileId=file_id)
+        data    = request.execute()
+
+        self.metadata = json.loads(data.decode("utf-8"))
+        return True
+
+    def download_drive_metadata(self, parent_dir="quantum_logs", filename="metadata.json"):
+        """
+        Download metadata.json from Drive.
+        If in shared drive → load from local file.
+        Returns True if loaded, False if missing.
+        """
+
+        # ===========================================
+        # CASE 1 — in shared drive → read local copy
+        # ===========================================
+        if self.in_share_drive: return self._download_metadata_local(filename)
+        
+        # ===========================================
+        # CASE 2 — remote → download from Drive
+        # ===========================================
+        return self._download_metadata_remote(parent_dir, filename)
+
+
+    def update_drive_metadata(self, exp_registry=None, parent_dir="quantum_logs", filename="metadata.json"):
+        """
+        Merge exp_registry into metadata.json in Drive.
+        Uses correct source depending on in_share_drive flag.
+        """
+        if exp_registry is None: exp_registry = self.backup_registry
+        if len(self.metadata) == 0: self.download_drive_metadata()
+        if len(self.metadata) == 0: self.build_drive_metadata()
+        if len(self.metadata) == 0 or len(exp_registry) == 0: return False
+        curr_metadata_len = len(self.metadata)
+        self.metadata.update(exp_registry)
+        return len(self.metadata) > curr_metadata_len
+
+    def load_drive_metadata(self, parent_dir="quantum_logs"):
+        """Download metadata.json from Drive if present."""
+        if not self.update_drive_metadata(): return False
+        
+        if self.in_share_drive: 
+            metadata_path = self.quantum_logs_path / "metadata.json"
+            self.quantum_logs_path.mkdir(parents=True, exist_ok=True)
+            with open(metadata_path, "w") as f: json.dump(self.metadata, f)
+            return True
+        
+        root_id = self._ensure_drive_folder(parent_dir, self.DRIVE_FOLDER_ID)
+        resp    =       self._retry_drive(
+                            lambda: self.drive.files().list(
+                                q=f"name='metadata.json' and '{root_id}' in parents",fields="files(id)",
+                                supportsAllDrives=True, includeItemsFromAllDrives=True
+                            ).execute()
+                        )
+        files   =       resp.get("files", [])
+        if not files:   return False
+
+        file_id = files[0]["id"]
+        request = self.drive.files().get_media(fileId=file_id)
+        data    = request.execute()
+        self.metadata = json.loads(data.decode("utf-8"))
+        return True
 
 class TeeStream:
     def __init__(self, *streams):

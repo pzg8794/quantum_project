@@ -29,7 +29,6 @@ class LocalBackupManager(GoogleDriveBackupManager):
 
             parts = relative_path.parts
             if not parts: continue
-
             component = parts[0]
 
             # Extract date_str from folders like day_20251120
@@ -38,28 +37,15 @@ class LocalBackupManager(GoogleDriveBackupManager):
                 if p.startswith("day_"):
                     date_str = self.normalize_day_prefix(p)
                     break
-
-            if not date_str:
-                continue
+            if not date_str: continue
 
             for fname in filenames:
-                if Path(fname).suffix not in valid_exts:
-                    continue
-
+                if Path(fname).suffix not in valid_exts: continue
                 abs_path = str(dir_path / fname)
-
-                # Pick latest version per filename
-                # if (fname not in temp[component]):
                 temp[component][fname] = abs_path
-
-                # Optional Drive mirroring
                 if load_to_drive:
-                    self._upload_file_to_drive(
-                        component=component,
-                        date_str=date_str,
-                        local_path=abs_path,
-                        filename=fname
-                    )
+                    try:    path_exists = self.metadata[fname]
+                    except Exception as e: self._upload_file_to_drive(component, date_str=date_str, local_path=abs_path, filename=fname)
 
         # Final registry build
         registry = {comp: {fname: meta for fname, meta in files.items()} for comp, files in temp.items()}

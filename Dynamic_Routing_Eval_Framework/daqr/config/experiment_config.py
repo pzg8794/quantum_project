@@ -33,8 +33,9 @@ class ExperimentConfiguration:
         self.environment = None
         self.overwrite = overwrite
         self.seed_offset = seed_offset
-        self.day_str = f"day_{datetime.now().strftime('%Y%m%d')}"
         self.dir = os.path.dirname(os.path.abspath(__file__))
+        self.quantum_datalake_path = self.dir.parent.parent.parent.parent / "quantum_data_lake"
+        if not self.quantum_datalake_path.exists(): self.quantum_datalake_path = self.dir
         
         self.runs = runs
         self.scale = scale
@@ -42,6 +43,7 @@ class ExperimentConfiguration:
         self.base_seed = base_seed
         self.attack_rate = attack_rate
         self.base_capacity = base_capacity
+        self.day_str = f"day_{datetime.now().strftime('%Y%m%d')}"
 
         self.attack_mapping = {}
         self.environ_mapping = {}
@@ -194,10 +196,9 @@ class ExperimentConfiguration:
         # Single unified manager - handles everything
         self.backup_mgr = LocalBackupManager(
             date_str=self.day_str,
-            config_dir=self.dir,
+            config_dir=self.quantum_datalake_path,
             verbose=self.verbose
         )
-
         self._build_backup_registry(force=self.overwrite)
         # print( self.backup_registry.keys())
 
@@ -358,7 +359,7 @@ class ExperimentConfiguration:
         """
 
         # 1) Generate expected keys + try restore when this is the first lookup
-        if len(self.expected_keys) == 0:
+        if len(self.expected_keys) == 0 and "multirunevaluator" in item_v.lower():
             self.generate_expected_keys(item_v)
             self.backup_mgr.restore_from_drive(self.day_str, self.expected_keys)
         

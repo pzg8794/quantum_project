@@ -908,6 +908,52 @@ class MultiRunEvaluator:
         self.print_summary()
         return self
 
+    def display_run_results(self, exp_id, experiment_results, scaled_capacity):
+        """
+        Pretty-print model results for a completed experiment.
+        Matches the Runner's formatting style exactly.
+        """
+        results = experiment_results[exp_id].get('results', {})
+        winner  = experiment_results[exp_id].get('winner', 'NA')
+        gap     = results.get(winner, {}).get('gap', 100)
+
+        print("\n\t📊 EXPERIMENT RESULTS SUMMARY")
+        print("\t" + "="*120)
+
+        for alg_name, r in results.items():
+            if alg_name == 'Oracle':
+                continue
+
+            final_reward  = r.get('final_reward', 0.0)
+            efficiency    = r.get('efficiency', 0.0)
+            fa            = r.get('failed_attempts', {})
+
+            retries       = fa.get('total', 0)
+            failed        = fa.get('failed', 0)
+            under_thr     = fa.get('under_threshold', 0)
+            threshold     = fa.get('threshold', 0)
+
+            print(
+                f"\tEXP {exp_id} {alg_name.upper():<20}: "
+                f"Reward={final_reward:07.2f}, "
+                f"Efficiency={efficiency:05.1f}% "
+                f"[Retries={retries}, Failed={failed}, < Threshold={under_thr}, "
+                f"SCapacity={scaled_capacity}, Threshold={threshold}]"
+            )
+
+        print("\t" + "="*120)
+
+        # Winner line (same style as runner)
+        print(
+            f"\t-->🏆 EXP{exp_id} Winner:{winner:<20}"
+            f"(Gap:{gap:05.1f}%) "
+            f"[Env:{self.configs.environment}, "
+            f"Attack:{self.configs.attack_strategy} X Rate:{self.configs.attack_rate}, "
+            f"Frames:{self.frames_count}, "
+            f"SCapacity={scaled_capacity}, "
+            f"Alloc={self.configs.allocator}]"
+        )
+        print()
 
 
     def run_experiment(self, exp_no, offset=100, models=None, attack_category="Stochastic", attack_rate=0.25):
@@ -960,6 +1006,9 @@ class MultiRunEvaluator:
             # )
             # del runner
             # self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
+            # NEEDS TO GO CALL A HELPER METHOD TO DISPLAY RESULTS
+            scaled_cap = self.capacity * self.configs.scale
+            self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
             return self.env_experiments[self.configs.attack_type][exp_id]
         else:
             try:
@@ -1031,6 +1080,8 @@ class MultiRunEvaluator:
             #     max_workers=max_workers,  # Models run in parallel within this experiment
             #     qubit_cap=qubit_cap
             # )
+            scaled_cap = self.capacity * self.configs.scale
+            self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
             return self.env_experiments[self.configs.attack_type][exp_id]
         else:
             try:

@@ -715,8 +715,10 @@ class QuantumExperimentRunner:
             final_reward = self.results[alg_name]['final_reward']
             efficiency = self.results[alg_name]['efficiency']
 
+            # NEEDS TO GO TO A HELPER METHOD
             print(f"\tEXP {self.id} {alg_name.upper():<20}: Reward={final_reward:07.2f}, Efficiency={efficiency:05.1f}% [Retries={total}, Failed={failed}, < Threshold={under_thr}, SCapacity={scaled_capacity}, Threshold={threshold}]")
 
+        # NEEDS TO GO TO A HELPER METHOD
         self.display_experiment_conditions()
         winner_name = self.winner if self.winner else "NA"
         gap = self.results.get(self.winner, {}).get('gap', 100)
@@ -763,12 +765,15 @@ class QuantumExperimentRunner:
                     failed = failed_attempts.get('failed', 0)
                     threshold = failed_attempts.get('threshold', 0)
                     under_thr= failed_attempts.get('under_threshold', 0)
+
+                    # NEEDS TO GO TO A HELPER METHOD
                     print(f"\tEXP {self.id} {alg_name.upper():<20}: Reward={final_reward:07.2f}, Efficiency={efficiency:05.1f}% [Retries={total}, Failed={failed}, < Threshold={under_thr}, SCapacity={scaled_capacity}, Threshold={threshold}]")
                         
                 except Exception as e:
                     print(f"❌ Parallel execution failed for {alg_name}: {e}")
                     self.results[alg_name] = {'final_reward': 0.0, 'error': str(e)}
 
+        # NEEDS TO GO TO A HELPER METHOD
         self.display_experiment_conditions()
         print(f"\t-->🏆 EXP{self.id} Winner:{self.winner:<20}(Gap:{self.results.get(self.winner, {}).get('gap', 100):05.1f}%) [Env:{str(self.environment)}, Attack:{str(self.environment.attack)} X Rate:{self.environment.attack_rate}, Frames:{self.environment.frame_length}, SCapacity={scaled_capacity}, Alloc={str(self.configs.allocator)}]")
         return {'results': self.results, 'winner': self.winner}

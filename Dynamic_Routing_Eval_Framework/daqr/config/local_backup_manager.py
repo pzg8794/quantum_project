@@ -402,18 +402,43 @@ class LocalBackupManager(GoogleDriveBackupManager):
             metadata = { component_or_None : { date : { filename : {drive_id/local_path} } } }
         """
 
-        # If metadata already exists (or download returned True), don't rebuild
-        if self.download_drive_metadata() and len(self.metadata) > 0: return True
+        print("\n===== build_drive_metadata DEBUG =====")
+        print(f"in_share_drive       = {self.in_share_drive}")
+        print(f"parent_dir           = {parent_dir}")
+        print(f"Before download: metadata_len = {len(self.metadata)}")
+
+        # Attempt to load metadata.json
+        download_ok = self.download_drive_metadata(parent_dir, "metadata.json")
+        print(f"download_drive_metadata() returned = {download_ok}")
+        print(f"After download: metadata_len = {len(self.metadata)}")
+
+        # If metadata already exists, stop here
+        if download_ok and len(self.metadata) > 0:
+            print("→ Early exit: metadata already exists")
+            print("===== END build_drive_metadata =====\n")
+            return True
 
         # =======================================================
         # CASE 1: Running INSIDE shared drive → read local folder
         # =======================================================
-        if self.in_share_drive: return self._build_metadata_local(parent_dir)
+        if self.in_share_drive:
+            print("→ Branch: LOCAL metadata build")
+            result = self._build_metadata_local(parent_dir)
+            print(f"LOCAL build result: {result}")
+            print(f"After local build: metadata_len = {len(self.metadata)}")
+            print("===== END build_drive_metadata =====\n")
+            return result
 
         # =======================================================
         # CASE 2: Running OUTSIDE shared drive → use Drive API
         # =======================================================
-        return self._build_metadata_remote(parent_dir)
+        print("→ Branch: REMOTE metadata build")
+        result = self._build_metadata_remote(parent_dir)
+        print(f"REMOTE build result: {result}")
+        print(f"After remote build: metadata_len = {len(self.metadata)}")
+        print("===== END build_drive_metadata =====\n")
+        return result
+
 
     def _download_metadata_local(self, filename="metadata.json"):
         """Load metadata.json from local quantum_logs directory."""

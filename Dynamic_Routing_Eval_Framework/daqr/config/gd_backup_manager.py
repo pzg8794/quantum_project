@@ -38,7 +38,7 @@ class GoogleDriveBackupManager:
             parent_dir              = self.dir
             self.in_share_drive     = False
 
-        self.quantum_logs_path      = Path(self.normalize_path("quantum_logs", project_root=parent_dir))
+        # self.quantum_logs_path      = Path(self.normalize_path("quantum_logs", project_root=parent_dir))
         self.backup_registry_path   = self.dir / "backup_registry.json"
         self.backup_pickle_path     = self.dir / "backup_registry.pkl"
         self.framework_state_path   = self.dir / "framework_state"
@@ -381,13 +381,12 @@ class GoogleDriveBackupManager:
 
     def get_latest_state(self, component, filename):
         entry = self.backup_registry.get(component, {}).get(filename)
-        if not entry:
-            return None
+        if not entry: return None
 
-        path = entry.get("local_path") if isinstance(entry, dict) else entry
-        path = self.normalize_path(path, project_root=self.dir)
-        if not os.path.exists(path):
-            return None
+        path                     = None
+        try:                path = entry.get("local_path") if isinstance(entry, dict) else entry
+        except Exception:   path = self.normalize_path(path, project_root=self.dir)
+        if not path or not os.path.exists(path): return None
 
         ext = Path(path).suffix.lower()
         if ext == ".pkl":
@@ -616,8 +615,9 @@ class GoogleDriveBackupManager:
                 print(filename)
                 
                 # Check if already exists locally
-                local_entry = self.backup_registry.get(component, {}).get(filename)
-                local_entry = self.normalize_path(local_entry, project_root=self.dir)
+                local_entry = None
+                try:                local_entry = self.backup_registry.get(component, {}).get(filename)
+                except Exception:   local_entry = self.normalize_path(local_entry, project_root=self.dir)
                 if local_entry and Path(local_entry).exists():
                     print("local entry check ", local_entry)
                     restored[component][filename] = local_entry

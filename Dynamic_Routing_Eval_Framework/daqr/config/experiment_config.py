@@ -34,7 +34,7 @@ class ExperimentConfiguration:
         self.overwrite = overwrite
         self.seed_offset = seed_offset
         self.dir = os.path.dirname(os.path.abspath(__file__))
-        self.quantum_datalake_path = self.dir.parent.parent.parent.parent / "quantum_data_lake"
+        self.quantum_datalake_path = Path(self.dir).parent.parent.parent.parent / "quantum_data_lake"
         if not self.quantum_datalake_path.exists(): self.quantum_datalake_path = self.dir
         
         self.runs = runs

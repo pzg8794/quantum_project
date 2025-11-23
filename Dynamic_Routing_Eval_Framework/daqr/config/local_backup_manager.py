@@ -16,7 +16,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
         super().__init__(date_str, config_dir, verbose=verbose)
         # FIX: Minimal locks only where needed
 
-    def _scan_local_files(self, expected_keys=None, load_to_drive=False):
+    def _scan_local_files(self, expected_keys=None, load_to_drive=False, force=False):
         """Scan local filesystem and optionally mirror to Google Drive."""
         temp = defaultdict(dict)
         valid_exts = {".pkl", ".json"}
@@ -44,8 +44,12 @@ class LocalBackupManager(GoogleDriveBackupManager):
                 abs_path = str(dir_path / fname)
                 temp[component][fname] = abs_path
                 if load_to_drive:
-                    try:    path_exists = self.metadata[fname]
-                    except Exception as e: self._upload_file_to_drive(component, date_str=date_str, local_path=abs_path, filename=fname)
+                    try:    
+                        self.metadata[fname]
+                        print(f"\t→ Files {fname} was already stored")
+                        if not force: continue
+                    except Exception as e: print(f"\t→ Files {fname} is uploading")
+                    self._upload_file_to_drive(component, date_str=date_str, local_path=abs_path, filename=fname)
 
         # Final registry build
         registry = {comp: {fname: meta for fname, meta in files.items()} for comp, files in temp.items()}

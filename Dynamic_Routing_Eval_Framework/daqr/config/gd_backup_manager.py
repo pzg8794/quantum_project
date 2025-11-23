@@ -466,79 +466,62 @@ class GoogleDriveBackupManager:
         raise Exception("🚨 Drive API failed after maximum retries")
 
 
-    def _upload_file_to_drive(self, component, date_str, local_path, filename):
-        """Upload a single file into Google Drive, mirroring local folder structure.
-        This method alone ensures the full quantum_data_lake layout exists."""
-        
-        if not self.remote_available or not self.drive:
-            return False
+    def _upload_file_to_drive(self, component, date_str, local_path, filename, parent_dir="quantum_data_lake"):
+        """Upload a file into Google Drive, supporting both quantum_data_lake and quantum_logs."""
+        if not self.remote_available or not self.drive: return False
 
         # ---------------------------------------------------------------
-        # 1. Ensure quantum_data_lake root
+        # 1. Root folder (quantum_data_lake or quantum_logs)
         # ---------------------------------------------------------------
-        data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.DRIVE_FOLDER_ID)
+        root_id         =   self._ensure_drive_folder(parent_dir, self.DRIVE_FOLDER_ID)
 
         # ---------------------------------------------------------------
-        # 2. Ensure component folder
+        # 2. Component folder
         #    e.g. quantum_data_lake/framework_state
+        #         quantum_logs   /logs
         # ---------------------------------------------------------------
-        comp_folder_id = self._ensure_drive_folder(component, data_lake_id)
+        comp_folder_id =    self._ensure_drive_folder(component, root_id)
 
         # ---------------------------------------------------------------
-        # 3. Ensure date folder
-        #    e.g. quantum_data_lake/framework_state/day_20251120
+        # 3. Optional date folder (ONLY for data lake)
         # ---------------------------------------------------------------
-        day_folder_name = f"day_{date_str}" if "day_" not in date_str else date_str
-        day_folder_name = self.normalize_day_prefix(day_folder_name)
-        day_folder_id = self._ensure_drive_folder(day_folder_name, comp_folder_id)
+        if parent_dir           !=  "quantum_logs":
+            day_folder_name     =   self.normalize_day_prefix(date_str)
+            parent_folder_id    =   self._ensure_drive_folder(day_folder_name, comp_folder_id)
+        else: parent_folder_id  =   comp_folder_id
 
         # ---------------------------------------------------------------
         # 4. Check if file already exists
         # ---------------------------------------------------------------
-        query = (f"name='{filename}' and '{day_folder_id}' in parents")
-        if component == "model_state":
-            # Avoid Drive's parentheses bug
-            safe_prefix = filename.split("(")[0]
-            query = f"name contains '{safe_prefix}' and '{day_folder_id}' in parents"
+        query           =   (f"name='{filename}' and '{parent_folder_id}' in parents")
+        if component    ==  "model_state":
+            safe_prefix =   filename.split("(")[0]
+            query       =   f"name contains '{safe_prefix}' and '{parent_folder_id}' in parents"
 
-        response = self._retry_drive(
-            lambda: self.drive.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-        )            
-        # response = self.drive.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-
-        files = response.get("files", [])
-        file_id = files[0]["id"] if files else None
-
-        # ---------------------------------------------------------------
-        # 5. Upload or update file
-        # ---------------------------------------------------------------
-        media = MediaFileUpload(local_path, resumable=True)
-
-        if file_id:
-            # Update existing file
-            self.drive.files().update(
-                fileId=file_id,
-                media_body=media,
-                supportsAllDrives=True
+        response        =   self._retry_drive(
+            lambda: self.drive.files().list(
+                q=query,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True
             ).execute()
+        )
+
+        files   =   response.get("files", [])
+        file_id =   files[0]["id"] if files else None
+
+        # ---------------------------------------------------------------
+        # 5. Upload or update
+        # ---------------------------------------------------------------
+        media   =   MediaFileUpload(local_path, resumable=True)
+        if file_id: self.drive.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
         else:
-            # Create new file
-            metadata = {
-                "name": filename,
-                "parents": [day_folder_id]
-            }
-            self.drive.files().create(
-                body=metadata,
-                media_body=media,
-                supportsAllDrives=True
-            ).execute()
-
-        if self.verbose:
-            print(f"☁️ Uploaded quantum_data_lake/{component}/{day_folder_name}/{filename}")
+            metadata    =   {"name": filename, "parents": [parent_folder_id]}
+            self.drive.files().create(body=metadata, media_body=media, supportsAllDrives=True).execute()
+        if self.verbose:    print(f"☁️ Uploaded {parent_dir}/{component}/{filename}")
 
         return True
-    
 
+    
     def _download_file_from_drive(self, date_str, component, filename):
         """
         Download a single file from Drive into:
@@ -773,28 +756,23 @@ class GoogleDriveBackupManager:
         Converts them into the correct local project-relative path.
         """
 
-        if path is None:
-            return None
-
+        if path is None: return None
         p = Path(path)
 
         # 1) If path already exists → valid, return it
-        if p.exists():
-            return str(p)
+        if p.exists(): return str(p)
 
         # 2) Determine current environment's project root
-        if project_root is None:
-            project_root = str(Path(__file__).resolve().parents[2])   # Dynamic_Routing_Eval_Framework root
+        if project_root is None: project_root = str(Path(__file__).resolve().parents[2])   # Dynamic_Routing_Eval_Framework root
 
         # 3) Extract only the tail (file name) from the incoming path
-        fname = p.name                     # e.g., QuantumExperimentRunner_1.pkl
-        date_folder = p.parent.name        # e.g., day_20251118
-        component = p.parent.parent.name   # framework_state or model_state
+        fname       = p.name                    # e.g., QuantumExperimentRunner_1.pkl
+        date_folder = p.parent.name             # e.g., day_20251118
+        component   = p.parent.parent.name      # framework_state or model_state
 
         # 4) Reconstruct a correct, portable path:
-        new_path = Path(project_root) / "daqr" / "config" / component / date_folder / fname
-
-        return str(new_path)
+        new_path    = Path(project_root) / "daqr" / "config" / component / date_folder / fname
+        return      str(new_path)
     
     def __repr__(self):
         env = self.__class__.__name__

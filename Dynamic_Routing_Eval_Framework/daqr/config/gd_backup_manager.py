@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os, io, json, pickle
+import pathlib
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
@@ -625,14 +626,14 @@ class GoogleDriveBackupManager:
                 except Exception:   local_entry = self.normalize_path(local_entry, project_root=self.dir)
                 if local_entry and Path(local_entry).exists():
                     print("local entry check ", local_entry)
-                    restored[component][filename] = local_entry
+                    restored[component][filename] = str(Path(drive_path or local_path).resolve())
                     continue
 
                 # Otherwise download
                 drive_path = self._download_file_from_drive(date_str, component, filename)
                 if drive_path: 
                     print("found path: ",drive_path)
-                    restored[component][filename] = drive_path
+                    restored[component][filename] = str(Path(drive_path or local_path).resolve())
                 else:
                     local_path = str(self.framework_state_path/self.date_str/filename)
                     if component == "model_state": 

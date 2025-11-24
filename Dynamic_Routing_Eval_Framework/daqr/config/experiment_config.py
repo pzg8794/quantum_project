@@ -9,7 +9,8 @@ from daqr.algorithms.predictive_bandits    import CPursuitNeuralUCB, CPursuit, i
 from daqr.core.qubit_allocator import *
 
 import  copy, os
-import cloudpickle as pickle
+import pathlib
+import  pickle
 from pathlib import Path
 from datetime import datetime
 from .local_backup_manager import LocalBackupManager
@@ -386,6 +387,7 @@ class ExperimentConfiguration:
             pass
         
         # 3) Try filesystem direct search (NEW)
+        search_path = None
         if item_k == "model_state": 
             search_path = self.model_state_path / self.day_str / item_v
         else:
@@ -394,10 +396,10 @@ class ExperimentConfiguration:
         # DEBUG PRINT
         print(f"\tChecking FS: {search_path} | Exists? {search_path.exists()}")
         
-        if search_path.exists():
+        if search_path and search_path.exists():
             print(f"\t✓ Found via filesystem: {search_path}")
             # Update registry for future lookups
-            self.backup_registry.setdefault(item_k, {})[item_v] = str(search_path)
+            self.backup_registry.setdefault(item_k, {})[item_v] = str(Path(search_path).resolve())
             return str(search_path)
         
         # 4) Drive fallback

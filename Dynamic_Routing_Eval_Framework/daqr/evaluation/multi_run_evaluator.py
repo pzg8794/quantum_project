@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from daqr.config.experiment_config import ExperimentConfiguration
 from daqr.evaluation.experiment_runner import QuantumExperimentRunner
+import pathlib
 from pathlib import Path
 import pickle
 import threading

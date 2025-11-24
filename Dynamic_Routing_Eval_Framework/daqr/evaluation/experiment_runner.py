@@ -1,5 +1,6 @@
 from    concurrent.futures import ThreadPoolExecutor, as_completed
 from    daqr.config.experiment_config import ExperimentConfiguration
+import pathlib
 from    pathlib import Path
 from    tqdm    import tqdm
 import  re

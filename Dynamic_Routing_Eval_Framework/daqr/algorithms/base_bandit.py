@@ -1,15 +1,14 @@
 from datetime import datetime
 import os
-import math
+import re
 import json
 import time
 import copy
-import psutil
 import random
 import warnings, gc
 import numpy as np
-import pandas as pd
-from tqdm import tqdm
+# import pandas as pd
+# from tqdm import tqdm
 import seaborn as sns
 from random import choice
 import matplotlib.pyplot as plt
@@ -77,7 +76,7 @@ class QuantumModel(ABC):
 
         self.mode = mode
         self.beta = beta
-        # self.verbose = self.configs.verbose
+        # self.verbose = self.configs.verbosel
         
         # EXP3 parameters (used in 'hybrid' and 'exp3' modes)
         self.capacity = int(capacity*self.configs.scale)
@@ -86,7 +85,8 @@ class QuantumModel(ABC):
         self.state = 0
 
         self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
-        self.save_to_dir = Path(f"{self.configs.dir}/model_state/{self.configs.day_str}/")
+        # self.save_to_dir = Path(f"{self.configs.dir}/model_state/{self.configs.day_str}/")
+        self.save_to_dir = self.configs.model_state_path / re.sub(r'.*?(day_\d{8})$', r'\1', str(self.configs.day_str))
 
 
         self.allocator_id = str(getattr(self.configs, "allocator", "alloc"))
@@ -234,16 +234,13 @@ class QuantumModel(ABC):
         Returns:
             bool: True if successfully resumed, False otherwise.
         """
-        state_path_str = Path(self.save_to_dir) / self.file_name
-        config_path = self.configs.get_latest_state("model_state", self.file_name) or state_path_str
+        config_path = self.configs.get_latest_state("model_state", self.file_name)
         # print(Path(config_path))
         if config_path:
+            state_path = None
             # print(f"\t[TRACE] config_path = {config_path!r} (type={type(config_path)})")
             # --- TRACE 2: STATE PATH CONSTRUCTION ---
             try:
-                # 🔥 FIX: Ensure config_path is string before 'in' check
-                if isinstance(config_path, Path): config_path = str(config_path)
-                if isinstance(config_path, dict): config_path = config_path.get('local_path', str(config_path))
                 # print(f"[TRACE] config_path = {config_path!r} (type={type(config_path)})")
                 state_path = Path(config_path)
             except Exception as e:

@@ -1,12 +1,11 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
-import pickle
-import threading
-import time, gc, os, json
-import numpy as np, copy
-from pathlib import Path
 from daqr.config.experiment_config import ExperimentConfiguration
 from daqr.evaluation.experiment_runner import QuantumExperimentRunner
+from pathlib import Path
+import pickle
+import threading
+import numpy as np, copy
+import time, gc, re, json
 
 
 class MultiRunEvaluator:
@@ -56,7 +55,7 @@ class MultiRunEvaluator:
         self.capacity = self.base_frames
 
         # Set paths
-        self.save_to_dir = Path(f"{self.configs.dir}/framework_state/day_{self.configs.day_str}/")
+        self.save_to_dir = self.configs.framework_state_path / self.configs.day_str
         
         # Update configs FIRST
         self.update_configs(runs, models, attack_type, scenarios, attack_intensity)
@@ -216,14 +215,12 @@ class MultiRunEvaluator:
 
         # --- TRACE 1: CONFIG PATH ---
         # print(self.file_name)
-        config_path = self.configs.get_latest_state("framework_state", self.file_name) or f"{self.save_to_dir}/{self.file_name}"
-        if config_path:
+        config_path = self.configs.get_latest_state("framework_state", self.file_name)
+        if config_path: 
+            state_path = None
             print(f"[TRACE] config_path = {config_path!r} (type={type(config_path)})")
-
             # --- TRACE 2: STATE PATH CONSTRUCTION ---
             try:
-                if isinstance(config_path, Path): config_path = str(config_path)
-                if isinstance(config_path, dict): config_path = config_path.get('local_path', str(config_path))
                 print(f"[TRACE] config_path = {config_path!r} (type={type(config_path)})")
                 state_path = Path(config_path)
             except Exception as e:
@@ -232,7 +229,6 @@ class MultiRunEvaluator:
                 return False
 
             print(f"[TRACE] state_path = {state_path!r} (type={type(state_path)})")
-
             # --- TRACE 3: FILE EXISTENCE ---
             try:
                 exists = state_path.exists()

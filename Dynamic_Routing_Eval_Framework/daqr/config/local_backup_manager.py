@@ -21,10 +21,10 @@ class LocalBackupManager(GoogleDriveBackupManager):
         temp = defaultdict(dict)
         valid_exts = {".pkl", ".json"}
 
-        for dirpath, _, filenames in os.walk(self.dir):
+        for dirpath, _, filenames in os.walk(self.quantum_datalake_path):
             dir_path = Path(dirpath)
 
-            try: relative_path = dir_path.relative_to(self.dir)
+            try: relative_path = dir_path.relative_to(self.quantum_datalake_path )
             except ValueError: continue
 
             parts = relative_path.parts
@@ -35,7 +35,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
             date_str = None
             for p in parts:
                 if p.startswith("day_"):
-                    date_str = self.normalize_day_prefix(p)
+                    # date_str = self.normalize_day_prefix(p)
+                    date_str = p
                     break
             if not date_str: continue
 
@@ -58,10 +59,9 @@ class LocalBackupManager(GoogleDriveBackupManager):
     
     def build_registry(self, force=False, expected_keys=None):
         """Build registry with recursion protection."""
-        if not force and hasattr(self, '_registry_built_today'):
-            print(f"\t→ Using cached registry from today")
-            return self.backup_registry
-        
+        # if not force and hasattr(self, '_registry_built_today'):
+        #     print(f"\t→ Using cached registry from today")
+        #     return self.backup_registry
         self.backup_registry = self._scan_local_files(expected_keys=None)  # Always full scan first
         total = sum(len(v) for v in self.backup_registry.values())
         print(f"\t→ Filesystem scan found {total} files")
@@ -72,27 +72,27 @@ class LocalBackupManager(GoogleDriveBackupManager):
             json.dump(self.backup_registry, f, indent=2)
         print(f"\t→ Local registry updated at: {self.backup_registry_path}")
         
-        # FIX: Filter AFTER scan, not during
-        if expected_keys:
-            print(f"\t→ Filtering {len(expected_keys)} expected keys...")
-            self.backup_registry = self._filter_registry(self.backup_registry, expected_keys)
-            filtered_total = sum(len(v) for v in self.backup_registry.values())
-            print(f"\t→ Filtered registry contains {filtered_total} keys")
+        # # FIX: Filter AFTER scan, not during
+        # if expected_keys:
+        #     print(f"\t→ Filtering {len(expected_keys)} expected keys...")
+        #     self.backup_registry = self._filter_registry(self.backup_registry, expected_keys)
+        #     filtered_total = sum(len(v) for v in self.backup_registry.values())
+        #     print(f"\t→ Filtered registry contains {filtered_total} keys")
         
         # Mark as built today
         self._registry_built_today = True
         
         # Upload to Drive ONLY if forced
-        if force and self.remote_available:
-            self._save_registry_to_gcs("backup_registry.json")
-            print("\t→ Drive registry updated")
+        # if force and self.remote_available:
+        self._save_registry_to_gcs("backup_registry.json")
+        print("\t→ Drive registry updated")
         
         print("===================== REGISTRY BUILD COMPLETE =====================\n")
         return self.backup_registry
     
 
     def save_file(self, component, filename, file_data):
-        self.date_str = self.normalize_day_prefix(self.date_str)
+        # self.date_str = self.normalize_day_prefix(self.date_str)
         save_dir = self.dir / component / self.date_str
         save_dir.mkdir(parents=True, exist_ok=True)
         file_path = save_dir / filename
@@ -162,7 +162,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
                 parts = Path(local_path).parts
                 fixed_parts = []
                 for p in parts:
-                    if "day_" in p: fixed_parts.append(self.normalize_day_prefix(p))
+                    # if "day_" in p: fixed_parts.append(self.normalize_day_prefix(p))
+                    if "day_" in p: fixed_parts.append(p)
                     else: fixed_parts.append(p)
                 local_path = str(Path(*fixed_parts))
             except Exception as e: print(f"⚠️ Path normalization failed: {e}")
@@ -228,7 +229,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
                 try:    self._log_file.close()
                 except: pass
             
-            if self.in_share_drive:
+            if not self.in_share_drive:
                 logfile = self.quantum_logs_path / self.quantum_logs_file_name
                 try:    self._upload_file_to_drive(component=None, local_path=logfile, date_str=self.date_str, filename=self.quantum_logs_file_name, parent_dir="quantum_logs")
                 except: pass
@@ -248,7 +249,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
 
     def _build_metadata_local(self, parent_dir="quantum_logs"):
         """Scan local folder structure with defensive error handling."""
-        root = self.quantum_logs_path if parent_dir == "quantum_logs" else self.quantum_data_lake_path
+        root = self.quantum_logs_path
         if not root.exists() or len(self.metadata) != 0: return False
         
         print(f"🔍 Scanning local metadata from: {root}")

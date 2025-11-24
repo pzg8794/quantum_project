@@ -1,18 +1,15 @@
-from datetime import datetime
-import os
-from pathlib import Path
-import pickle
+from    concurrent.futures import ThreadPoolExecutor, as_completed
 from    daqr.config.experiment_config import ExperimentConfiguration
+from    pathlib import Path
 from    tqdm    import tqdm
-import  numpy as np, copy
-import  gc, time
+import  re
+import  pickle
 import  torch
+import  gc, time
 import  threading  
-from    threading import Lock, Event
-import concurrent.futures
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import multiprocessing as mp
-import psutil  # for memory estimation (optional)
+import  numpy as np, copy
+import  multiprocessing as mp
+
 
 
 
@@ -51,7 +48,7 @@ class QuantumExperimentRunner:
 
         # Set paths
         self.key_attrs = {}
-        self.save_to_dir = Path(f"{self.configs.dir}/framework_state/{self.configs.day_str}/")
+        self.save_to_dir = self.configs.framework_state_path / self.configs.day_str
         self.configs.update_configs(attack_type=attack_type, attack_intensity=attack_intensity)
 
 
@@ -188,14 +185,13 @@ class QuantumExperimentRunner:
         """
         # Prefer config-tracked state if available
         # print(self.file_name)
-        config_path = self.configs.get_latest_state("framework_state", self.file_name) or f"{self.save_to_dir}/{self.file_name}"
+        config_path = self.configs.get_latest_state("framework_state", self.file_name)
         # print(config_path)
         if config_path:
+            state_path = None
             # print(f"[TRACE] config_path = {config_path!r} (type={type(config_path)})")
             # --- TRACE 2: STATE PATH CONSTRUCTION ---
             try:
-                if isinstance(config_path, Path): config_path = str(config_path)
-                if isinstance(config_path, dict): config_path = config_path.get('local_path', str(config_path))
                 # print(f"[TRACE] config_path = {config_path!r} (type={type(config_path)})")
                 state_path = Path(config_path)
             except Exception as e:

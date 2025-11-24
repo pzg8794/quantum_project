@@ -33,9 +33,22 @@ class ExperimentConfiguration:
         self.environment = None
         self.overwrite = overwrite
         self.seed_offset = seed_offset
-        self.dir = os.path.dirname(os.path.abspath(__file__))
-        self.quantum_datalake_path = Path(self.dir).parent.parent.parent.parent / "quantum_data_lake"
-        if not self.quantum_datalake_path.exists(): self.quantum_datalake_path = self.dir
+        self.dir = Path(os.path.dirname(os.path.abspath(__file__)))
+
+        self.in_share_drive         = True
+        parent_dir                  = self.dir.parent.parent.parent.parent
+        self.quantum_logs_path      = parent_dir / "quantum_logs"
+        if not self.quantum_logs_path.exists(): 
+            parent_dir              = self.dir
+            self.in_share_drive     = False
+        self.quantum_logs_path      = parent_dir / "quantum_logs"
+        self.quantum_datalake_path  = parent_dir / "quantum_data_lake"
+
+        # self.quantum_logs_path      = Path(self.normalize_path("quantum_logs", project_root=parent_dir))
+        self.backup_registry_path   = self.quantum_datalake_path / "backup_registry.json"
+        self.backup_pickle_path     = self.quantum_datalake_path / "backup_registry.pkl"
+        self.framework_state_path   = self.quantum_datalake_path / "framework_state"
+        self.model_state_path       = self.quantum_datalake_path / "model_state"
         
         
         self.runs               = runs
@@ -53,7 +66,7 @@ class ExperimentConfiguration:
         self.attack_intensity   = attack_intensity
 
         # Single unified manager - handles everything
-        self.backup_mgr = LocalBackupManager(date_str=self.day_str, config_dir=self.quantum_datalake_path, verbose=self.verbose)
+        self.backup_mgr = LocalBackupManager(date_str=self.day_str, config_dir=self.dir, verbose=self.verbose)
 
         self.category_map = {
             'none': 'Baseline (No Attacks)',
@@ -350,41 +363,52 @@ class ExperimentConfiguration:
 
 
     def get_latest_state(self, item_k, item_v):
-        """
-        Retrieves the latest available file path for a given item.
-        If missing locally, attempts Drive restore (any date).
-        """
+        # DEBUG PRINT
+        # print(f"🔎 Looking for: {item_k}/{item_v}")
 
-        # 1) Generate expected keys + try restore when this is the first lookup
+        # 1) Generate expected keys if needed
         if len(self.expected_keys) == 0 and "multirunevaluator" in item_v.lower():
             self.generate_expected_keys(item_v)
             self.backup_mgr.restore_from_drive(self.day_str, self.expected_keys)
         
-        # 2) Try normal local registry lookup
+        # 2) Try registry lookup
         try:
             path = self.backup_registry[item_k][item_v]
-            # print(Path(path))
-            if Path(path).exists(): return path
-        except KeyError as e:
-            # print(f"\t⚠️ Missing locally Path: {e}")
+            if Path(path).exists(): 
+                print(f"\t✅ Registry hit: {path}")
+                return str(path)
+            else:
+                print(f"\t⚠️ Registry path invalid: {path}")
+        except KeyError as e: 
+            print(f"\t⚠️ Registry path invalid: {e}")
             pass
-
-        # 3) If missing → Drive fallback (no date needed)
-        # print(f"\t⚠️ Missing locally → attempting Drive fallback for {item_v}")
-
-        drive_path = self.backup_mgr.download_any_date(
-            component=item_k,
-            filename=item_v
-        )
-
+        
+        # 3) Try filesystem direct search (NEW)
+        if item_k == "model_state": 
+            search_path = self.model_state_path / self.day_str / item_v
+        else:
+            search_path = self.framework_state_path / self.day_str / item_v
+        
+        # DEBUG PRINT
+        print(f"\tChecking FS: {search_path} | Exists? {search_path.exists()}")
+        
+        if search_path.exists():
+            print(f"\t✓ Found via filesystem: {search_path}")
+            # Update registry for future lookups
+            self.backup_registry.setdefault(item_k, {})[item_v] = str(search_path)
+            return str(search_path)
+        
+        # 4) Drive fallback
+        print(f"\t☁️ Attempting Drive download: {item_k}/{item_v}")
+        drive_path = self.backup_mgr.download_any_date(component=item_k, filename=item_v)
+        
         if drive_path is not None:
             print(f"\t☁️ Recovered from Drive → {drive_path}")
-            # update registry so future lookups are instant
             self.backup_registry.setdefault(item_k, {})[item_v] = drive_path
-            return drive_path
-
-        # 4) Final fallback: not found anywhere
-        # print(f"\t❌ Could not locate {item_v} anywhere (local or Drive)")
+            return str(drive_path)
+        
+        # 5) Not found
+        print(f"\t❌ Not found anywhere: {item_k}/{item_v}")
         return None
 
 
@@ -456,7 +480,7 @@ class ExperimentConfiguration:
     def save_neural_core(self, model, performance, frames_no, allocator_tag, overwrite=True):
         """Save a NeuralUCB checkpoint tagged by frame + allocator name."""
         file_name = f"neuralucb_{allocator_tag}_frames{frames_no}.pkl"
-        model_dir = os.path.join(self.dir, "models")
+        model_dir = os.path.join(str(self.dir), "models")
         file_path = os.path.join(model_dir, file_name)
         os.makedirs(model_dir, exist_ok=True)
 
@@ -479,7 +503,7 @@ class ExperimentConfiguration:
     def load_neural_core(self, frames_no, allocator_tag):
         """Load a NeuralUCB checkpoint by frame + allocator name."""
         file_name = f"neuralucb_{allocator_tag}_frames{frames_no}.pkl"
-        model_dir = os.path.join(self.dir, "models")
+        model_dir = os.path.join(str(self.dir), "models")
         file_path = os.path.join(model_dir, file_name)
 
         if not os.path.exists(file_path):

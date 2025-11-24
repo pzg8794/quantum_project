@@ -36,13 +36,15 @@ class ExperimentConfiguration:
         self.dir = Path(os.path.dirname(os.path.abspath(__file__)))
 
         self.in_share_drive         = True
-        parent_dir                  = self.dir.parent.parent.parent.parent
-        self.quantum_logs_path      = parent_dir / "quantum_logs"
+        self.drive_datalake_base    = Path("/content/drive/Shareddrives/ai_quantum_computing")
+        self.parent_dir             = self.dir.parent.parent.parent.parent
+        self.quantum_logs_path      = self.parent_dir / "quantum_logs"
         if not self.quantum_logs_path.exists(): 
-            parent_dir              = self.dir
+            self.drive_datalake_base= self.dir
+            self.parent_dir         = self.dir
             self.in_share_drive     = False
-        self.quantum_logs_path      = parent_dir / "quantum_logs"
-        self.quantum_datalake_path  = parent_dir / "quantum_data_lake"
+        self.quantum_logs_path      = self.parent_dir / "quantum_logs"
+        self.quantum_datalake_path  = self.parent_dir / "quantum_data_lake"
 
         # self.quantum_logs_path      = Path(self.normalize_path("quantum_logs", project_root=parent_dir))
         self.backup_registry_path   = self.quantum_datalake_path / "backup_registry.json"
@@ -721,3 +723,95 @@ class ExperimentConfiguration:
         print(f"Custom Models ({len(self.CUSTOM_MODELS)}): {', '.join(self.CUSTOM_MODELS)}")
         print(f"Total Models: {len(self.ALL_QUANTUM_MODELS)}")
         print("=" * 60)
+
+
+    def save_obj(self, obj, save_to_dir, file_name):
+        """Save evaluator state for the current day."""
+        if self.overwrite and self.in_share_drive:
+            save_dir_relative = save_to_dir.relative_to(self.drive_datalake_base)
+            if not self.in_share_drive: save_to_dir = self.parent_dir / save_dir_relative
+            save_to_dir.mkdir(parents=True, exist_ok=True)
+
+            # Build pickleable dict
+            save_dict = {}
+            unpickleable = []
+            for attr, value in obj.__dict__.items():
+                try:
+                    pickle.dumps(value)
+                    save_dict[attr] = value
+                except: unpickleable.append(attr)
+            if unpickleable and self.verbose:print(f"\t⚠️ {self} Excluded unpickleable fields:{', '.join(unpickleable)}")   
+
+            save_path = save_to_dir / file_name
+            try:
+                # ───────────────────────────────────────────────
+                # Only save if overwrite=True OR file doesn't exist
+                # ───────────────────────────────────────────────
+                if self.overwrite or not save_path.exists():
+                    with open(save_path, 'wb') as f:
+                        pickle.dump(save_dict, f)
+
+                    if self.verbose:
+                        print(f"\t{self} State saved successfully")
+
+                    # print(save_path)
+                    # print(f"\t{self} Saved Successfully")
+                    # Save registry (unchanged)
+                    # self.configs.save()
+                else:
+                    if self.verbose: print(f"\t{self} Skipped save (exists + overwrite=False)")
+            except Exception as e:
+                print(f"❌ {self} Save failed: {e}")
+                raise
+        return False
+    
+    def resume_obj(self, component, file_name, verbose=False):
+        if verbose: print("\n================ RESUME TRACE ================\n")
+        # --- TRACE 1: CONFIG PATH ---
+        # print(self.file_name)
+        config_path = self.get_latest_state(component, file_name)
+        if config_path: 
+            if verbose: print(f"[TRACE] state_path = {config_path!r} (type={type(config_path)})")
+            # --- TRACE 2: STATE PATH CONSTRUCTION ---
+            try:
+                if verbose: print(f"[TRACE] config_path = {config_path!r} (type={type(config_path)})")
+                save_dir_relative = Path(config_path).relative_to(self.drive_datalake_base)
+                if not self.in_share_drive: config_path = self.dir / save_dir_relative
+                config_path = Path(config_path)
+            except Exception as e:
+                print(f"[ERROR] Failed converting config_path to Path: {e}")
+                print(f"[TRACE] config_path was: {config_path!r}")
+                return None, False
+            
+            # --- TRACE 3: FILE EXISTENCE ---
+            try:
+                exists = config_path.exists()
+                size = config_path.stat().st_size if exists else "N/A"
+                if verbose: print(f"[TRACE] state_path.exists() = {exists}, size = {size}")
+                if not exists or size == 0:
+                    print(f"\t[WARN] No saved state at {config_path}")
+                    return None, False
+            except Exception as e:
+                print(f"[ERROR] Checking path existence failed: {e}")
+                return None, False
+
+            # --- TRACE 4: LOAD PICKLE ---
+            eq_result = None
+            try:
+                with open(config_path, "rb") as f:
+                    loaded_dict = pickle.load(f)
+                    # print(f"\t[TRACE] loaded_dict type: {type(loaded_dict)}")
+                    # if isinstance(loaded_dict, dict): print(f"[TRACE] loaded_dict keys: {list(loaded_dict.keys())}")
+                    # --- TRACE 5: EQUALITY CHECK ---
+                    try:
+                        eq_result = (self == loaded_dict)
+                        # print(f"\t[TRACE] self == loaded_dict → {eq_result!r} (type={type(eq_result)})")
+                    except Exception as e:
+                        print(f"[ERROR] Equality comparison failed: {e}")
+                        return None, False   
+                    return loaded_dict, eq_result             
+            except Exception as e:
+                print(f"[ERROR] Failed loading pickle from {config_path}: {e}")
+                return None, False
+            
+        return None, False

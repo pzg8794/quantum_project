@@ -122,55 +122,7 @@ class QuantumExperimentRunner:
 
     def save(self):
         """Save evaluator state for the current day."""
-        # FIX: Try original path first; if it fails, fallback to normalized path
-        try:                target = Path(str(self.save_to_dir))
-        except Exception:   target = Path(self.configs.backup_mgr.normalize_path(str(self.save_to_dir)))
-        target.mkdir(parents=True, exist_ok=True)
-        self.save_to_dir = target
-
-        
-        # Build pickleable dict
-        save_dict = {}
-        unpickleable = []
-        
-        for attr, value in self.__dict__.items():
-            try:
-                pickle.dumps(value)
-                save_dict[attr] = value
-            except:
-                unpickleable.append(attr)
-        
-        if unpickleable and self.configs.verbose:print(f"\t⚠️ {self} Excluded unpickleable fields:{', '.join(unpickleable)}")   
-
-        save_path = self.save_to_dir / self.file_name
-
-        try:
-            # ───────────────────────────────────────────────
-            # Only save if overwrite=True OR file doesn't exist
-            # ───────────────────────────────────────────────
-            if self.configs.overwrite or not save_path.exists():
-
-                with open(save_path, 'wb') as f:
-                    pickle.dump(save_dict, f)
-
-                if self.configs.verbose:
-                    print(f"\t{self} State saved successfully")
-
-                # print(save_path)
-                # print(f"\t{self} Saved Successfully")
-                # Save registry (unchanged)
-                # self.configs.save()
-
-            else:
-                # Completely silent unless verbose
-                if self.configs.verbose:
-                    print(f"\t{self} Skipped save (exists + overwrite=False)")
-
-        except Exception as e:
-            print(f"❌ {self} Save failed: {e}")
-            raise
-
-        return str(save_path)
+        return self.configs.save_obj(self, self.save_to_dir, self.file_name)
 
 
     def resume(self):
@@ -183,76 +135,20 @@ class QuantumExperimentRunner:
         Returns:
             bool: True if successfully resumed, False otherwise.
         """
-        # Prefer config-tracked state if available
-        # print(self.file_name)
-        config_path = self.configs.get_latest_state("framework_state", self.file_name)
-        # print(config_path)
-        if config_path:
-            state_path = None
-            # print(f"[TRACE] config_path = {config_path!r} (type={type(config_path)})")
-            # --- TRACE 2: STATE PATH CONSTRUCTION ---
+        loaded_dict, eq_result = self.configs.resume_obj("framework_state", self.file_name)
+        # --- TRACE 6: UPDATE ---
+        if eq_result:
+            print("[TRACE] Updating self.__dict__ ...")
+            print(f"\t🔄 {self} Resuming state from: {self.save_to_dir}")
             try:
-                # print(f"[TRACE] config_path = {config_path!r} (type={type(config_path)})")
-                state_path = Path(config_path)
-            except Exception as e:
-                print(f"[ERROR] Failed converting config_path to Path: {e}")
-                print(f"[TRACE] config_path was: {config_path!r}")
-                return False
-
-            # print(f"[TRACE] state_path = {state_path!r} (type={type(state_path)})")
-
-            # --- TRACE 3: FILE EXISTENCE ---
-            try:
-                exists = state_path.exists()
-                size = state_path.stat().st_size if exists else "N/A"
-                # print(f"[TRACE] state_path.exists() = {exists}, size = {size}")
-            except Exception as e:
-                print(f"[ERROR] Checking path existence failed: {e}")
-                return False
-
-            if not exists or size == 0:
-                print(f"\t[WARN] No saved state at {state_path}")
-                return False
-            
-            # --- TRACE 4: LOAD PICKLE ---
-            eq_result = None
-            try:
-                with open(state_path, "rb") as f:
-                    loaded_dict = pickle.load(f)
-                    # print(f"[TRACE] loaded_dict type: {type(loaded_dict)}")
-                    # if isinstance(loaded_dict, dict): print(f"[TRACE] loaded_dict keys: {list(loaded_dict.keys())}")
-
-                    # --- TRACE 5: EQUALITY CHECK ---
-                    try:
-                        eq_result = (self == loaded_dict)
-                        # print(f"[TRACE] self == loaded_dict → {eq_result!r} (type={type(eq_result)})")
-                    except Exception as e:
-                        print(f"[ERROR] Equality comparison failed: {e}")
-                        return False                
-            except Exception as e:
-                print(f"[ERROR] Failed loading pickle from {state_path}: {e}")
-                return False
-
-            # --- TRACE 6: UPDATE ---
-            if eq_result:
-                # print("[TRACE] Updating self.__dict__ ...")
-                print(f"\t🔄 {self} Resuming state from: {state_path}")
-                try:
-                    configs = self.configs
-                    self.__dict__.update(loaded_dict)
-                    self.configs = configs
-                except Exception as e:
-                    print(f"[ERROR] __dict__.update failed: {e}")
-                    print(f"[TRACE] loaded_dict = {loaded_dict!r}")
-                    return False
-
-                # Final check: list a few attributes so we know nothing got corrupted
-                # print("[TRACE] Post-update attribute types:")
-                # for k, v in list(self.__dict__.items())[:10]: print(f"  - {k}: {type(v)}")
+                configs = self.configs
+                self.__dict__.update(loaded_dict)
+                self.configs = configs
                 return True
-
-            print(f"\t[WARN] ID mismatch for {self}, skipping resume.")
-            return False
+            except Exception as e:
+                print(f"[ERROR] __dict__.update failed: {e}")
+                print(f"[TRACE] loaded_dict = {loaded_dict!r}")
+        return False
     
     def remove_model(self, model_name):
         if model_name in self.algorithm_configs.keys():
@@ -340,20 +236,20 @@ class QuantumExperimentRunner:
         if alg_name in self.results.keys(): 
             # if self.configs.overwrite: 
             print(f"\t{alg_name} already processed")
-            if alg_name == base_model:
-                model = model_class(
-                    configs=self.configs,
-                    X_n=env_info['contexts'],
-                    reward_list=env_info['reward_functions'],
-                    frame_number=self.frames_count,
-                    attack_list=env_info['attack_pattern'],
-                    capacity=self.capacity, 
-                    **model_kwargs
-                )
+            # if alg_name == base_model:
+                # model = model_class(
+                #     configs=self.configs,
+                #     X_n=env_info['contexts'],
+                #     reward_list=env_info['reward_functions'],
+                #     frame_number=self.frames_count,
+                #     attack_list=env_info['attack_pattern'],
+                #     capacity=self.capacity, 
+                #     **model_kwargs
+                # )
                 # Resume previous evaluator state if configured
                 # try:                    model.resume()
                 # except Exception as e:  print(f"\t⚠️ {self}-{alg_name} Resume failed: {e}")
-            return self.results[alg_name], model
+            return self.results[alg_name], None
         else:
             try:
                 while total_reward <= 0.0:

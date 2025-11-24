@@ -59,9 +59,6 @@ class LocalBackupManager(GoogleDriveBackupManager):
     
     def build_registry(self, force=False, expected_keys=None):
         """Build registry with recursion protection."""
-        # if not force and hasattr(self, '_registry_built_today'):
-        #     print(f"\t→ Using cached registry from today")
-        #     return self.backup_registry
         self.backup_registry = self._scan_local_files(expected_keys=None)  # Always full scan first
         total = sum(len(v) for v in self.backup_registry.values())
         print(f"\t→ Filesystem scan found {total} files")
@@ -72,22 +69,13 @@ class LocalBackupManager(GoogleDriveBackupManager):
             json.dump(self.backup_registry, f, indent=2)
         print(f"\t→ Local registry updated at: {self.backup_registry_path}")
         
-        # # FIX: Filter AFTER scan, not during
-        # if expected_keys:
-        #     print(f"\t→ Filtering {len(expected_keys)} expected keys...")
-        #     self.backup_registry = self._filter_registry(self.backup_registry, expected_keys)
-        #     filtered_total = sum(len(v) for v in self.backup_registry.values())
-        #     print(f"\t→ Filtered registry contains {filtered_total} keys")
-        
-        # Mark as built today
-        self._registry_built_today = True
-        
         # Upload to Drive ONLY if forced
         # if force and self.remote_available:
-        self._save_registry_to_gcs("backup_registry.json")
+        if self.in_share_drive: self._save_registry_to_gcs("backup_registry.json")
         print("\t→ Drive registry updated")
         
         print("===================== REGISTRY BUILD COMPLETE =====================\n")
+        self.save_registry()
         return self.backup_registry
     
 

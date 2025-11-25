@@ -2,6 +2,7 @@ import json
 import pickle
 import threading
 import os, sys, io
+import pathlib
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
@@ -21,36 +22,40 @@ class LocalBackupManager(GoogleDriveBackupManager):
         temp = defaultdict(dict)
         valid_exts = {".pkl", ".json"}
 
-        for dirpath, _, filenames in os.walk(self.dir):
-            dir_path = Path(dirpath)
+        for mode in ["drive", "local"]: # check boths storage locations in drive
+            if self.quantum_data_paths[mode].exists(): continue # skip systems without dual storage (not drive)
+            
+            for dirpath, _, filenames in os.walk(self.quantum_data_paths[mode]):
+                dir_path = Path(dirpath)
 
-            try: relative_path = dir_path.relative_to(self.dir)
-            except ValueError: continue
+                try: relative_path = dir_path.relative_to(self.quantum_data_paths[mode])
+                except ValueError: continue
 
-            parts = relative_path.parts
-            if not parts: continue
-            component = parts[0]
+                parts = relative_path.parts
+                if not parts: continue
+                component = parts[0]
 
-            # Extract date_str from folders like day_20251120
-            date_str = None
-            for p in parts:
-                if p.startswith("day_"):
-                    date_str = self.normalize_day_prefix(p)
-                    break
-            if not date_str: continue
+                # Extract date_str from folders like day_20251120
+                date_str = None
+                for p in parts:
+                    if p.startswith("day_"):
+                        date_str = p
+                        break
+                if not date_str: continue
 
-            for fname in filenames:
-                if Path(fname).suffix not in valid_exts: continue
-                abs_path = str(dir_path / fname)
-                temp[component][fname] = abs_path
-                if load_to_drive:
-                    self.download_drive_metadata()
-                    try:    
-                        self.metadata[fname]
-                        print(f"\t→ Files {fname} was already stored")
-                        if not force: continue
-                    except Exception as e: print(f"\t→ Files {fname} is uploading")
-                    self._upload_file_to_drive(component, date_str=date_str, local_path=abs_path, filename=fname)
+                for fname in filenames:
+                    if Path(fname).suffix not in valid_exts: continue
+                    abs_path = str(dir_path / fname)
+                    temp[component][fname] = abs_path
+
+                    if load_to_drive:
+                        self.download_drive_metadata()
+                        try:    
+                            self.metadata[fname]
+                            print(f"\t→ Files {fname} was already stored")
+                            if not force: continue
+                        except Exception as e: print(f"\t→ Files {fname} is uploading")
+                        self._upload_file_to_drive(component, date_str=date_str, local_path=abs_path, filename=fname)
 
         # Final registry build
         registry = {comp: {fname: meta for fname, meta in files.items()} for comp, files in temp.items()}
@@ -58,41 +63,21 @@ class LocalBackupManager(GoogleDriveBackupManager):
     
     def build_registry(self, force=False, expected_keys=None):
         """Build registry with recursion protection."""
-        if not force and hasattr(self, '_registry_built_today'):
-            print(f"\t→ Using cached registry from today")
-            return self.backup_registry
-        
         self.backup_registry = self._scan_local_files(expected_keys=None)  # Always full scan first
         total = sum(len(v) for v in self.backup_registry.values())
         print(f"\t→ Filesystem scan found {total} files")
         
-        # Always save local registry
-        self.backup_registry_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.backup_registry_path, "w") as f:
-            json.dump(self.backup_registry, f, indent=2)
-        print(f"\t→ Local registry updated at: {self.backup_registry_path}")
-        
-        # FIX: Filter AFTER scan, not during
-        if expected_keys:
-            print(f"\t→ Filtering {len(expected_keys)} expected keys...")
-            self.backup_registry = self._filter_registry(self.backup_registry, expected_keys)
-            filtered_total = sum(len(v) for v in self.backup_registry.values())
-            print(f"\t→ Filtered registry contains {filtered_total} keys")
-        
-        # Mark as built today
-        self._registry_built_today = True
-        
         # Upload to Drive ONLY if forced
-        if force and self.remote_available:
-            self._save_registry_to_gcs("backup_registry.json")
-            print("\t→ Drive registry updated")
+        self._save_registry_to_gcs(self.registry_file_paths[self.mode])
+        print("\t→ Drive registry updated")
         
         print("===================== REGISTRY BUILD COMPLETE =====================\n")
+        self.save_registry()
         return self.backup_registry
     
 
     def save_file(self, component, filename, file_data):
-        self.date_str = self.normalize_day_prefix(self.date_str)
+        # self.date_str = self.normalize_day_prefix(self.date_str)
         save_dir = self.dir / component / self.date_str
         save_dir.mkdir(parents=True, exist_ok=True)
         file_path = save_dir / filename
@@ -162,7 +147,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
                 parts = Path(local_path).parts
                 fixed_parts = []
                 for p in parts:
-                    if "day_" in p: fixed_parts.append(self.normalize_day_prefix(p))
+                    # if "day_" in p: fixed_parts.append(self.normalize_day_prefix(p))
+                    if "day_" in p: fixed_parts.append(p)
                     else: fixed_parts.append(p)
                 local_path = str(Path(*fixed_parts))
             except Exception as e: print(f"⚠️ Path normalization failed: {e}")
@@ -188,8 +174,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
     
     def init_logging_redirect(self, file_name="quantum_quick_runs"):
         self.quantum_logs_file_name = f"quantum_{file_name}_log_{self.date_str}.txt"
-        logfile = self.quantum_logs_path / self.quantum_logs_file_name
-        self.quantum_logs_path.mkdir(parents=True, exist_ok=True)
+        logfile = self.quantum_data_paths["logs"][self.mode] / self.quantum_logs_file_name
+        self.quantum_data_paths["logs"][self.mode].mkdir(parents=True, exist_ok=True)
 
         # Save originals
         self._orig_stdout = sys.stdout
@@ -228,8 +214,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
                 try:    self._log_file.close()
                 except: pass
             
-            if self.in_share_drive:
-                logfile = self.quantum_logs_path / self.quantum_logs_file_name
+            if not self.in_share_drive:
+                logfile = self.quantum_data_paths["logs"][self.mode] / self.quantum_logs_file_name
                 try:    self._upload_file_to_drive(component=None, local_path=logfile, date_str=self.date_str, filename=self.quantum_logs_file_name, parent_dir="quantum_logs")
                 except: pass
 
@@ -248,7 +234,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
 
     def _build_metadata_local(self, parent_dir="quantum_logs"):
         """Scan local folder structure with defensive error handling."""
-        root = self.quantum_logs_path if parent_dir == "quantum_logs" else self.quantum_data_lake_path
+        root = self.quantum_data_paths["logs"][self.mode]
         if not root.exists() or len(self.metadata) != 0: return False
         
         print(f"🔍 Scanning local metadata from: {root}")
@@ -402,29 +388,53 @@ class LocalBackupManager(GoogleDriveBackupManager):
             metadata = { component_or_None : { date : { filename : {drive_id/local_path} } } }
         """
 
-        # If metadata already exists (or download returned True), don't rebuild
-        if self.download_drive_metadata() and len(self.metadata) > 0: return True
+        print("\n===== build_drive_metadata DEBUG =====")
+        print(f"in_share_drive       = {self.in_share_drive}")
+        print(f"parent_dir           = {parent_dir}")
+        print(f"Before download: metadata_len = {len(self.metadata)}")
+
+        # Attempt to load metadata.json
+        download_ok = self.download_drive_metadata(parent_dir, "metadata.json")
+        print(f"download_drive_metadata() returned = {download_ok}")
+        print(f"After download: metadata_len = {len(self.metadata)}")
+
+        # If metadata already exists, stop here
+        if download_ok and len(self.metadata) > 0:
+            print("→ Early exit: metadata already exists")
+            print("===== END build_drive_metadata =====\n")
+            return True
 
         # =======================================================
         # CASE 1: Running INSIDE shared drive → read local folder
         # =======================================================
-        if self.in_share_drive: return self._build_metadata_local(parent_dir)
+        if self.in_share_drive:
+            print("→ Branch: LOCAL metadata build")
+            result = self._build_metadata_local(parent_dir)
+            print(f"LOCAL build result: {result}")
+            print(f"After local build: metadata_len = {len(self.metadata)}")
+            print("===== END build_drive_metadata =====\n")
+            return result
 
         # =======================================================
         # CASE 2: Running OUTSIDE shared drive → use Drive API
         # =======================================================
-        return self._build_metadata_remote(parent_dir)
+        print("→ Branch: REMOTE metadata build")
+        result = self._build_metadata_remote(parent_dir)
+        print(f"REMOTE build result: {result}")
+        print(f"After remote build: metadata_len = {len(self.metadata)}")
+        print("===== END build_drive_metadata =====\n")
+        return result
+
 
     def _download_metadata_local(self, filename="metadata.json"):
         """Load metadata.json from local quantum_logs directory."""
-        metadata_path = self.quantum_logs_path / filename
+        metadata_path = self.quantum_data_paths[self.mode] / filename
         if not metadata_path.exists(): return False
-        
         with open(metadata_path, "r") as f:
             self.metadata = json.load(f)
         return True
 
-    def _download_metadata_remote(self, parent_dir="quantum_logs", filename="metadata.json"):
+    def _download_metadata_remote(self, parent_dir="quantum_data_lake", filename="metadata.json"):
         """Download metadata.json from Drive."""
         root_id = self._ensure_drive_folder(parent_dir, self.DRIVE_FOLDER_ID)
         query   = f"name='{filename}' and '{root_id}' in parents"
@@ -449,7 +459,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
         # ===========================================
         # CASE 1 — in shared drive → read local copy
         # ===========================================
-        if self.in_share_drive: return self._download_metadata_local(filename)
+        if self._download_metadata_local(filename):
+            return True
         
         # ===========================================
         # CASE 2 — remote → download from Drive
@@ -475,8 +486,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
         if not self.update_drive_metadata(parent_dir=parent_dir): return False
         
         if self.in_share_drive: 
-            metadata_path = self.quantum_logs_path / "metadata.json"
-            self.quantum_logs_path.mkdir(parents=True, exist_ok=True)
+            metadata_path = self.quantum_data_paths["logs"][self.mode] / "metadata.json"
+            self.self.quantum_data_paths["logs"][self.mode].mkdir(parents=True, exist_ok=True)
             with open(metadata_path, "w") as f: json.dump(self.metadata, f)
             return True
         

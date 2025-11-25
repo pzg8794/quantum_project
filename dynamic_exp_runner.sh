@@ -18,7 +18,6 @@ BASE_CAPACITY=$9
 SCENARIOS=${10}
 USE_LAST_BACKUP=${11:-"false"}
 PARALLEL=${12:-"false"}
-OVERWRITE=${12:-"true"}
 
 # Directory setup
 LOG_DIR="${LOG_DIR:-$HOME/quantum_logs}"
@@ -45,42 +44,11 @@ python3 << PYEOF
 import os, sys
 
 # 1. Import modules
-
 sys.path.insert(0, '..')
-# =============================================================================
-# STEP 2: Re-import Everything Fresh (NEW STRUCTURE)
-# =============================================================================
-import importlib
-# Add parent directory to path for daqr package
-if os.path.abspath('..') not in sys.path:
-    sys.path.insert(0, os.path.abspath('..'))
-
-# Import and reload modules
-from daqr.config import experiment_config
-from daqr.core import qubit_allocator
-from daqr.evaluation import visualizer
-from daqr.core import network_environment
-from daqr.evaluation import multi_run_evaluator
-from daqr.algorithms import neural_bandits, predictive_bandits
-
-importlib.reload(experiment_config)
-importlib.reload(network_environment)
-importlib.reload(multi_run_evaluator)
-importlib.reload(predictive_bandits)
-importlib.reload(qubit_allocator)
-importlib.reload(neural_bandits)
-importlib.reload(visualizer)
-
-# Import specific classes
 from daqr.core.qubit_allocator import *
 from daqr.config.experiment_config import *
-from daqr.core.network_environment import *
-from daqr.algorithms.neural_bandits import *
-from daqr.algorithms.predictive_bandits import *
 from daqr.evaluation.multi_run_evaluator import *
 from daqr.evaluation.visualizer import QuantumEvaluatorVisualizer
-print("✓ All modules reloaded successfully!")
-
 
 # 2. Initialize config
 config = ExperimentConfiguration()
@@ -93,7 +61,6 @@ scale = ${SCALE:-2}
 base_capacity = str("${BASE_CAPACITY:-"N"}").lower() in ["y", "yes", "true"]
 use_last_backup = str("${USE_LAST_BACKUP}").lower() == "true"
 parallel = str("${PARALLEL}").lower() == "true"
-overwrite = str("${OVERWRITE}").lower() == "true"
 
 # Quick test mode overrides
 if "quick-test" in exp_id:
@@ -154,7 +121,7 @@ custom_config = ExperimentConfiguration(
     scale=scale, 
     base_capacity=base_capacity, 
     use_last_backup=use_last_backup,
-    overwrite=overwrite
+    overwrite=True
 )
 
 # Create evaluator
@@ -196,98 +163,40 @@ print("\n" + "=" * 70)
 print("ROBUSTNESS ANALYSIS")
 print("=" * 70)
 
-# @title Robustness Analysis and Quantification
-importlib.reload(visualizer)
-from daqr.evaluation.visualizer import QuantumEvaluatorVisualizer
-
-print("=" * 70)
-print("ROBUSTNESS ANALYSIS")
-print("=" * 70)
-
 try:
-    # Pretty print comparison results
-    import pprint
-    print("Comparison Results Summary:")
-    # pprint.pprint(comparison_results)
-
-    # Full comparison plot (all scenarios together)
     viz = QuantumEvaluatorVisualizer(comparison_results, allocator=allocator, config=custom_config)
     viz.plot_stochastic_vs_adversarial_comparison()
 
-    # Get list of all scenarios
-    scenario_list = list(test_scenarios.keys())
+    for scenario in test_scenarios.keys():
+        if scenario.lower() != 'stochastic':
+            print(f"\n📊 Plotting: {scenario.upper()}")
+            evaluator.calculate_scenario_performance(scenario=scenario)
+            viz.plot_scenarios_comparison(scenario=scenario)
 
-    # Plot each scenario individually
-    for scenario in scenario_list:
-        if scenario.lower() == 'stochastic': pass
-        print(f"\n📊 Generating plots for scenario: {scenario.upper()}")
-        evaluator.calculate_scenario_performance(scenario=scenario)
-
-        # Get ALL results for this scenario (all experiments)
-        all_scenario_results = evaluator.get_evaluation_results(scenario=scenario)
-        
-        # Just pass the scenario name - method auto-detects and plots it
-        viz.plot_scenarios_comparison(scenario=scenario)
-        
-        # # Also plot just the last experiment
-        # if len(all_scenario_results[scenario].keys()) > 1:
-        #     last_scenario_results = evaluator.get_evaluation_results(scenario=scenario,exp_id=-1)
-        #     if last_scenario_results: viz.plot_scenarios_comparison(last_scenario_results)
-
-    print("\n All scenario plots generated!")
-
+    print("\n✓ Plots generated!")
     
-    print("\n✓ Stochastic Analysis Generated:")
-    print("  → quantum_mab_models_stochastic_evaluation.png")
-    
-    # Use viz.get_viz_data() to access pre-computed averaged results
-    stoch_data = viz.get_viz_data(f'stochastic_data')
-    
+    stoch_data = viz.get_viz_data('stochastic_data')
     if stoch_data and 'averaged' in stoch_data:
         stoch_results = stoch_data['averaged']
-        
         print("\n" + "=" * 70)
-        print("STOCHASTIC PERFORMANCE METRICS")
+        print("PERFORMANCE METRICS")
         print("=" * 70)
         
-        oracle_reward = stoch_results.get('oracle_reward', 1)
         winner = stoch_results.get('winner', 'N/A')
-        
         for alg in models:
             if alg in stoch_results['results']:
                 model_data = stoch_results['results'][alg]
-                
-                # Use PRE-COMPUTED metrics
-                stoch_reward = model_data.get('final_reward', 0)
                 efficiency = model_data.get('efficiency', 0)
                 gap = model_data.get('gap', float('inf'))
                 
                 print(f"\n{alg}:")
-                print(f"  • Stochastic Performance: {stoch_reward:.3f}")
-                print(f"  • Oracle Efficiency: {efficiency:.1f}%")
-                print(f"  • Oracle Gap: {gap:.1f}%")
-                
-                if efficiency > 90:     classification = "EXCELLENT"
-                elif efficiency > 80:   classification = "GOOD"
-                elif efficiency > 70:   classification = "MODERATE"
-                else:                   classification = "NEEDS IMPROVEMENT"
-                
-                print(f"  • Classification: {classification}")
-                
+                print(f"  • Efficiency: {efficiency:.1f}%")
+                print(f"  • Gap: {gap:.1f}%")
                 if alg == winner:
                     print(f"  ★ WINNER ★")
-        
-        print("\n" + "=" * 70)
-        print("STOCHASTIC ENVIRONMENT INSIGHTS")
-        print("=" * 70)
-        print("  • Natural quantum decoherence and network failures")
-        print("  • Performance metrics validate theoretical predictions")
-        print("  • Baseline for future adversarial robustness studies")
-    else:
-        print("⚠ No stochastic averaged results available")
 
 except Exception as e:
-    print(f"❌ Error in robustness analysis: {e}")
+    print(f"❌ Visualization error: {e}")
     import traceback
     traceback.print_exc()
 

@@ -85,9 +85,14 @@ class QuantumModel(ABC):
         self.eta = eta_factor
         self.state = 0
 
+        self.component = "model_state"
         self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
         self.save_to_dir = Path(f"{self.configs.dir}/model_state/{self.configs.day_str}/")
 
+
+        mode = self.configs.backup_mgr.mode
+        component_path = self.configs.backup_mgr.quantum_data_paths["obj"][self.component][mode]
+        self.save_to_dir = component_path / self.configs.day_str
 
         self.allocator_id = str(getattr(self.configs, "allocator", "alloc"))
         self.env_id       = str(getattr(self.configs, "environment", "env"))
@@ -187,125 +192,15 @@ class QuantumModel(ABC):
             self.key_attrs == getattr(other, "key_attrs", None)
         )
 
+
     
     def save(self):
-        """Save model state."""
-        self.save_to_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Build pickleable dict
-        save_dict = {}
-        unpickleable = []
-        
-        for attr, value in self.__dict__.items():
-            try:
-                pickle.dumps(value)
-                save_dict[attr] = value
-            except:
-                unpickleable.append(attr)
-        
-        if unpickleable and self.configs.verbose: print(f"\t⚠️ Excluding: {', '.join(unpickleable)}")
-
-        save_path = self.save_to_dir / self.file_name
-        try:
-            # Only write if overwrite=True OR file doesn't exist
-            if self.configs.overwrite or not save_path.exists():
-                with open(save_path, 'wb') as f:
-                    pickle.dump(save_dict, f)
-
-                if self.configs.verbose:
-                    print(f"\t{self} Saved Successfully")
-
-                # self.configs.save()
-            else:
-                if self.configs.verbose:
-                    print(f"\t{self} Save skipped (exists + overwrite=False)")
-
-        except Exception as e:
-            print(f"❌ {self} Save failed: {e}")
-            raise
-
-        return str(save_path)
-
-
+        # This now always writes to the config backup (safe, never corrupts data lake)
+        return self.configs.save_obj(self)
 
     def resume(self):
-        """
-        Resume model state if saved state exists.
-        Returns:
-            bool: True if successfully resumed, False otherwise.
-        """
-        state_path_str = Path(self.save_to_dir) / self.file_name
-        config_path = self.configs.get_latest_state("model_state", self.file_name) or state_path_str
-        # print(Path(config_path))
-        if config_path:
-            # print(f"\t[TRACE] config_path = {config_path!r} (type={type(config_path)})")
-            # --- TRACE 2: STATE PATH CONSTRUCTION ---
-            try:
-                # 🔥 FIX: Ensure config_path is string before 'in' check
-                if isinstance(config_path, Path): config_path = str(config_path)
-                if isinstance(config_path, dict): config_path = config_path.get('local_path', str(config_path))
-                # print(f"[TRACE] config_path = {config_path!r} (type={type(config_path)})")
-                state_path = Path(config_path)
-            except Exception as e:
-                print(f"[ERROR] Failed converting config_path to Path: {e}")
-                print(f"[TRACE] config_path was: {config_path!r}")
-                return False
-
-            # print(f"\t[TRACE] state_path = {state_path!r} (type={type(state_path)})")
-
-            # --- TRACE 3: FILE EXISTENCE ---
-            try:
-                exists = state_path.exists()
-                size = state_path.stat().st_size if exists else "N/A"
-                # print(f"\t[TRACE] state_path.exists() = {exists}, size = {size}")
-            except Exception as e:
-                print(f"[ERROR] Checking path existence failed: {e}")
-                return False
-
-            if not exists or size == 0:
-                print(f"\t[WARN] No saved state at {state_path}")
-                return False
-            
-            # --- TRACE 4: LOAD PICKLE ---
-            eq_result = None
-            try:
-                with open(state_path, "rb") as f:
-                    loaded_dict = pickle.load(f)
-                    # print(f"\t[TRACE] loaded_dict type: {type(loaded_dict)}")
-                    # if isinstance(loaded_dict, dict): print(f"[TRACE] loaded_dict keys: {list(loaded_dict.keys())}")
-
-                    # --- TRACE 5: EQUALITY CHECK ---
-                    try:
-                        eq_result = (self == loaded_dict)
-                        # print(f"\t[TRACE] self == loaded_dict → {eq_result!r} (type={type(eq_result)})")
-                    except Exception as e:
-                        print(f"[ERROR] Equality comparison failed: {e}")
-                        return False                
-            except Exception as e:
-                print(f"[ERROR] Failed loading pickle from {state_path}: {e}")
-                return False
-
-            # --- TRACE 6: UPDATE ---
-            if eq_result:
-                # print("[TRACE] Updating self.__dict__ ...")
-                # print(f"\t🔄 {self} Resuming state from: {state_path}")
-                try:
-                    configs = self.configs
-                    self.__dict__.update(loaded_dict)
-                    self.configs = configs
-                except Exception as e:
-                    print(f"[ERROR] __dict__.update failed: {e}")
-                    print(f"[TRACE] loaded_dict = {loaded_dict!r}")
-                    return False
-
-                # Final check: list a few attributes so we know nothing got corrupted
-                # print("[TRACE] Post-update attribute types:")
-                # for k, v in list(self.__dict__.items())[:10]: print(f"  - {k}: {type(v)}")
-                return True
-
-            print(f"\t[WARN] ID mismatch for {self}, skipping resume.")
-            return False
-
+        # This now always loads from the correct data lake (or backup if not found)
+        return self.configs.resume_obj(self, "model_state")  # or framework_state for runner
 
             
     def get_cleanup_wait_time(self, frames_count=1000, cooldown_base=3, cooldown_scale_factor=1, cooldown_max=15):

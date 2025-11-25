@@ -30,14 +30,6 @@ class AttackStrategy(ABC):
             (T x P) np.ndarray[int] with 1=no-attack, 0=attack
         """
 
-    def __eq__(self, other):
-        if not isinstance(other, AttackStrategy):
-            return NotImplemented
-        return (
-            type(self) is type(other) and 
-            np.isclose(self.attack_rate, other.attack_rate)
-        )
-
     def __repr__(self):
         return self.__class__.__name__.replace("Attack", "")
 
@@ -114,23 +106,6 @@ class MarkovAttack(AttackStrategy):
         if verbose and cleanup_items:
             print(f"✓ {self.__class__.__name__} cleaned: {', '.join(cleanup_items)}, GC:{collected}")
 
-    def __eq__(self, other):
-        if not super().__eq__(other):
-            return False
-        return (
-                np.isclose(self.attack_rate, other.attack_rate)
-                and self.k_attacks == other.k_attacks
-                and (
-                    (self.transition is None and other.transition is None)
-                    or (isinstance(self.transition, np.ndarray) and isinstance(other.transition, np.ndarray)
-                        and np.allclose(self.transition, other.transition))
-                )
-                and (
-                    (self.init is None and other.init is None)
-                    or (isinstance(self.init, np.ndarray) and isinstance(other.init, np.ndarray)
-                        and np.allclose(self.init, other.init))
-                )
-            )
 
 
 # ---------------------------------------------------------------------
@@ -197,14 +172,6 @@ class AdaptiveAttack(AttackStrategy):
             attack[t, target] = 0
 
         return attack
-    
-    def __eq__(self, other):
-        if not super().__eq__(other):
-            return False
-        return (
-            self.memory_window == other.memory_window and
-            np.isclose(self.sticky_p, other.sticky_p)
-        )
 
 # ---------------------------------------------------------------------
 # OnlineAdaptiveAttack (inherits AdaptiveAttack; online + richer control)
@@ -329,14 +296,6 @@ class OnlineAdaptiveAttack(AdaptiveAttack):
             self.observe(trace[t])
 
         return attack
-    
-    def __eq__(self, other):
-        if not super().__eq__(other):
-            return False
-        return (
-            self.memory_window == other.memory_window and
-            np.isclose(self.sticky_p, other.sticky_p)
-        )
 
 
 # =============================================================================
@@ -542,34 +501,6 @@ class QuantumEnvironment:
         if verbose:
             print(f"Cleaned up in {self.__class__.__name__}: {', '.join(cleaned)}")
         gc.collect()
-
-    def __eq__(self, other):
-        if not isinstance(other, QuantumEnvironment):
-            return NotImplemented
-        return (
-            type(self) is type(other)
-            and self.frame_length == other.frame_length
-            and tuple(self.qubit_capacities) == tuple(other.qubit_capacities)
-            and np.isclose(self.entanglement_success_factor, other.entanglement_success_factor)
-            and (self.attack == other.attack)
-            and (self.allocator == other.allocator)
-        )
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        # Store RNG state instead of the object
-        if 'rng' in state:
-            state['_rng_state'] = self.rng.bit_generator.state
-            del state['rng']
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-        # Restore RNG from saved state
-        if '_rng_state' in state:
-            self.rng = np.random.default_rng()
-            self.rng.bit_generator.state = state['_rng_state']
-            del self._rng_state
 
     def __del__(self):
         """Ensure cleanup is called when the object is destroyed."""

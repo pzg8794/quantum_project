@@ -9,7 +9,9 @@ from daqr.algorithms.predictive_bandits    import CPursuitNeuralUCB, CPursuit, i
 from daqr.core.qubit_allocator import *
 
 import  copy, os
-import cloudpickle as pickle
+import  pathlib
+import  pickle
+import  shutil
 from pathlib import Path
 from datetime import datetime
 from .local_backup_manager import LocalBackupManager
@@ -33,10 +35,7 @@ class ExperimentConfiguration:
         self.environment = None
         self.overwrite = overwrite
         self.seed_offset = seed_offset
-        self.dir = os.path.dirname(os.path.abspath(__file__))
-        self.quantum_datalake_path = Path(self.dir).parent.parent.parent.parent / "quantum_data_lake"
-        if not self.quantum_datalake_path.exists(): self.quantum_datalake_path = self.dir
-        
+        self.dir = Path(os.path.dirname(os.path.abspath(__file__)))
         
         self.runs               = runs
         self.scale              = scale
@@ -53,7 +52,7 @@ class ExperimentConfiguration:
         self.attack_intensity   = attack_intensity
 
         # Single unified manager - handles everything
-        self.backup_mgr = LocalBackupManager(date_str=self.day_str, config_dir=self.quantum_datalake_path, verbose=self.verbose)
+        self.backup_mgr = LocalBackupManager(date_str=self.day_str, config_dir=self.dir, verbose=self.verbose)
 
         self.category_map = {
             'none': 'Baseline (No Attacks)',
@@ -352,40 +351,80 @@ class ExperimentConfiguration:
     def get_latest_state(self, item_k, item_v):
         """
         Retrieves the latest available file path for a given item.
-        If missing locally, attempts Drive restore (any date).
+        Reconstructs paths to work in current environment (Drive or local).
         """
-
-        # 1) Generate expected keys + try restore when this is the first lookup
+        
+        # 1) Generate expected keys if needed
         if len(self.expected_keys) == 0 and "multirunevaluator" in item_v.lower():
             self.generate_expected_keys(item_v)
             self.backup_mgr.restore_from_drive(self.day_str, self.expected_keys)
         
-        # 2) Try normal local registry lookup
+        # 2) Try registry lookup - reconstruct path for current environment
+        # Get both local and drive base paths for this component
+        component_paths = self.backup_mgr.quantum_data_paths["obj"][item_k]
         try:
-            path = self.backup_registry[item_k][item_v]
-            # print(Path(path))
-            if Path(path).exists(): return path
-        except KeyError as e:
-            # print(f"\t⚠️ Missing locally Path: {e}")
-            pass
-
-        # 3) If missing → Drive fallback (no date needed)
-        # print(f"\t⚠️ Missing locally → attempting Drive fallback for {item_v}")
-
-        drive_path = self.backup_mgr.download_any_date(
-            component=item_k,
-            filename=item_v
-        )
-
+            registry_path = self.backup_registry[item_k][item_v]
+            registry_path_obj = Path(registry_path)
+            
+            # If path exists as-is, return it
+            if registry_path_obj.exists(): return str(registry_path_obj)
+            
+            # Try to determine which base the registry path is relative to
+            for mode in ["local", "drive"]:
+                try:
+                    # Try to make registry path relative to this mode's base
+                    base_path = component_paths[mode]
+                    relative = registry_path_obj.relative_to(base_path)
+                    
+                    # Now try reconstructing with the OTHER mode
+                    other_mode = "drive" if self.backup_mgr.in_share_drive else "local"
+                    reconstructed_path = component_paths[other_mode] / relative
+                    
+                    if reconstructed_path.exists():
+                        print(f"\t✅ Registry hit (reconstructed from {mode} to {other_mode}): {reconstructed_path}")
+                        # Update registry with correct path
+                        self.backup_registry[item_k][item_v] = str(reconstructed_path)
+                        return str(reconstructed_path)
+                        
+                except ValueError:
+                    # relative_to() failed - path not under this base
+                    continue
+            
+            # Also try with current day appended (filesystem direct path)
+            for mode in ["local", "drive"]:
+                current_path = component_paths[mode] / self.day_str / item_v
+                if current_path.exists():
+                    print(f"\t✅ Found via {mode} filesystem: {current_path}")
+                    self.backup_registry[item_k][item_v] = str(current_path)
+                    return str(current_path)
+            
+            print(f"\t⚠️ Registry path doesn't exist and couldn't reconstruct: {registry_path}")
+            
+        except KeyError:
+            print(f"\t⚠️ Not in registry: {item_k}/{item_v}")
+        
+        # 3) Try filesystem direct search with current mode
+        search_path = component_paths[self.backup_mgr.mode] / self.day_str / item_v
+        print(f"\tChecking FS ({self.backup_mgr.mode}): {search_path} | Exists? {search_path.exists()}")
+        
+        if search_path.exists():
+            print(f"\t✓ Found via filesystem: {search_path}")
+            self.backup_registry.setdefault(item_k, {})[item_v] = str(search_path)
+            return str(search_path)
+        
+        # 4) Drive fallback
+        print(f"\t☁️ Attempting Drive download: {item_k}/{item_v}")
+        drive_path = self.backup_mgr.download_any_date(component=item_k, filename=item_v)
+        
         if drive_path is not None:
             print(f"\t☁️ Recovered from Drive → {drive_path}")
-            # update registry so future lookups are instant
             self.backup_registry.setdefault(item_k, {})[item_v] = drive_path
-            return drive_path
-
-        # 4) Final fallback: not found anywhere
-        # print(f"\t❌ Could not locate {item_v} anywhere (local or Drive)")
+            return str(drive_path)
+        
+        # 5) Not found
+        print(f"\t❌ Not found anywhere: {item_k}/{item_v}")
         return None
+
 
 
     def _build_backup_registry(self, force=False):
@@ -456,7 +495,7 @@ class ExperimentConfiguration:
     def save_neural_core(self, model, performance, frames_no, allocator_tag, overwrite=True):
         """Save a NeuralUCB checkpoint tagged by frame + allocator name."""
         file_name = f"neuralucb_{allocator_tag}_frames{frames_no}.pkl"
-        model_dir = os.path.join(self.dir, "models")
+        model_dir = os.path.join(str(self.dir), "models")
         file_path = os.path.join(model_dir, file_name)
         os.makedirs(model_dir, exist_ok=True)
 
@@ -479,7 +518,7 @@ class ExperimentConfiguration:
     def load_neural_core(self, frames_no, allocator_tag):
         """Load a NeuralUCB checkpoint by frame + allocator name."""
         file_name = f"neuralucb_{allocator_tag}_frames{frames_no}.pkl"
-        model_dir = os.path.join(self.dir, "models")
+        model_dir = os.path.join(str(self.dir), "models")
         file_path = os.path.join(model_dir, file_name)
 
         if not os.path.exists(file_path):
@@ -697,3 +736,191 @@ class ExperimentConfiguration:
         print(f"Custom Models ({len(self.CUSTOM_MODELS)}): {', '.join(self.CUSTOM_MODELS)}")
         print(f"Total Models: {len(self.ALL_QUANTUM_MODELS)}")
         print("=" * 60)
+
+
+    def save_obj(self, obj):
+        """
+        Save object state to config backup directory.
+        
+        Strategy:
+        - Reads lookups from: quantum_datalake_path (via get_latest_state)
+        - Writes copies to: config backup (self.config_backup_path)
+        - This protects the shared data lake from corrupted files during development
+        
+        Args:
+            obj: Object to save (model, runner, evaluator)
+            save_to_dir: Original path where object would be saved in data lake
+            file_name: Name of the pickle file
+        
+        Returns:
+            str: Path where file was saved
+        """
+        # Build pickleable dict
+        save_dict = {}
+        unpickleable = []
+        for attr, value in obj.__dict__.items():
+            try:
+                pickle.dumps(value)
+                save_dict[attr] = value
+            except: 
+                unpickleable.append(attr)
+        
+        if unpickleable and self.verbose:
+            print(f"\t⚠️ {obj} Excluded unpickleable fields: {', '.join(unpickleable)}")  
+
+        comp = obj.component
+        mode = self.backup_mgr.mode
+        component_path = self.backup_mgr.quantum_data_paths["obj"][comp]
+        save_path = component_path[mode] / self.day_str / obj.file_name
+        # ensure parent directory (NOT the file) exists
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+
+            if save_path.exists() and save_path.is_dir():
+                print(f"\t⚠️ Corrupted directory found (from previous failed save): {save_path}")
+                print(f"\t🗑️ Removing directory...")
+                shutil.rmtree(save_path)
+                print(f"\t✅ Cleaned up!")
+
+            # Only save if overwrite=True OR file doesn't exist
+            if self.overwrite or not save_path.exists():
+                with open(save_path, 'wb') as f: pickle.dump(save_dict, f)
+                if self.verbose:
+                    print(f"\t✓ {obj} State saved to config backup")
+                    print(f"\t  → {save_path}")
+            elif self.verbose: print(f"\t⊘ {obj} Save skipped (exists + overwrite=False)")
+                    
+        except Exception as e:
+            print(f"❌ {obj} Save failed: {e}")
+            raise
+            
+        return str(save_path)
+
+    def resume_obj(self, obj, component="model_state"):
+        """
+        Resume object state from data lake.
+        
+        Strategy:
+        - Looks up path in registry (points to data lake)
+        - Loads from: quantum_datalake_path (the source of truth)
+        - Falls back to: config backup if data lake file missing
+        
+        Args:
+            obj: Object to resume (must have __dict__ and __eq__)
+            file_name: Name of the pickle file to resume from
+            component: Component type ("model_state" or "framework_state")
+        
+        Returns:
+            bool: True if resumed successfully, False otherwise
+        """
+        # print(self.file_name)
+        config_path  = self.get_latest_state(obj.component, obj.file_name)
+        mode = self.backup_mgr.mode
+        if not config_path: config_path = self.backup_mgr.quantum_data_paths[mode] / obj.component / obj.file_name
+        
+        state_path = None
+        # print(config_path)
+        if config_path:
+            # print(f"\t\t[TRACE] config_path = {config_path!r} (type={type(config_path)})")
+            # --- TRACE 2: STATE PATH CONSTRUCTION ---
+            try:
+                print(f"\t {obj} Path Found = {config_path!r} (type={type(config_path)})")
+                state_path = Path(config_path)
+            except Exception as e:
+                print(f"\t[ERROR] Failed converting config_path to Path: {e}")
+                print(f"\t\t[TRACE] config_path was: {config_path!r}")
+
+            print(f"\t\t[TRACE] state_path = {state_path!r} (type={type(state_path)})")
+            # --- TRACE 3: FILE EXISTENCE ---
+            try:
+                exists = state_path.exists()
+                size = state_path.stat().st_size if exists else "N/A"
+                print(f"\t\t[TRACE] state_path.exists() = {exists}, size = {size}")
+                if not exists or size == 0: print(f"\t[WARN] No saved state at {state_path} or Empty ({size})")
+                
+                # --- TRACE 4: LOAD PICKLE ---
+                eq_result = None
+                try:
+                    with open(state_path, "rb") as f:
+                        loaded_dict = pickle.load(f)
+                        print(f"\t\t[TRACE] loaded_dict type: {type(loaded_dict)}")
+                        # --- TRACE 5: EQUALITY CHECK ---
+                        try:
+                            eq_result = (obj == loaded_dict)
+                            print(f"\t\t[TRACE] self == loaded_dict → {eq_result!r} (type={type(eq_result)})")
+                        except Exception as e:  print(f"\t[ERROR] Equality comparison failed: {e}")
+                except Exception as e:  print(f"\t[ERROR] Failed loading pickle from {state_path}: {e}")
+
+                # --- TRACE 6: UPDATE ---
+                if eq_result:
+                    print(f"\t🔄 {obj} Resuming state from: {state_path}")
+                    try:
+                        configs = obj.configs
+                        obj.__dict__.update(loaded_dict)
+                        obj.configs = configs
+                        return True
+                    except Exception as e:
+                        print(f"\t[ERROR] __dict__.update failed: {e}")
+                        print(f"\t\t[TRACE] loaded_dict = {loaded_dict!r}")
+                else:   self.delete_file(state_path, obj)
+            except Exception as e:  print(f"\t[ERROR] Checking path existence failed: {e}")
+
+            return False
+
+    def delete_file(self, state_path, obj):
+        """
+        Deletes a corrupted or mismatched state file both locally and remotely (if applicable).
+
+        Args:
+            state_path (Path): Full path to the corrupted file (local or drive)
+            component (str): "model_state" or "framework_state"
+            filename (str): exact file name (e.g., runner_key or model_key)
+        """
+        print(f"\t❌ Corrupted state detected → deleting: {state_path}")
+
+        # =============================
+        # 1) DELETE LOCAL FILE
+        # =============================
+        try:
+            if state_path.exists() and state_path.is_file():
+                state_path.unlink()
+                print(f"\t🗑️  Deleted local file: {state_path}")
+            elif state_path.is_dir():
+                # Safety: remove directory that should never exist
+                shutil.rmtree(state_path)
+                print(f"\t🗑️  Deleted corrupted directory: {state_path}")
+        except Exception as e:
+            print(f"\t[ERROR] Failed to delete local file: {e}")
+
+        # =============================
+        # 2) DELETE REMOTE (GOOGLE DRIVE DATA LAKE)
+        # =============================
+        try:
+            if self.backup_mgr.remote_available:
+                removed = self.backup_mgr.delete_from_drive(obj.component, obj.file_name)
+                if removed: print(f"\t☁️  Deleted remote datalake copy of {obj.file_name}")
+        except Exception as e:
+            print(f"\t[ERROR] Failed Drive delete for {obj.file_name}: {e}")
+
+        # =============================
+        # 3) REMOVE FROM REGISTRY
+        # =============================
+            try:
+                if obj.component in self.backup_registry:
+                    if obj.file_name in self.backup_registry[obj.component]:
+                        del self.backup_registry[obj.component][obj.file_name]
+                        print(f"\t🗑️  Removed registry entry for {obj.file_name}")
+            except Exception as e:
+                print(f"\t[ERROR] Removing registry entry failed: {e}")
+
+        # =============================
+        # 4) SAVE UPDATED REGISTRY
+        # =============================
+        try:
+            self.save()
+        except Exception as e:
+            print(f"\t[ERROR] Saving registry after deletion failed: {e}")
+
+        print(f"\t✅ Cleanup complete.\n")
+        return True
+

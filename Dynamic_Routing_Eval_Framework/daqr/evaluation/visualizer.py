@@ -8,7 +8,7 @@ import numpy as np
 
 import os
 import json
-import pickle, torch, traceback
+import pickle
 from datetime import datetime
 from pathlib import Path
 
@@ -49,16 +49,6 @@ class QuantumEvaluatorVisualizer:
         self.output_dir = Path(self.output_dir)
         self.session_id = self.session_timestamp
         self.exp_dir = None
-
-        # self._env_params = {
-        #     'attack': None,
-        #     'qubit_capacities': tuple(qubit_cap),
-        #     'frame_length': int(frames_no),
-        #     'seed': int(seed),
-        #     'allocator': self.allocator,
-        #     'env_type': env_type,
-        #     'actk_type': attack_type
-        # }
     
 
 
@@ -226,6 +216,7 @@ class QuantumEvaluatorVisualizer:
 
         allocator_type = str(self.allocator) if self.allocator else "None"
 
+        
         # Build path with category layer
         experiment_dir = (
             self.output_dir / 
@@ -233,7 +224,7 @@ class QuantumEvaluatorVisualizer:
             env_name / 
             allocator_type /
             model_category /
-            f"Experiment_{experiment_id}_{num_runs}_Runs_{self.config._env_params.get('frame_length',100)}frames_{self.session_timestamp}"
+            f"Experiment_{experiment_id}_{num_runs}_Runs_{self.session_timestamp}"
         )
         
         # Create subdirectories
@@ -535,7 +526,7 @@ class QuantumEvaluatorVisualizer:
         # Store results
         if results: self.evaluation_results = results
 
-    def create_stochastic_evaluation_plots(self, scenario='stochastic', baseline=''):
+    def create_stochastic_evaluation_plots(self):
         """Create comprehensive stochastic-focused evaluation visualizations."""
         if not self.evaluation_results:
             print("No evaluation results found. Run evaluation first.")
@@ -576,33 +567,7 @@ class QuantumEvaluatorVisualizer:
         self._plot_framework_summary(axes[1,2], stochastic_data)
 
         plt.tight_layout()
-
-
-
-        # --- Build comparison results directory ---
-        allocator_type = str(self.allocator) if self.allocator else "None"
-        stoch_results = stochastic_data['averaged'] if stochastic_data else None
-        model_category = self._detect_model_category(
-            list(stoch_results['results'].keys()) if stoch_results else []
-        )
-
-        # Create unified "comparison" directory under /results
-        exp_dir = (
-            self.output_dir /
-            "comparison" /
-            allocator_type /
-            model_category
-        )
-        exp_dir.mkdir(parents=True, exist_ok=True)
-
-        # Use timestamped filename for traceability
-        timestamp = self.session_timestamp
-        baseline_suffix = f"quantum_mab_models_{scenario}_evaluation" if baseline else ""
-        capacity_type = "T" if self.config.base_capacity else f"{self.config.scale}T"
-        scenario_conditions = f"{allocator_type}_{baseline_suffix}_{capacity_type}"
-        plot_filename = f"{scenario_conditions}_{self.config._env_params.get('frame_length', 100)}frames_{timestamp}.png"
-        plot_path = exp_dir / plot_filename
-        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.savefig('quantum_mab_models_stochastic_evaluation.png', dpi=300, bbox_inches='tight')
         plt.show()
 
         # Generate numerical summary
@@ -1087,9 +1052,7 @@ class QuantumEvaluatorVisualizer:
         # Use timestamped filename for traceability
         baseline_suffix = f"_vs_{baseline}" if baseline else ""
         timestamp = self.session_timestamp
-        capacity_type = "T" if self.config.base_capacity else f"{self.config.scale}T"
-        scenario_conditions = f"{allocator_type}_{scenario}{baseline_suffix}_{capacity_type}"
-        plot_filename = f"{scenario_conditions}_{self.config._env_params.get('frame_length', 100)}frames_{timestamp}.png"
+        plot_filename = f"{allocator_type}_{scenario}{baseline_suffix}_{timestamp}.png"
         plot_path = exp_dir / plot_filename
 
         plt.tight_layout()
@@ -1182,9 +1145,7 @@ class QuantumEvaluatorVisualizer:
         # Use timestamped filename for traceability
         baseline_suffix = f"_vs_{baseline}_comparison" if baseline else ""
         timestamp = self.session_timestamp
-        capacity_type = "T" if self.config.base_capacity else f"{self.config.scale}T"
-        scenario_conditions = f"{allocator_type}_{scenario}{baseline_suffix}_{capacity_type}"
-        plot_filename = f"{scenario_conditions}_{self.config._env_params.get('frame_length', 100)}frames_{timestamp}.png"
+        plot_filename = f"{allocator_type}_{scenario}{baseline_suffix}_{timestamp}.png"
         plot_path = exp_dir / plot_filename
 
         plt.tight_layout()
@@ -1554,7 +1515,7 @@ class QuantumEvaluatorVisualizer:
         ax.axis('off')
 
 
-    def _create_basic_comparison_plot(self, scenario='stochastic', baseline='basic'):
+    def _create_basic_comparison_plot(self):
         """Create basic comparison plot when no data available."""
         fig, ax = plt.subplots(figsize=(10, 6))
         
@@ -1566,84 +1527,46 @@ class QuantumEvaluatorVisualizer:
         ax.axis('off')
         
         plt.tight_layout()
-
-
-        # --- Build comparison results directory ---
-        allocator_type = str(self.allocator) if self.allocator else "None"
-
-        # Extract BOTH averaged and peak results
-        stochastic_data = self._extract_primary_results(scenario)
-        if not stochastic_data:
-            print("No stochastic evaluation data available.")
-        
-        stoch_results = stochastic_data['averaged'] if stochastic_data else None
-        model_category = self._detect_model_category(
-            list(stoch_results['results'].keys()) if stoch_results else []
-        )
-
-        # Create unified "comparison" directory under /results
-        exp_dir = (
-            self.output_dir /
-            "comparison" /
-            allocator_type /
-            model_category
-        )
-        exp_dir.mkdir(parents=True, exist_ok=True)
-
-        # Use timestamped filename for traceability
-        baseline_suffix = f"_vs_{baseline}_comparison" if baseline else ""
-        timestamp = self.session_timestamp
-        capacity_type = "T" if self.config.base_capacity else f"{self.config.scale}T"
-        scenario_conditions = f"{allocator_type}_{scenario}{baseline_suffix}_{capacity_type}"
-        plot_filename = f"{scenario_conditions}_{self.config._env_params.get('frame_length', 100)}frames_{timestamp}.png"
-        plot_path = exp_dir / plot_filename
-
-        plt.tight_layout()
-        plt.savefig(plot_path, dpi=300, bbox_inches="tight")
+        plt.savefig('stochastic_vs_adversarial_comparison.png', dpi=300, bbox_inches='tight')
         plt.show()  # DISPLAYS in notebook
 
     def cleanup(self, verbose=False, cooldown_seconds=1):
         """Clean up visualizer resources."""
+        cleanup_items = []
+        
+        plt.close('all')  # Close all figures
+        cleanup_items.append("all matplotlib figures")
+        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
+        
+        if hasattr(self, 'evaluators'):
+            for eval_key, evaluator in self.evaluators.items():
+                if hasattr(evaluator, 'cleanup'):
+                    evaluator.cleanup(verbose=verbose)
+            self.evaluators.clear()
+            cleanup_items.append("evaluators")
+        
+        if hasattr(self, 'evaluation_results'):
+            if isinstance(self.evaluation_results, dict):
+                self.evaluation_results.clear()
+            cleanup_items.append("evaluation_results")
+        
+        if hasattr(self, 'model_rankings'):
+            self.model_rankings.clear()
+        
         try:
-            cleanup_items = []
-            plt.close('all')  # Close all figures
-            cleanup_items.append("all matplotlib figures")
-            if cooldown_seconds > 0: time.sleep(cooldown_seconds)
-            
-            if hasattr(self, 'evaluators'):
-                for eval_key, evaluator in self.evaluators.items():
-                    if hasattr(evaluator, 'cleanup'):
-                        try:
-                            evaluator.cleanup(verbose=verbose)
-                        except Exception as e:
-                            if verbose:
-                                print(f"\t[WARN] Evaluator {eval_key} cleanup failed: {e}")
-                self.evaluators.clear()
-                cleanup_items.append("evaluators")
-            
-            if hasattr(self, 'evaluation_results'):
-                if isinstance(self.evaluation_results, dict):
-                    self.evaluation_results.clear()
-                cleanup_items.append("evaluation_results")
-            
-            if hasattr(self, 'model_rankings'):
-                self.model_rankings.clear()
-            
-            try:
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    torch.cuda.synchronize()
-                    cleanup_items.append("CUDA cache")
-            except ImportError: pass
-            
-            collected = gc.collect()
-            cleanup_items.append(f"GC:{collected} objects")
-            
-            if cooldown_seconds > 0: time.sleep(cooldown_seconds)
-            if verbose: print(f"✓ QuantumEvaluatorVisualizer cleaned: {', '.join(cleanup_items)}")
-        except Exception as e:
-            print(f"[WARNING] Visualizer cleanup failed: {e}")
-            traceback.print_exc()
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                cleanup_items.append("CUDA cache")
+        except ImportError:
+            pass
+        
+        collected = gc.collect()
+        cleanup_items.append(f"GC:{collected} objects")
+        
+        if cooldown_seconds > 0: time.sleep(cooldown_seconds)
+        if verbose: print(f"✓ QuantumEvaluatorVisualizer cleaned: {', '.join(cleanup_items)}")
 
 
     def __del__(self):

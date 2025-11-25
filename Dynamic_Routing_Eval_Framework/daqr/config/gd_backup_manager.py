@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os, io, json, pickle
+import pathlib
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
@@ -12,9 +13,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
-DAY_REGEX = re.compile(
-    r'(?:(?P<day>day_)?(?P<date>\d{8}))$'
-)
+
 class GoogleDriveBackupManager:
     """Unified JSON registry backup to Google Drive Shared Drive."""
 
@@ -27,22 +26,46 @@ class GoogleDriveBackupManager:
         self.verbose = verbose
         self.backup_registry = {}
         self.in_share_drive = True
-        self.dir = Path(config_dir)
-        self.dir.mkdir(parents=True, exist_ok=True)
-        self.date_str = self.normalize_day_prefix(date_str)
+        
+        self.obj_query = {}
+        self.dir = config_dir
+        self.date_str = date_str
 
-        self.quantum_logs_file_name = f"quantum_quick-run_log_{self.date_str}.txt"
-        parent_dir                  = self.dir.parent.parent.parent.parent
-        self.quantum_logs_path      = parent_dir / "quantum_logs"
-        if not self.quantum_logs_path.exists(): 
-            parent_dir              = self.dir
-            self.in_share_drive     = False
+        # self.date_str = self.normalize_day_prefix(date_str)
+        self.drive_datalake_base            = Path("/content/drive/Shareddrives/ai_quantum_computing")
+        self.quantum_logs_file_name         = f"quantum_quick-run_log_{self.date_str}.txt"
 
-        self.quantum_logs_path      = Path(self.normalize_path("quantum_logs", project_root=parent_dir))
-        self.backup_registry_path   = self.dir / "backup_registry.json"
-        self.backup_pickle_path     = self.dir / "backup_registry.pkl"
-        self.framework_state_path   = self.dir / "framework_state"
-        self.model_state_path       = self.dir / "model_state"
+        self.quantum_data_paths             = {"drive":"", "local":"", "datalake":""}
+        self.quantum_data_paths["local"]    = self.dir
+        self.quantum_data_paths["drive"]    = self.drive_datalake_base / "quantum_data_lake"
+        
+        self.quantum_data_paths["logs"]             = {}
+        self.quantum_data_paths["logs"]["drive"]    = self.drive_datalake_base / "quantum_logs"
+        self.quantum_data_paths["logs"]["local"]    = self.dir / "quantum_logs"
+
+        self.quantum_data_paths["obj"]                              = {"obj":{}}
+        drive_path                                                  = self.quantum_data_paths["drive"]
+        self.quantum_data_paths["obj"]["model_state"]               = {}
+        self.quantum_data_paths["obj"]["framework_state"]           = {}
+        self.quantum_data_paths["obj"]["model_state"]["local"]      = self.dir / "model_state"
+        self.quantum_data_paths["obj"]["model_state"]["drive"]      = self.dir / "model_state"
+        self.quantum_data_paths["obj"]["model_state"]["drive"]      = self.dir / "model_state"
+        self.quantum_data_paths["obj"]["framework_state"]["local"]  = self.dir / "framework_state"
+        self.quantum_data_paths["obj"]["framework_state"]["drive"]  = self.dir / "framework_state"
+        
+
+        self.registry_file_paths            = {'drive':"", "local":"", "datalake":""}
+        self.registry_file_paths["drive"]   = self.dir / "drive_backup_registry.json"
+        self.registry_file_paths["local"]   = self.dir / "local_backup_registry.json"
+        self.registry_file_paths["datalake"]= drive_path / "full_backup_registry.json"
+
+        self.in_share_drive             = True if self.quantum_data_paths["logs"]["drive"].exists() else False
+        self.mode                       = "drive" if self.in_share_drive else "local"
+
+        parent_dir                      = self.dir.parent.parent.parent.parent
+        if not self.quantum_data_paths["logs"]["drive"].exists(): 
+            parent_dir                  = self.dir
+            self.in_share_drive         = False
 
         # ------------------------------------------------------------
         # Credential auto-discovery
@@ -201,7 +224,7 @@ class GoogleDriveBackupManager:
             return self.backup_registry
 
         print(f"→ Looking for 'backup_registry.json' in Drive folder: {self.DRIVE_FOLDER_ID}")
-        file_id = self._find_drive_file("backup_registry.json")
+        file_id = self._find_drive_file("drive_backup_registry.json")
 
         if not file_id:
             print("→ No registry file found in Drive")
@@ -239,12 +262,12 @@ class GoogleDriveBackupManager:
             # ------------------------------------------------------------
             # Cache local
             # ------------------------------------------------------------
-            print(f"→ Caching registry locally: {self.backup_registry_path}")
+            file = str(self.registry_file_paths[self.mode].replace(".pkl", ".json"))
+            print(f"→ Caching registry locally: {file}")
             try:
-                with open(self.backup_registry_path, "w") as f:
+                with open(file, "w") as f:
                     json.dump(registry, f)
-            except Exception as e:
-                print(f"❌ ERROR writing local cache: {e}")
+            except Exception as e:  print(f"❌ ERROR writing local cache: {e}")
 
             # ------------------------------------------------------------
             # Optional filtering
@@ -253,56 +276,51 @@ class GoogleDriveBackupManager:
                 print("→ Filtering registry based on expected keys...")
                 registry = self._filter_registry(registry, expected_keys)
                 print("→ Filtering completed.")
-
             print("==================== FETCH FROM DRIVE END =====================\n")
-
         return registry
-
-
 
 
     # ------------------------------------------------------------
     # Remote SAVE (exact GCP naming: _save_registry_to_gcs)
     # ------------------------------------------------------------
-    def _save_registry_to_gcs(self, registry=None):
-        if not self.remote_available or not self.drive:
-            return False
-
-        registry = registry or self.backup_registry
-        json_bytes = json.dumps(registry).encode("utf-8")
-
-        # Memory buffer (NO file writing)
-        buffer = io.BytesIO(json_bytes)
+    def _save_registry_to_gcs(self, registry_path):
+        file = self.registry_file_paths[self.mode]
+        if not registry_path: registry_path = file.replace(".pkl", ".json")
         
-        media = MediaIoBaseUpload(buffer, mimetype="application/json", resumable=False)
+        # Direct filesystem write in shared drive
+        with open(registry_path, "w") as f:
+            json.dump(self.backup_registry, f, indent=2)
+        if self.verbose: print(f"💾 Registry saved locally: {registry_path}")
 
-        data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.DRIVE_FOLDER_ID)
+        if not self.remote_available or not self.drive: return False
+        
+        # Drive API for non-shared-drive environments
+        json_bytes = json.dumps(self.backup_registry).encode("utf-8")
+        buffer = io.BytesIO(json_bytes)
+        media = MediaIoBaseUpload(buffer, mimetype="application/json", resumable=False)
+        
+        data_lake_id = self._ensure_drive_folder("quantum_logs", self.DRIVE_FOLDER_ID)
         metadata = {
             "name": "backup_registry.json",
             "parents": [data_lake_id]
         }
         file_id = self._find_drive_file("backup_registry.json")
-
+        
         if file_id:
-            # Update existing file
             self.drive.files().update(
                 fileId=file_id,
                 media_body=media,
                 supportsAllDrives=True
             ).execute()
         else:
-            # Create new file
             self.drive.files().create(
                 body=metadata,
                 media_body=media,
                 supportsAllDrives=True
             ).execute()
-
-        if self.verbose:
-            print("☁️ Registry (in-memory) synced to Drive")
-
+        
+        if self.verbose: print("☁️ Registry (in-memory) synced to Drive")
         return True
-
 
 
     def build_registry(self, force=False, expected_keys=None):
@@ -320,35 +338,28 @@ class GoogleDriveBackupManager:
         # ------------------------------------------------------------
         # 1. Try local cached registry
         # ------------------------------------------------------------
-        if not force and self.backup_registry_path.exists():
+        file = str(self.registry_file_paths[self.mode].replace(".pkl", ".json"))
+        if not force and Path(file).exists():
             try:
                 print("→ Attempting to load local registry cache...")
-                with open(self.backup_registry_path, "r") as f:
-                    self.backup_registry = json.load(f)
-
+                with open(file, "r") as f: self.backup_registry = json.load(f)
                 total_local = sum(len(v) for v in self.backup_registry.values())
                 print(f"✓ Local registry loaded ({total_local} keys)")
-
-                print("====================== BUILD REGISTRY END ======================\n")
-                return self._fetch_registry_from_drive(expected_keys=expected_keys)
-
+                # print("====================== BUILD REGISTRY END ======================\n")
+                # return self._fetch_registry_from_drive(expected_keys=expected_keys)
             except Exception as e:
                 print(f"⚠️  Local registry exists but could not be read: {e}")
                 print("→ Falling back to Drive...")
-
-        else:
-            print("→ Skipping local cache (force=True or file missing)")
+        else:   print("→ Skipping local cache (force=True or file missing)")
 
         # ------------------------------------------------------------
         # 2. Try Drive
         # ------------------------------------------------------------
         print("→ Attempting to fetch registry from Google Drive...")
         reg = self._fetch_registry_from_drive(expected_keys=expected_keys)
-
         if reg is None:
             print("⚠️  Drive returned NO registry (None)")
             self.backup_registry = {}
-
         else:
             total_remote = sum(len(v) for v in reg.values())
             print(f"✓ Drive registry loaded ({total_remote} keys)")
@@ -362,32 +373,31 @@ class GoogleDriveBackupManager:
         reg = registry or self.backup_registry
 
         # Local JSON save
-        with open(self.backup_registry_path, "w") as f:
+        file = str(self.registry_file_paths[self.mode])
+        with open(file.replace(".pkl", ".json"), "w") as f:
             json.dump(reg, f)
 
         # Local pickle save
-        with open(self.backup_pickle_path, "wb") as f:
+        with open(file, "wb") as f:
             pickle.dump(reg, f)
 
         print(f"\t📦 {self} Registry saved locally")
 
         # Remote save
-        remote_status = self._save_registry_to_gcs(reg)
-        if remote_status:
-            print(f"\t☁️ {self} Registry synced to Google Drive")
+        remote_status = self._save_registry_to_gcs(file)
+        if remote_status: print(f"\t☁️ {self} Registry synced to Google Drive")
 
         return remote_status
 
 
     def get_latest_state(self, component, filename):
         entry = self.backup_registry.get(component, {}).get(filename)
-        if not entry:
-            return None
+        if not entry: return None
 
-        path = entry.get("local_path") if isinstance(entry, dict) else entry
-        path = self.normalize_path(path, project_root=self.dir)
-        if not os.path.exists(path):
-            return None
+        path                     = None
+        try:                path = entry.get("local_path") if isinstance(entry, dict) else entry
+        except Exception:   path = self.normalize_path(path, project_root=self.dir)
+        if not path or not os.path.exists(path): return None
 
         ext = Path(path).suffix.lower()
         if ext == ".pkl":
@@ -472,6 +482,7 @@ class GoogleDriveBackupManager:
     def _upload_file_to_drive(self, component, date_str, local_path, filename, parent_dir="quantum_data_lake"):
         """Upload a file into Google Drive, supporting both quantum_data_lake and quantum_logs."""
         if not self.remote_available or not self.drive: return False
+        if self.in_share_drive: return False
 
         # ---------------------------------------------------------------
         # 1. Root folder (quantum_data_lake or quantum_logs)
@@ -483,8 +494,8 @@ class GoogleDriveBackupManager:
         # ---------------------------------------------------------------
         if component is not None:   
             comp_folder_id      =   self._ensure_drive_folder(component, root_id)
-            day_folder_name     =   self.normalize_day_prefix(date_str)
-            parent_folder_id    =   self._ensure_drive_folder(day_folder_name, comp_folder_id)
+            # day_folder_name     =   self.normalize_day_prefix(date_str)
+            parent_folder_id    =   self._ensure_drive_folder(str(date_str), comp_folder_id)
         else: parent_folder_id  =   root_id
 
         # ---------------------------------------------------------------
@@ -517,68 +528,64 @@ class GoogleDriveBackupManager:
 
         return True
 
+    def set_regestry_qry(self, filename, day_folder_id):
+        self.obj_query["model_state"] = f"""name contains '{filename.split("(")[0]}' and '{day_folder_id}' in parents"""
+        self.obj_query["framework_state"] = f"name='{filename}' and '{day_folder_id}' in parents"
+        return True
     
-    def _download_file_from_drive(self, date_str, component, filename):
+    def _download_file_from_drive(self, date_str, component, filename, storage_dir="quantum_data_lake"):
         """
         Download a single file from Drive into:
             {config_dir}/{component}/day_{date_str}/{filename}
 
         This mirrors the same structure created by _upload_file_to_drive.
         """
-        if not self.remote_available or not self.drive: return None
+        
+        if self.in_share_drive:
+            # Direct filesystem path in shared drive - no download needed
+            local_path =  self.quantum_data_paths["obj"][component]["drive"] / date_str / filename
+            if local_path.exists(): return str(local_path)
 
+        if not self.remote_available or not self.drive: return None
+        
         # ---------------------------------------------------------------
         # 1. Resolve quantum_data_lake root
         # ---------------------------------------------------------------
-        data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.DRIVE_FOLDER_ID)
-
+        data_lake_id = self._ensure_drive_folder(storage_dir, self.DRIVE_FOLDER_ID)
+        
         # ---------------------------------------------------------------
         # 2. Resolve component folder
         # ---------------------------------------------------------------
         comp_folder_id = self._ensure_drive_folder(component, data_lake_id)
-
+        
         # ---------------------------------------------------------------
         # 3. Resolve date folder
         # ---------------------------------------------------------------
-        # day_folder_name = f"day_{date_str}" if "day" not in date_str else date_str
-        day_folder_name = self.normalize_day_prefix(date_str)
-        day_folder_id = self._ensure_drive_folder(day_folder_name, comp_folder_id)
-
+        day_folder_id = self._ensure_drive_folder(date_str, comp_folder_id)
+        
         # ---------------------------------------------------------------
         # 4. Drive search query
         # ---------------------------------------------------------------
-        safe_prefix = filename.split("(")[0]
-        # query = f"name contains '{safe_prefix}' and '{day_folder_id}' in parents"
-        if component == "model_state":
-            # Model files often contain parentheses → `name='...'` breaks
-            safe_prefix = filename.split("(")[0]
-            query = f"name contains '{safe_prefix}' and '{day_folder_id}' in parents"
-        else:
-            # Framework files have no parentheses → safe for exact match
-            query = f"name='{filename}' and '{day_folder_id}' in parents"
-
+        self.set_regestry_qry(filename, day_folder_id)[component]
 
         response = self._retry_drive(
             lambda: self.drive.files().list(
-                q=query,
+                q=self.obj_query[component],
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True
             ).execute()
         )
-
+        
         files = response.get("files", [])
-        if not files:
-            return None
-
+        if not files: return None    
         file_id = files[0]["id"]
-
+    
         # ---------------------------------------------------------------
         # 5. Local path
         # ---------------------------------------------------------------
-        local_dir = self.dir / component / day_folder_name
-        local_dir.mkdir(parents=True, exist_ok=True)
-        local_path = local_dir / filename
-
+        local_path = self.quantum_data_paths["obj"][component]["local"] / date_str / filename
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        
         # ---------------------------------------------------------------
         # 6. Download the file
         # ---------------------------------------------------------------
@@ -588,7 +595,7 @@ class GoogleDriveBackupManager:
             done = False
             while not done:
                 status, done = downloader.next_chunk()
-
+        
         return str(local_path)
 
 
@@ -601,7 +608,8 @@ class GoogleDriveBackupManager:
             return False
 
         print("RESTORING FROM DRIVE 2")
-        if self.framework_state_path.exists() and self.model_state_path.exists(): 
+        comp_path = self.quantum_data_paths["obj"]
+        if comp_path["framework_state"][self.mode].exists() and comp_path["model_state"][self.mode].exists(): 
             # if self.verbose: 
             print("\t⚠️ Registry exists → aborting restore")
             return False
@@ -616,30 +624,29 @@ class GoogleDriveBackupManager:
                 print(filename)
                 
                 # Check if already exists locally
-                local_entry = self.backup_registry.get(component, {}).get(filename)
-                local_entry = self.normalize_path(local_entry, project_root=self.dir)
+                local_entry = None
+                try:                local_entry = self.backup_registry.get(component, {}).get(filename)
+                except Exception:   local_entry = self.normalize_path(local_entry, project_root=self.dir)
                 if local_entry and Path(local_entry).exists():
                     print("local entry check ", local_entry)
-                    restored[component][filename] = local_entry
+                    restored[component][filename] = str(Path(drive_path or local_path).resolve())
                     continue
 
                 # Otherwise download
                 drive_path = self._download_file_from_drive(date_str, component, filename)
                 if drive_path: 
                     print("found path: ",drive_path)
-                    restored[component][filename] = drive_path
+                    restored[component][filename] = str(Path(drive_path or local_path).resolve())
                 else:
-                    local_path = str(self.framework_state_path/self.date_str/filename)
-                    if component == "model_state": 
-                        local_path = str(self.model_state_path/self.date_str/filename)
-                    print("manual path: ", local_path)
+                    local_path = str(self.quantum_data_paths["obj"][component][self.mode]/self.date_str/filename)
                     restored[component][filename] = local_path
+                    print("manual path: ", local_path)
 
 
         print("RESTORING FROM DRIVE 4")
         # Save registry locally
-        with open(self.backup_registry_path, "w") as f:
-            json.dump(restored, f)
+        file = str(self.registry_file_paths[self.mode].replace(".pkl", ".json"))
+        with open(file, "w") as f: json.dump(restored, f)
 
         # Update internal registry
         self.backup_registry = restored
@@ -656,15 +663,16 @@ class GoogleDriveBackupManager:
         """
         if not self.remote_available: return False
         if not entries: entries = self.new_entries
+        if self.in_share_drive: return False
 
         for component, files in entries.items():
             for filename, local_path in files.items():
                 # auto-extract date from parent folder
                 if Path(local_path).exists():
-                    date_str = self.normalize_day_prefix(str(Path(local_path).parent.name))
+                    # date_str = self.normalize_day_prefix(str(Path(local_path).parent.name))
                     self._upload_file_to_drive(
                         component=component,
-                        date_str=date_str,
+                        date_str=str(Path(local_path).parent.name),
                         local_path=local_path,
                         filename=filename
                     )
@@ -672,75 +680,118 @@ class GoogleDriveBackupManager:
 
     def download_any_date(self, component, filename):
         """
-        Search all day_* folders in Drive under the given component
-        and download the first EXACT match.
+        Search all day_* folders under the given component
+        and return the first EXACT match.
         """
-
-        # Resolve root folders
-        data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.DRIVE_FOLDER_ID)
-        comp_id = self._ensure_drive_folder(component, data_lake_id)
-
+        
+        if self.in_share_drive:
+            # Direct filesystem search in shared drive
+            for mode in ["drive", "local"]:
+                comp_dir =  self.quantum_data_paths[mode] / component
+                if not comp_dir.exists(): return None
+                
+                # Search all day_* folders
+                for day_folder in comp_dir.iterdir():
+                    if not day_folder.is_dir() or not day_folder.name.startswith("day_"): continue
+                
+                    file_path = day_folder / filename
+                    if file_path.exists():
+                        if self.verbose: print(f"✓ Found: {file_path}")
+                    return str(file_path)
+            return None
+        
+        # Drive API for non-shared-drive environments
+        data_lake_id= self._ensure_drive_folder("quantum_data_lake", self.DRIVE_FOLDER_ID)
+        comp_id     = self._ensure_drive_folder(component, data_lake_id)
+        
         # List all day_* folders
         day_folders = self.drive.files().list(
             q=f"'{comp_id}' in parents and mimeType='application/vnd.google-apps.folder'",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
+            supportsAllDrives=True, includeItemsFromAllDrives=True
         ).execute().get("files", [])
-
+        
         for folder in day_folders:
             fid = folder["id"]
-
-            # 🔥 EXACT MATCH — no substring collision
+            # EXACT MATCH — no substring collision
             q = f"name = '{filename}' and '{fid}' in parents"
-
             response = self._retry_drive(
                 lambda: self.drive.files().list(
-                    q=q,
-                    supportsAllDrives=True,
+                    q=q, supportsAllDrives=True,
                     includeItemsFromAllDrives=True
                 ).execute()
             )
-
             files = response.get("files", [])
-            if not files:
-                continue
-
-            file_meta = files[0]   # exact match
+            if not files: continue
+            
+            file_meta = files[0]
             file_id = file_meta["id"]
             actual_name = file_meta["name"]
-
-            # Save using the ACTUAL filename (prevent silent mislabels)
-            local_dir = self.dir / component / self.normalize_day_prefix(folder["name"])
+            
+            # Save using the ACTUAL filename
+            local_dir =  self.quantum_data_paths["local"] / component / folder["name"]
             local_dir.mkdir(parents=True, exist_ok=True)
             local_path = local_dir / actual_name
-
+            
+            print("\tFile Downloaded in local_path")
             request = self.drive.files().get_media(fileId=file_id)
             with open(local_path, "wb") as f:
-                downloader = MediaIoBaseDownload(f, request)
                 done = False
-                while not done:
-                    status, done = downloader.next_chunk()
-
+                downloader = MediaIoBaseDownload(f, request)
+                while not done: status, done = downloader.next_chunk()
+            
             return str(local_path)
-
         return None
+
 
     def normalize_day_prefix(self, value: str) -> str:
         """
-        Normalize any string ending with:
-        - 20251120
-        - day_20251120
-        - day_day_20251120
-        - anything...20251120
-
-        Using named regex groups for exact extraction.
+        Always returns exactly 'day_YYYYMMDD' format.
+        Extracts 8-digit date from ANYWHERE in the string.
+        If no valid date found, constructs current date and prints warning.
+        
+        Examples:
+            '20251123'                                    → 'day_20251123'
+            'day_20251123'                                → 'day_20251123'
+            '/config/framework_state/day_20251123/file'   → 'day_20251123'
+            'invalid_date'                                → 'day_20251123' (current date)
+            '20251340' (invalid month)                    → 'day_20251123' (current date)
         """
+        if value is None or value == "":
+            print(f"⚠️ Invalid date: empty input → using current date")
+            return f"day_{datetime.now().strftime('%Y%m%d')}"
+        
         s = str(value).strip()
-        m = DAY_REGEX.search(s)
-        if not m: return "day_unknown"
+        
+        # Search for day_YYYYMMDD or just YYYYMMDD anywhere in string
+        match = DAY_REGEX.search(s)
+        
+        if match:
+            # Extract the 8-digit date (from group 1 if day_ prefix, else group 2)
+            date_str = match.group(1) if match.group(1) else match.group(2)
+            
+            # Validate it's a real calendar date
+            try:
+                year = int(date_str[0:4])
+                month = int(date_str[4:6])
+                day = int(date_str[6:8])
+                
+                # Basic range validation
+                if not (1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31):
+                    raise ValueError(f"Date out of range: {year}-{month:02d}-{day:02d}")
+                
+                # Strict validation (catches Feb 30, etc.)
+                datetime(year, month, day)
+                
+                return f"day_{date_str}"
+                
+            except (ValueError, OverflowError) as e:
+                print(f"\t⚠️ Invalid date: '{date_str}' in '{s}' ({e}) → using current date")
+                return f"day_{datetime.now().strftime('%Y%m%d')}"
+        
+        # No 8-digit pattern found
+        print(f"\t⚠️ Invalid date: no YYYYMMDD in '{s}' → using current date")
+        return f"day_{datetime.now().strftime('%Y%m%d')}"
 
-        date = m.group("date")   # the eight digits
-        return f"day_{date}"
 
     def normalize_path(self, path: str, project_root: str = None) -> str:
         """
@@ -778,6 +829,22 @@ class GoogleDriveBackupManager:
 
         new_path = base_dir / component / date_folder / fname
         return str(new_path)
+    
+    def delete_from_drive(self, component, filename):
+        """
+        Removes a file from Google Drive datalake (ShareDrive path).
+        Safe: deletes only the file matching the exact component + filename.
+        """
+        try:
+            file_path = self.quantum_data_paths["obj"][component]["drive"] / filename
+            if file_path.exists():
+                file_path.unlink()
+                return True
+            return False
+
+        except Exception:
+            return False
+
 
     
     def __repr__(self):

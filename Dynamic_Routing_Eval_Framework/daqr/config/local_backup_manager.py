@@ -22,7 +22,6 @@ class LocalBackupManager(GoogleDriveBackupManager):
         temp = defaultdict(dict)
         valid_exts = {".pkl", ".json"}
 
-<<<<<<< HEAD
         for mode in ["drive", "local"]: # check boths storage locations in drive
             if self.quantum_data_paths[mode].exists(): continue # skip systems without dual storage (not drive)
             
@@ -31,19 +30,11 @@ class LocalBackupManager(GoogleDriveBackupManager):
 
                 try: relative_path = dir_path.relative_to(self.quantum_data_paths[mode])
                 except ValueError: continue
-=======
-        for dirpath, _, filenames in os.walk(self.quantum_datalake_path):
-            dir_path = Path(dirpath)
-
-            try: relative_path = dir_path.relative_to(self.quantum_datalake_path )
-            except ValueError: continue
->>>>>>> origin/gcp-main
 
                 parts = relative_path.parts
                 if not parts: continue
                 component = parts[0]
 
-<<<<<<< HEAD
                 # Extract date_str from folders like day_20251120
                 date_str = None
                 for p in parts:
@@ -51,16 +42,6 @@ class LocalBackupManager(GoogleDriveBackupManager):
                         date_str = p
                         break
                 if not date_str: continue
-=======
-            # Extract date_str from folders like day_20251120
-            date_str = None
-            for p in parts:
-                if p.startswith("day_"):
-                    # date_str = self.normalize_day_prefix(p)
-                    date_str = p
-                    break
-            if not date_str: continue
->>>>>>> origin/gcp-main
 
                 for fname in filenames:
                     if Path(fname).suffix not in valid_exts: continue
@@ -86,20 +67,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
         total = sum(len(v) for v in self.backup_registry.values())
         print(f"\t→ Filesystem scan found {total} files")
         
-<<<<<<< HEAD
         # Upload to Drive ONLY if forced
         self._save_registry_to_gcs(self.registry_file_paths[self.mode])
-=======
-        # Always save local registry
-        self.backup_registry_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.backup_registry_path, "w") as f:
-            json.dump(self.backup_registry, f, indent=2)
-        print(f"\t→ Local registry updated at: {self.backup_registry_path}")
-        
-        # Upload to Drive ONLY if forced
-        # if force and self.remote_available:
-        if self.in_share_drive: self._save_registry_to_gcs("backup_registry.json")
->>>>>>> origin/gcp-main
         print("\t→ Drive registry updated")
         
         print("===================== REGISTRY BUILD COMPLETE =====================\n")
@@ -246,11 +215,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
                 except: pass
             
             if not self.in_share_drive:
-<<<<<<< HEAD
                 logfile = self.quantum_data_paths["logs"][self.mode] / self.quantum_logs_file_name
-=======
-                logfile = self.quantum_logs_path / self.quantum_logs_file_name
->>>>>>> origin/gcp-main
                 try:    self._upload_file_to_drive(component=None, local_path=logfile, date_str=self.date_str, filename=self.quantum_logs_file_name, parent_dir="quantum_logs")
                 except: pass
 
@@ -269,11 +234,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
 
     def _build_metadata_local(self, parent_dir="quantum_logs"):
         """Scan local folder structure with defensive error handling."""
-<<<<<<< HEAD
         root = self.quantum_data_paths["logs"][self.mode]
-=======
-        root = self.quantum_logs_path
->>>>>>> origin/gcp-main
         if not root.exists() or len(self.metadata) != 0: return False
         
         print(f"🔍 Scanning local metadata from: {root}")

@@ -1,15 +1,15 @@
 from datetime import datetime
 import os
-import re
+import math
 import json
 import time
 import copy
+import psutil
 import random
 import warnings, gc
 import numpy as np
-# import pandas as pd
-# from tqdm import tqdm
-import pathlib
+import pandas as pd
+from tqdm import tqdm
 import seaborn as sns
 from random import choice
 import matplotlib.pyplot as plt
@@ -77,7 +77,7 @@ class QuantumModel(ABC):
 
         self.mode = mode
         self.beta = beta
-        # self.verbose = self.configs.verbosel
+        # self.verbose = self.configs.verbose
         
         # EXP3 parameters (used in 'hybrid' and 'exp3' modes)
         self.capacity = int(capacity*self.configs.scale)
@@ -87,8 +87,7 @@ class QuantumModel(ABC):
 
         self.component = "model_state"
         self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
-        # self.save_to_dir = Path(f"{self.configs.dir}/model_state/{self.configs.day_str}/")
-        self.save_to_dir = self.configs.model_state_path / re.sub(r'.*?(day_\d{8})$', r'\1', str(self.configs.day_str))
+        self.save_to_dir = Path(f"{self.configs.dir}/model_state/{self.configs.day_str}/")
 
 
         mode = self.configs.backup_mgr.mode

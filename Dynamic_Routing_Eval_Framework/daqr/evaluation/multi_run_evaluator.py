@@ -57,7 +57,11 @@ class MultiRunEvaluator:
         self.capacity = self.base_frames
 
         # Set paths
+<<<<<<< HEAD
         # self.save_to_dir = self.configs.framework_state_path / self.configs.day_str
+=======
+        self.save_to_dir = self.configs.framework_state_path / self.configs.day_str
+>>>>>>> origin/gcp-main
         
         # Update configs FIRST
         self.update_configs(runs, models, attack_type, scenarios, attack_intensity)
@@ -177,12 +181,38 @@ class MultiRunEvaluator:
         )
     
     def save(self):
+<<<<<<< HEAD
         # This now always writes to the config backup (safe, never corrupts data lake)
         return self.configs.save_obj(self)
 
     def resume(self):
         # This now always loads from the correct data lake (or backup if not found)
         return self.configs.resume_obj(self, "framework_state")  # or framework_state for runner
+=======
+        """Save evaluator state for the current day."""
+        return self.configs.save_obj(self, self.save_to_dir, self.file_name)
+
+
+    def resume(self):
+        print("\n================ RESUME TRACE ================\n")
+
+        # --- TRACE 1: CONFIG PATH ---
+        # print(self.file_name)
+        loaded_dict, eq_result = self.configs.resume_obj("framework_state", self.file_name, True)
+        # --- TRACE 6: UPDATE ---
+        if eq_result:
+            print("[TRACE] Updating self.__dict__ ...")
+            print(f"\t🔄 {self} Resuming state from: {self.save_to_dir}")
+            try:
+                configs = self.configs
+                self.__dict__.update(loaded_dict)
+                self.configs = configs
+                return True
+            except Exception as e:
+                print(f"[ERROR] __dict__.update failed: {e}")
+                print(f"[TRACE] loaded_dict = {loaded_dict!r}")
+        return False
+>>>>>>> origin/gcp-main
     
 
     def run_experiments(self, runs=None, attack_type=None, models=None):
@@ -809,9 +839,15 @@ class MultiRunEvaluator:
         """
         self.update_configs(runs, models, attack_type, scenarios)
         
+<<<<<<< HEAD
         # if len(self.evaluation_results) == 0:
         # Run the comprehensive evaluation
         self.run_scenarios_model_evaluation(cal_winner=cal_winner, parallel=parellel)
+=======
+        if len(self.evaluation_results) == 0:
+        # Run the comprehensive evaluation
+            self.run_scenarios_model_evaluation(cal_winner=cal_winner, parallel=parellel)
+>>>>>>> origin/gcp-main
 
         return self.evaluation_results
 

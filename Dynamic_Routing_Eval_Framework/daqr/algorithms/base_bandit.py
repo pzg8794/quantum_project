@@ -1,15 +1,15 @@
 from datetime import datetime
 import os
-import math
+import re
 import json
 import time
 import copy
-import psutil
 import random
 import warnings, gc
 import numpy as np
-import pandas as pd
-from tqdm import tqdm
+# import pandas as pd
+# from tqdm import tqdm
+import pathlib
 import seaborn as sns
 from random import choice
 import matplotlib.pyplot as plt
@@ -77,7 +77,7 @@ class QuantumModel(ABC):
 
         self.mode = mode
         self.beta = beta
-        # self.verbose = self.configs.verbose
+        # self.verbose = self.configs.verbosel
         
         # EXP3 parameters (used in 'hybrid' and 'exp3' modes)
         self.capacity = int(capacity*self.configs.scale)
@@ -87,7 +87,8 @@ class QuantumModel(ABC):
 
         self.component = "model_state"
         self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
-        self.save_to_dir = Path(f"{self.configs.dir}/model_state/{self.configs.day_str}/")
+        # self.save_to_dir = Path(f"{self.configs.dir}/model_state/{self.configs.day_str}/")
+        self.save_to_dir = self.configs.model_state_path / re.sub(r'.*?(day_\d{8})$', r'\1', str(self.configs.day_str))
 
 
         mode = self.configs.backup_mgr.mode
@@ -195,12 +196,40 @@ class QuantumModel(ABC):
 
     
     def save(self):
+<<<<<<< HEAD
         # This now always writes to the config backup (safe, never corrupts data lake)
         return self.configs.save_obj(self)
 
     def resume(self):
         # This now always loads from the correct data lake (or backup if not found)
         return self.configs.resume_obj(self, "model_state")  # or framework_state for runner
+=======
+        """Save evaluator state for the current day."""
+        return self.configs.save_obj(self, self.save_to_dir, self.file_name)
+
+
+    def resume(self):
+        """
+        Resume model state if saved state exists.
+        Returns:
+            bool: True if successfully resumed, False otherwise.
+        """
+        loaded_dict, eq_result = self.configs.resume_obj("model_state", self.file_name)
+        # --- TRACE 6: UPDATE ---
+        if eq_result:
+            print("[TRACE] Updating self.__dict__ ...")
+            print(f"\t🔄 {self} Resuming state from: {self.save_to_dir}")
+            try:
+                configs = self.configs
+                self.__dict__.update(loaded_dict)
+                self.configs = configs
+                return True
+            except Exception as e:
+                print(f"[ERROR] __dict__.update failed: {e}")
+                print(f"[TRACE] loaded_dict = {loaded_dict!r}")
+        return False
+
+>>>>>>> origin/gcp-main
 
             
     def get_cleanup_wait_time(self, frames_count=1000, cooldown_base=3, cooldown_scale_factor=1, cooldown_max=15):

@@ -13,7 +13,14 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
+<<<<<<< HEAD
 
+=======
+# Regex to match day_YYYYMMDD or just YYYYMMDD anywhere in string
+DAY_REGEX = re.compile(
+    r'day_(\d{8})|(\d{8})'
+)
+>>>>>>> origin/gcp-main
 class GoogleDriveBackupManager:
     """Unified JSON registry backup to Google Drive Shared Drive."""
 
@@ -26,6 +33,7 @@ class GoogleDriveBackupManager:
         self.verbose = verbose
         self.backup_registry = {}
         self.in_share_drive = True
+<<<<<<< HEAD
         
         self.obj_query = {}
         self.dir = config_dir
@@ -66,6 +74,29 @@ class GoogleDriveBackupManager:
         if not self.quantum_data_paths["logs"]["drive"].exists(): 
             parent_dir                  = self.dir
             self.in_share_drive         = False
+=======
+
+        self.dir = config_dir
+        self.date_str = date_str
+
+        # self.date_str = self.normalize_day_prefix(date_str)
+        self.quantum_logs_file_name = f"quantum_quick-run_log_{self.date_str}.txt"
+        parent_dir                  = self.dir.parent.parent.parent.parent
+        self.quantum_logs_path      = parent_dir / "quantum_logs"
+        if not self.quantum_logs_path.exists(): 
+            parent_dir              = self.dir
+            self.in_share_drive     = False
+        self.quantum_logs_path      = parent_dir / "quantum_logs"
+        self.quantum_datalake_path  = parent_dir / "quantum_data_lake"
+        self.quantum_datalake_path.mkdir(parents=True, exist_ok=True)
+        self.quantum_logs_path.mkdir(parents=True, exist_ok=True)
+
+        # self.quantum_logs_path      = Path(self.normalize_path("quantum_logs", project_root=parent_dir))
+        self.backup_registry_path   = self.quantum_datalake_path / "backup_registry.json"
+        self.backup_pickle_path     = self.quantum_datalake_path / "backup_registry.pkl"
+        self.framework_state_path   = self.quantum_datalake_path / "framework_state"
+        self.model_state_path       = self.quantum_datalake_path / "model_state"
+>>>>>>> origin/gcp-main
 
         # ------------------------------------------------------------
         # Credential auto-discovery
@@ -283,6 +314,7 @@ class GoogleDriveBackupManager:
     # ------------------------------------------------------------
     # Remote SAVE (exact GCP naming: _save_registry_to_gcs)
     # ------------------------------------------------------------
+<<<<<<< HEAD
     def _save_registry_to_gcs(self, registry_path):
         file = self.registry_file_paths[self.mode]
         if not registry_path: registry_path = file.replace(".pkl", ".json")
@@ -300,6 +332,27 @@ class GoogleDriveBackupManager:
         media = MediaIoBaseUpload(buffer, mimetype="application/json", resumable=False)
         
         data_lake_id = self._ensure_drive_folder("quantum_logs", self.DRIVE_FOLDER_ID)
+=======
+    def _save_registry_to_gcs(self, registry=None):
+        registry = registry or self.backup_registry
+        
+        if self.in_share_drive:
+            # Direct filesystem write in shared drive
+            with open(self.backup_registry_path, "w") as f:
+                json.dump(registry, f, indent=2)
+            if self.verbose: print(f"💾 Registry saved locally: {self.backup_registry_path}")
+            return True
+        
+        if not self.remote_available or not self.drive:
+            return False
+        
+        # Drive API for non-shared-drive environments
+        json_bytes = json.dumps(registry).encode("utf-8")
+        buffer = io.BytesIO(json_bytes)
+        media = MediaIoBaseUpload(buffer, mimetype="application/json", resumable=False)
+        
+        data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.DRIVE_FOLDER_ID)
+>>>>>>> origin/gcp-main
         metadata = {
             "name": "backup_registry.json",
             "parents": [data_lake_id]
@@ -487,6 +540,7 @@ class GoogleDriveBackupManager:
         # ---------------------------------------------------------------
         # 1. Root folder (quantum_data_lake or quantum_logs)
         # ---------------------------------------------------------------
+        date_str                =   re.sub(r'.*?(day_\d{8})$', r'\1', str(date_str))
         root_id                 =   self._ensure_drive_folder(parent_dir, self.DRIVE_FOLDER_ID)
 
         # ---------------------------------------------------------------
@@ -495,7 +549,11 @@ class GoogleDriveBackupManager:
         if component is not None:   
             comp_folder_id      =   self._ensure_drive_folder(component, root_id)
             # day_folder_name     =   self.normalize_day_prefix(date_str)
+<<<<<<< HEAD
             parent_folder_id    =   self._ensure_drive_folder(str(date_str), comp_folder_id)
+=======
+            parent_folder_id    =   self._ensure_drive_folder(date_str, comp_folder_id)
+>>>>>>> origin/gcp-main
         else: parent_folder_id  =   root_id
 
         # ---------------------------------------------------------------
@@ -543,9 +601,15 @@ class GoogleDriveBackupManager:
         
         if self.in_share_drive:
             # Direct filesystem path in shared drive - no download needed
+<<<<<<< HEAD
             local_path =  self.quantum_data_paths["obj"][component]["drive"] / date_str / filename
             if local_path.exists(): return str(local_path)
 
+=======
+            local_path = self.quantum_datalake_path / component / date_str / filename
+            if local_path.exists(): return str(local_path)
+            return None
+>>>>>>> origin/gcp-main
         if not self.remote_available or not self.drive: return None
         
         # ---------------------------------------------------------------
@@ -566,8 +630,17 @@ class GoogleDriveBackupManager:
         # ---------------------------------------------------------------
         # 4. Drive search query
         # ---------------------------------------------------------------
+<<<<<<< HEAD
         self.set_regestry_qry(filename, day_folder_id)[component]
 
+=======
+        if component == "model_state":
+            safe_prefix = filename.split("(")[0]
+            query = f"name contains '{safe_prefix}' and '{day_folder_id}' in parents"
+        else:
+            query = f"name='{filename}' and '{day_folder_id}' in parents"
+        
+>>>>>>> origin/gcp-main
         response = self._retry_drive(
             lambda: self.drive.files().list(
                 q=self.obj_query[component],
@@ -577,6 +650,7 @@ class GoogleDriveBackupManager:
         )
         
         files = response.get("files", [])
+<<<<<<< HEAD
         if not files: return None    
         file_id = files[0]["id"]
     
@@ -584,6 +658,17 @@ class GoogleDriveBackupManager:
         # 5. Local path
         # ---------------------------------------------------------------
         local_path = self.quantum_data_paths["obj"][component]["local"] / date_str / filename
+=======
+        if not files:
+            return None
+        
+        file_id = files[0]["id"]
+        
+        # ---------------------------------------------------------------
+        # 5. Local path
+        # ---------------------------------------------------------------
+        local_path = self.quantum_datalake_path / component / date_str / filename
+>>>>>>> origin/gcp-main
         local_path.parent.mkdir(parents=True, exist_ok=True)
         
         # ---------------------------------------------------------------
@@ -686,6 +771,7 @@ class GoogleDriveBackupManager:
         
         if self.in_share_drive:
             # Direct filesystem search in shared drive
+<<<<<<< HEAD
             for mode in ["drive", "local"]:
                 comp_dir =  self.quantum_data_paths[mode] / component
                 if not comp_dir.exists(): return None
@@ -703,6 +789,28 @@ class GoogleDriveBackupManager:
         # Drive API for non-shared-drive environments
         data_lake_id= self._ensure_drive_folder("quantum_data_lake", self.DRIVE_FOLDER_ID)
         comp_id     = self._ensure_drive_folder(component, data_lake_id)
+=======
+            comp_dir = self.quantum_datalake_path / component
+            if not comp_dir.exists():
+                return None
+            
+            # Search all day_* folders
+            for day_folder in comp_dir.iterdir():
+                if not day_folder.is_dir() or not day_folder.name.startswith("day_"):
+                    continue
+                
+                file_path = day_folder / filename
+                if file_path.exists():
+                    if self.verbose:
+                        print(f"✓ Found: {file_path}")
+                    return str(file_path)
+            
+            return None
+        
+        # Drive API for non-shared-drive environments
+        data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.DRIVE_FOLDER_ID)
+        comp_id = self._ensure_drive_folder(component, data_lake_id)
+>>>>>>> origin/gcp-main
         
         # List all day_* folders
         day_folders = self.drive.files().list(
@@ -712,34 +820,63 @@ class GoogleDriveBackupManager:
         
         for folder in day_folders:
             fid = folder["id"]
+<<<<<<< HEAD
             # EXACT MATCH — no substring collision
             q = f"name = '{filename}' and '{fid}' in parents"
+=======
+            
+            # EXACT MATCH — no substring collision
+            q = f"name = '{filename}' and '{fid}' in parents"
+            
+>>>>>>> origin/gcp-main
             response = self._retry_drive(
                 lambda: self.drive.files().list(
                     q=q, supportsAllDrives=True,
                     includeItemsFromAllDrives=True
                 ).execute()
             )
+<<<<<<< HEAD
             files = response.get("files", [])
             if not files: continue
+=======
+            
+            files = response.get("files", [])
+            if not files:
+                continue
+>>>>>>> origin/gcp-main
             
             file_meta = files[0]
             file_id = file_meta["id"]
             actual_name = file_meta["name"]
             
             # Save using the ACTUAL filename
+<<<<<<< HEAD
             local_dir =  self.quantum_data_paths["local"] / component / folder["name"]
             local_dir.mkdir(parents=True, exist_ok=True)
             local_path = local_dir / actual_name
             
             print("\tFile Downloaded in local_path")
+=======
+            local_dir = self.quantum_datalake_path / component / folder["name"]
+            local_dir.mkdir(parents=True, exist_ok=True)
+            local_path = local_dir / actual_name
+            
+>>>>>>> origin/gcp-main
             request = self.drive.files().get_media(fileId=file_id)
             with open(local_path, "wb") as f:
                 done = False
+<<<<<<< HEAD
                 downloader = MediaIoBaseDownload(f, request)
                 while not done: status, done = downloader.next_chunk()
             
             return str(local_path)
+=======
+                while not done:
+                    status, done = downloader.next_chunk()
+            
+            return str(local_path)
+        
+>>>>>>> origin/gcp-main
         return None
 
 

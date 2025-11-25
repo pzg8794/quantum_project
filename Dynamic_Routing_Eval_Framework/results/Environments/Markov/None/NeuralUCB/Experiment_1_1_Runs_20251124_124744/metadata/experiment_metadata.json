@@ -1,0 +1,16 @@
+{
+  "environment": "markov",
+  "experiment_id": 1,
+  "num_runs": 1,
+  "model_category": "NeuralUCB",
+  "models_tested": [
+    "Oracle",
+    "GNeuralUCB"
+  ],
+  "timestamp": "2025-11-24T12:47:50.132135",
+  "session_timestamp": "20251124_124744",
+  "session_id": "20251124_124744",
+  "framework_config": {},
+  "allocator_type": "None",
+  "allocator_config": {}
+}

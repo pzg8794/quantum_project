@@ -29,17 +29,32 @@ pip-wheel-metadata/
 
 # ===========================================
 # GCP EXPERIMENT OUTPUTS
-# ===========================================
+# ===========================================# 
+Results
+Dynamic_Routing_Eval_Framework/results/
+
+# Logs
+Dynamic_Routing_Eval_Framework/daqr/config/quantum_logs/
+Dynamic_Routing_Eval_Framework/daqr/config/backup_registry.json
+Dynamic_Routing_Eval_Framework/daqr/config/quantum_data_lake/
+
+# Checkpoints
+*.pkl
+*.json
+*.txt
+*.log
+*.png
+
 # Auto-generated experiment results/logs
 Dynamic_Routing_Eval_Framework/results/*
 Dynamic_Routing_Eval_Framework/logs/*
 Dynamic_Routing_Eval_Framework/experiment_results/*
-quantum_project/results/*
-quantum_project/logs/*
+results/*
+logs/*
 
 # But keep result metadata & scripts
-!Dynamic_Routing_Eval_Framework/results/*
-!Dynamic_Routing_Eval_Framework/logs/*
+# !Dynamic_Routing_Eval_Framework/results/*
+# !Dynamic_Routing_Eval_Framework/logs/*
 # ===========================================
 # EDITOR / OS JUNK
 # ===========================================

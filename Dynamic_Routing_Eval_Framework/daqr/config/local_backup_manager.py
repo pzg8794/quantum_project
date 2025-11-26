@@ -1,5 +1,6 @@
 import json
 import pickle
+import shutil
 import threading
 import os, sys, io
 import pathlib
@@ -16,6 +17,31 @@ class LocalBackupManager(GoogleDriveBackupManager):
     def __init__(self, date_str, config_dir, verbose=False):
         super().__init__(date_str, config_dir, verbose=verbose)
         # FIX: Minimal locks only where needed
+        # ------------------------------------------------------------
+        # If running in Drive, wipe state directories (keep only empty roots)
+        # ------------------------------------------------------------
+        if self.in_share_drive:
+            for comp in ["framework_state", "model_state"]:
+                root = self.quantum_data_paths["drive"] / comp  # /quantum_data_lake/... directories
+
+                if root.exists():
+                    if self.verbose:
+                        print(f"⚠️ Clearing Drive state dir: {root}")
+
+                    # remove all date folders
+                    for d in root.iterdir():
+                        if d.is_dir() and d.name.startswith("day_"):
+                            try:
+                                shutil.rmtree(d)
+                                if self.verbose:
+                                    print(f"   → Removed: {d}")
+                            except Exception as e:
+                                print(f"   → ERROR removing {d}: {e}")
+
+                else:
+                    root.mkdir(parents=True, exist_ok=True)
+                    if self.verbose:
+                        print(f"Created missing drive state root: {root}")
 
     def _scan_local_files(self, expected_keys=None, load_to_drive=False, force=False):
         """Scan local filesystem and optionally mirror to Google Drive."""
@@ -23,7 +49,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
         valid_exts = {".pkl", ".json"}
 
         for mode in ["drive", "local"]: # check boths storage locations in drive
-            if self.quantum_data_paths[mode].exists(): continue # skip systems without dual storage (not drive)
+            if not self.quantum_data_paths[mode].exists(): continue # skip systems without dual storage (not drive)
             
             for dirpath, _, filenames in os.walk(self.quantum_data_paths[mode]):
                 dir_path = Path(dirpath)

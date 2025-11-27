@@ -61,7 +61,10 @@ class GoogleDriveBackupManager:
         self.in_share_drive             = True if self.quantum_data_paths["logs"]["drive"].exists() else False
         self.mode                       = "drive" if self.in_share_drive else "local"
 
-        if not self.quantum_data_paths["logs"]["drive"].exists(): self.in_share_drive         = False
+        parent_dir                      = self.dir.parent.parent.parent.parent
+        if not self.quantum_data_paths["logs"]["drive"].exists(): 
+            parent_dir                  = self.dir
+            self.in_share_drive         = False
 
         # ------------------------------------------------------------
         # Credential auto-discovery

@@ -44,6 +44,7 @@ class MultiRunEvaluator:
         self.base_frames = base_frames
         self.component    = "framework_state"
         self.enable_progress = enable_progress
+        self.models = models or self.configs.models
         
         # self.runner = None
         self.run_state = 0        # 0: not run, 1: completed, -1: failed
@@ -55,6 +56,8 @@ class MultiRunEvaluator:
         self.cal_winner = True
         self.env_type = 'stochastic'
         self.capacity = self.base_frames
+        self.t_scale  = self.configs.scale
+        self.is_base_t = self.configs.base_capacity
 
         # Set paths
         # self.save_to_dir = self.configs.framework_state_path / self.configs.day_str
@@ -74,23 +77,28 @@ class MultiRunEvaluator:
         self._build_environment_once(frames_count=self.frames_count, qubit_cap=qubit_cap)
 
         # Set filename AFTER configs are ready
+        self.runs_id        = getattr(self.configs, "runs", "1")
+        self.allocator_id   = str(getattr(self.configs, "allocator", "alloc"))
+        self.env_id         = str(getattr(self.configs, "environment", "env"))
+        self.attack_id      = str(getattr(self.configs, "attack_strategy", "None"))
 
-        self.runs_id      = getattr(self.configs, "runs", "1")
-        self.allocator_id = str(getattr(self.configs, "allocator", "alloc"))
-        self.env_id       = str(getattr(self.configs, "environment", "env"))
-        self.attack_id    = str(getattr(self.configs, "attack_strategy", "None"))
-        self.cap_id       = (int(self.base_frames if self.configs.base_capacity else self.frames_count)*self.configs.scale)
-        self.file_name    = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{self.base_frames}_{int(self.frame_step)}_{self.runs_id}.pkl"
+        run_id_str          = str(self.runs_id)
+        alloc_str           = "_".join(str(v) for v in qubit_cap)
+        if "random" in str(self.configs.allocator).lower(): run_id_str += f"_({re.sub(r'^_', '', alloc_str)})"
+        self.cap_id         = (int(self.base_frames if self.is_base_t else self.frames_count)*self.configs.scale)
+        self.file_name      = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{self.base_frames}_{int(self.frame_step)}_{run_id_str}_S{self.configs.scale}{'Tb' if self.is_base_t else 'T'}.pkl"
+        
+
 
         scenarios_no        = len(self.configs.test_scenarios)
         has_stochastic_env  = "stochastic" in self.configs.test_scenarios
         has_adversarial_env = "Adversarial" in self.configs.test_scenarios
         attack_id           = f"{scenarios_no}_attacks" if scenarios_no > 0 else self.attack_id
         env_id              = "all-envs" if has_stochastic_env and has_adversarial_env else self.env_id 
-        self.log_name       = f"{self.cap_id}-{self.allocator_id}_{env_id}_{attack_id}-{self.base_frames}_{int(self.frame_step)}_{self.runs_id}"
+        self.log_name       = f"{self.cap_id}-{self.allocator_id}_{env_id}_{attack_id}-{self.base_frames}_{int(self.frame_step)}_{self.runs_id}_S{self.configs.scale}{"Tb" if self.is_base_t else "T"}"
 
         # NOW resume can work
-        try:    self.resume()
+        try:    self.resume(backups=[self.runs_id])
         except Exception as e:  print(f"⚠️ {self} Resume failed: {e}")
 
         print("Multi-Run Evaluator Initialized")
@@ -123,30 +131,81 @@ class MultiRunEvaluator:
         )
         self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
 
+    def _infer_models_from_state(self, state: dict):
+        """
+        Infer the set of models used in a saved evaluator state
+        by inspecting experiment result structures.
+
+        This does NOT rely on any explicit 'models' field in the backup.
+        """
+        # 1) Try env_experiments first (most direct)
+        env_exps = state.get("env_experiments", {})
+        if isinstance(env_exps, dict) and env_exps:
+            for attack_type, experiments in env_exps.items():
+                if not isinstance(experiments, dict) or not experiments: continue
+                # take the first experiment for this attack_type
+                for exp_id, exp_data in experiments.items():
+                    if not isinstance(exp_data, dict): continue
+                    results = exp_data.get("results", {})
+                    if isinstance(results, dict) and results: return [m for m in results.keys()]
+
+        # 2) Fallback: try evaluation_results if env_experiments is empty
+        eval_res = state.get("evaluation_results", {})
+        if isinstance(eval_res, dict) and eval_res:
+            for scenario, exps in eval_res.items():
+                if not isinstance(exps, dict) or not exps: continue
+                for exp_id, exp_data in exps.items():
+                    if not isinstance(exp_data, dict): continue
+                    results = exp_data.get("results", {})
+                    if isinstance(results, dict) and results: return [m for m in results.keys()]
+
+        # If we can't infer anything, return None and skip model check
+        return None
+
     def __eq__(self, other):
         """Defines equality for evaluator or saved dict comparison."""
         # --- dict comparison (used in resume) ---
         if isinstance(other, dict):
             print("EQUAL METHOD")
-            other_attrs = other.get("key_attrs", {}).copy()
-            # temp fix
-            # if not self.configs.base_capacity:
-            if 'runs' in other_attrs: del other_attrs['runs']
-            if 'runs' in self.key_attrs: del self.key_attrs['runs']
+            other_attrs     = other.get("key_attrs", {}).copy()
+            # -------------------------------------------------
+            # TEMP SAFETY CHECK: ensure model sets are compatible
+            # -------------------------------------------------
+            saved_models            = self._infer_models_from_state(other)
+            if saved_models:
+                current_set         = set(self.models or [])
+                saved_set           = set(saved_models)
+                # This prevents: using a 3-model run as if it were a 5-model run.
+                if not current_set.issubset(saved_set):
+                    print("\n❌ MODEL SET MISMATCH — forcing rerun")
+                    print(f"   Current models: {sorted(current_set)}")
+                    print(f"   Saved models:   {sorted(saved_set)}")
+                    return False
+            else:   print("ℹ️ Could not infer models from saved state — skipping model check")
 
-            if "seed" in other_attrs:
-                del other_attrs["seed"]
+            # temp fix
+            if 'runs' in other_attrs:   del other_attrs['runs']
+            if "seed" in other_attrs:   del other_attrs["seed"]
+            if 'runs' in self.key_attrs:del self.key_attrs['runs']
             
             if (
+                # self.capacity == other.get("capacity") and
                 self.frame_step == other.get("frame_step") and
                 self.base_frames == other.get("base_frames") and
                 self.allocator_id == other.get("allocator_id") and
                 self.env_id == other.get("env_id") and
-                self.runs_id == other.get("runs_id") and
+                int(self.runs_id) <= int(other.get("runs_id")) and
                 self.attack_id == other.get("attack_id") and
                 self.cap_id == other.get("cap_id") and
                 self.key_attrs == other_attrs
             ):
+                if "random" in str(self.configs.allocator).lower(): 
+                    self.key_attrs.update(other.get("key_attrs", {}))
+                    for attr, val in self.key_attrs.items():
+                        if attr in self.configs._env_params.keys(): self.configs._env_params[attr] = val
+                    # reset environment with random found capacity
+                    qubit_cap = self.key_attrs['qubit_capacities']
+                    self._build_environment_once(frames_count=self.frames_count, qubit_cap=qubit_cap)
                 return True
             
             print(f"\n❌ Evaluator comparison failed:")
@@ -170,7 +229,7 @@ class MultiRunEvaluator:
             self.base_frames == getattr(other, "base_frames", None) and
             self.allocator_id == getattr(other, "allocator_id", None) and
             self.env_id == getattr(other, "env_id", None) and
-            self.runs_id == getattr(other, "runs_id", None) and
+            int(self.runs_id) <= int(getattr(other, "runs_id", -1)) and
             self.attack_id == getattr(other, "attack_id", None) and
             self.cap_id == getattr(other, "cap_id", None) and
             self.key_attrs == getattr(other, "key_attrs", None)
@@ -180,10 +239,21 @@ class MultiRunEvaluator:
         # This now always writes to the config backup (safe, never corrupts data lake)
         return self.configs.save_obj(self)
 
-    def resume(self):
+    def resume(self, backups=[3, 5, 8, 10]):
         # This now always loads from the correct data lake (or backup if not found)
-        return self.configs.resume_obj(self, "framework_state")  # or framework_state for runner
-    
+        curr_runs = self.runs_id
+        curr_file_name = self.file_name
+        for runs_id in backups: # horizons used in current system
+            resumed = False
+            if self.runs_id <= runs_id:
+                if self.runs_id != runs_id: 
+                    self.file_name = self.file_name.replace(f"{int(self.frame_step)}_{self.runs_id}", f"{int(self.frame_step)}_{runs_id}")
+                resumed = self.configs.resume_obj(self)  # or framework_state for runner
+                self.file_name = curr_file_name
+                self.runs_id = curr_runs
+            if resumed: return resumed
+        return False    
+
 
     def run_experiments(self, runs=None, attack_type=None, models=None):
         """
@@ -207,8 +277,10 @@ class MultiRunEvaluator:
             for i in range(0, self.configs.runs):
                 exp_id = i + 1
                 if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
-                    print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
-                    continue
+                    scaled_cap = self.capacity * self.configs.scale
+                    # print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
+                    # self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
+                    # continue
                 self.run_experiment(exp_no=i, attack_category=attack_category)
 
             self.total_time = time.time() - self.start_time
@@ -226,6 +298,7 @@ class MultiRunEvaluator:
             # ------------------------------------
             # ALWAYS STOP LOGGING CLEANLY
             # ------------------------------------
+            self.configs.backup_mgr.load_new_entries()
             self.configs.backup_mgr.stop_logging_redirect()
 
 

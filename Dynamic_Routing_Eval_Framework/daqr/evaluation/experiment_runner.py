@@ -69,24 +69,50 @@ class QuantumExperimentRunner:
         self.env_id       = str(getattr(self.configs, "environment", "env"))
         self.attack_id    = str(getattr(self.configs, "attack_strategy", "None"))
         self.cap_id       = int(self.capacity*self.configs.scale)
-        self.file_name = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id }_{self.attack_id}-{self.frames_count}_{self.id}.pkl"
         
+        id_str            = str(self.id)
+        alloc_str         = "_".join(str(v) for v in qubit_cap)
+        if "random" in str(self.configs.allocator).lower(): id_str += f"_({re.sub(r'^_', '', alloc_str)})"
+        self.file_name    = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id }_{self.attack_id}-{self.frames_count}_{id_str}.pkl"
+
         # Resume previous evaluator state if configured
         try:                    self.resume()
         except Exception as e:  print(f"⚠️ {self} Resume failed: {e}")
     
+    def _infer_saved_models(self, state: dict):
+        """
+        Infer which models were actually run in a saved Runner backup.
+        Uses the 'results' dict structure, which always contains model outputs.
+        """
+        try:
+            results = state.get("results", {})
+            if isinstance(results, dict) and results: return [m for m in results.keys()]
+            return None
+        except Exception: return None
+
     def __eq__(self, other):
         """Defines equality for evaluator or saved dict comparison."""
         # --- dict comparison (used in resume) ---
         if isinstance(other, dict):
             other_attrs = other.get("key_attrs", {}).copy()
-            # temp fix
-            # if not self.configs.base_capacity:
-            if 'runs' in other_attrs: del other_attrs['runs']
-            if 'runs' in self.key_attrs: del self.key_attrs['runs']
+            # -------------------------------------------------
+            # TEMP FIX: Infer models from saved runner state
+            # -------------------------------------------------
+            saved_models = self._infer_saved_models(other)
+            current_models = set(self.configs.models)
+            if saved_models:
+                saved_set = set(saved_models)
+                if not current_models.issubset(saved_set):
+                    print("\n❌ MODEL SET MISMATCH in Runner — forcing rerun")
+                    print(f"   Current models: {sorted(current_models)}")
+                    print(f"   Saved models:   {sorted(saved_set)}")
+                    return False
+            else:   print("ℹ️ Could not infer saved models for Runner — skipping model check")
 
-            if "seed" in other_attrs:
-                del other_attrs["seed"]
+            # temp fix
+            if 'runs' in other_attrs:   del other_attrs['runs']
+            if "seed" in other_attrs:   del other_attrs["seed"]
+            if 'runs' in self.key_attrs:del self.key_attrs['runs']
             
             if (
                 self.id == other.get("id") and
@@ -96,6 +122,13 @@ class QuantumExperimentRunner:
                 self.cap_id == other.get("cap_id") and
                 self.key_attrs == other_attrs
             ):
+                if "random" in str(self.configs.allocator).lower(): 
+                    self.key_attrs.update(other.get("key_attrs", {}))
+                    for attr, val in self.key_attrs.items():
+                        if attr in self.configs._env_params.keys(): self.configs._env_params[attr] = val
+                    # reset environment with random found capacity
+                    qubit_cap = self.key_attrs['qubit_capacities']
+                    self._build_environment_once(frames_count=self.frames_count, qubit_cap=qubit_cap)
                 return True
             
             import json
@@ -780,9 +813,7 @@ class QuantumExperimentRunner:
         from tqdm import tqdm
         import time
         
-        if models is None:
-            models = set(self.algorithm_configs.keys())
-        
+        if models is None:  models = set(self.algorithm_configs.keys())
         print(f"\n🎯 PARALLEL QUANTUM EXPERIMENT")
         print(f"📊 Models: {len(models)} | Frames: {frames_count}")
         print("="*60)

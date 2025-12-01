@@ -321,7 +321,7 @@ class QuantumEnvironment:
             initial_stats = {i: {'success_rate': 0.5, 'pulls': 0, 'successes': 0, 'failures': 0} 
                             for i in range(len(qubit_capacities))}
             self.qubit_capacities = self.allocator.allocate(timestep=0, route_stats=initial_stats, verbose=False)
-            print(f"🔄 Dynamic Allocation (Initial): {self.qubit_capacities}")
+            print(f"🔄 {self.allocator} Dynamic Allocation (Initial): {self.qubit_capacities}")
         else:
             self.qubit_capacities = tuple(qubit_capacities)
             print(f"📌 Static Allocation: {self.qubit_capacities}")

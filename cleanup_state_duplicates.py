@@ -2,28 +2,86 @@ import os, json
 from pathlib import Path
 from datetime import datetime
 import shutil
+import pickle
+import cloudpickle
+import ast
+import re
+
+class Dummy:
+    def __init__(self, *args, **kwargs):
+        pass
+
+class SafeUnpickler(pickle.Unpickler):
+    """Custom Unpickler that replaces missing module references with Dummy()."""
+    def find_class(self, module, name):
+        try:
+            return super().find_class(module, name)
+        except Exception:
+            # print(f"\t → Replacing missing: {module}.{name}")
+            return Dummy
+
+
+
+# Get the script's directory
+SCRIPT_DIR = Path(__file__).parent.resolve()
+
+# Build absolute paths
+PROJECT_ROOT = SCRIPT_DIR / "Dynamic_Routing_Eval_Framework"
 
 DATALAKE_ROOT = Path("/content/drive/Shareddrives/ai_quantum_computing/quantum_data_lake")
 
 STATE_ROOTS_LOCAL = [
-    Path("Dynamic_Routing_Eval_Framework/daqr/config/framework_state"),
-    Path("Dynamic_Routing_Eval_Framework/daqr/config/model_state")
+    PROJECT_ROOT / "daqr" / "config" / "framework_state",
+    PROJECT_ROOT / "daqr" / "config" / "model_state",
 ]
 
 STATE_ROOTS_DATALAKE = [
     DATALAKE_ROOT / "framework_state",
-    DATALAKE_ROOT / "model_state"
+    DATALAKE_ROOT / "model_state",
 ]
 
 ALL_STATE_ROOTS = STATE_ROOTS_LOCAL + STATE_ROOTS_DATALAKE
 
-# -------------------------------------------------------------
-# HELPER: Scan directory and collect all files by filename
-# -------------------------------------------------------------
+# Valid model classes from your config
+MODEL_MODES = {
+    'Oracle': 'base',
+    'GNeuralUCB': 'neural',
+    'NeuralUCB': 'neural',
+    'EXPUCB': 'exp3',
+    'EXPNeuralUCB': 'hybrid',
+    'CPursuitNeuralUCB': 'neural',
+    'iCPursuitNeuralUCB': 'neural',
+    'CEpsilonGreedy': 'hybrid',
+    'CEXP4': 'hybrid',
+    'CPursuit': 'hybrid',
+    'CEpochGreedy': 'hybrid',
+    'CThompsonSampling': 'hybrid',
+    'CKernelUCB': 'hybrid',
+    'iCEpsilonGreedy': 'hybrid',
+    'iCEXP4': 'hybrid',
+    'iCPursuit': 'hybrid',
+    'iCEpochGreedy': 'hybrid',
+    'iCThompsonSampling': 'hybrid',
+    'iCKernelUCB': 'hybrid',
+    'LinUCB': 'neural',
+    'CEXPNeuralUCB': 'hybrid'
+}
+
+# Debug output
+print(f"Script dir: {SCRIPT_DIR}")
+print(f"Project root: {PROJECT_ROOT}")
+print(f"\nState roots:")
+for root in ALL_STATE_ROOTS:
+    exists = "✅" if root.exists() else "❌"
+    print(f"  {exists} {root}")
+
+
+
+# ============================================================
+# HELPER — FIND ALL FILES
+# ============================================================
+
 def find_all_files(root_dir):
-    """
-    Return: {filename: [(path, size)]} across ALL date dirs.
-    """
     file_map = {}
     root_dir = Path(root_dir)
 
@@ -39,53 +97,317 @@ def find_all_files(root_dir):
 
     return file_map
 
-# -------------------------------------------------------------
-# 1) DEDUPLICATE ACROSS ALL DATES (keep largest)
-# -------------------------------------------------------------
-def cleanup_across_dates():
-    for root in STATE_ROOTS:
-        print(f"\n\n====================")
-        print(f" Checking: {root}")
-        print(f"====================")
 
-        file_map = find_all_files(root)
-        removed = 0
+def _load_any_pickle(path: Path):
+    """Best-effort loader: pickle → cloudpickle → SafeUnpickler."""
+    data = None
 
-        for fname, versions in file_map.items():
-            if len(versions) <= 1:
+    # 1) Standard pickle
+    try:
+        with open(path, "rb") as f:
+            data = pickle.load(f)
+        return data
+    except Exception:
+        pass
+
+    # 2) cloudpickle
+    if cloudpickle is not None:
+        try:
+            with open(path, "rb") as f:
+                data = cloudpickle.load(f)
+            return data
+        except Exception:
+            pass
+
+    # 3) SafeUnpickler (ignore missing modules/classes)
+    try:
+        with open(path, "rb") as f:
+            data = SafeUnpickler(f).load()
+        return data
+    except Exception as e:
+        print(f"      ❌ Unpickle failed: {e}")
+        return None
+
+
+def tag_multirun_evaluators_from_filename_and_object(state_roots):
+    """
+    TEMP FIX for MultiRunEvaluator files.
+
+    Uses BOTH:
+      • capacity from filename
+      • capacity from saved object
+
+    Logic:
+      scale = capacity_from_name / base_frames_from_name
+
+      Tb → object_capacity == capacity_from_name
+      T  → object_capacity != capacity_from_name
+
+    Final tag:   MultiRunEvaluator_... → MultiRunEvaluator_..._S{scale}{T|Tb}.pkl
+    """
+
+    print("\n[RENAME] Tagging MultiRunEvaluator files (filename + object capacity)...")
+
+    renamed = 0
+    skipped = 0
+    failed  = 0
+
+    for root in state_roots:
+        root = Path(root)
+        if not root.exists():
+            continue
+
+        # Only touch framework_state dirs
+        if "framework_state" not in str(root):
+            continue
+
+        for date_dir in root.iterdir():
+            if not date_dir.is_dir() or not date_dir.name.startswith("day_"):
                 continue
 
-            print(f"\n[!] Duplicate: {fname}")
-            for path, size in versions:
-                print(f"   - {path.name} ({size} bytes)")
+            for f in date_dir.iterdir():
+                if not f.is_file() or not f.name.endswith(".pkl"):
+                    continue
+                if not f.name.startswith("MultiRunEvaluator_"):
+                    continue
 
-            # Keep the largest copy
-            keep_path, keep_size = max(versions, key=lambda x: x[1])
-            print(f"   → KEEPING: {keep_path.name} ({keep_size} bytes)")
+                print(f"\n   Processing: {f.name}")
+                stem = f.stem
+                # stem = re.sub(r"_S[\d_]+(T|Tb)$", '', stem) # for emergency
+                # Already tagged? (_S…T or _S…Tb at the end)
+                if re.search(r"_S[\d_]+(T|Tb)$", stem):
+                    print("      ✓ Already tagged")
+                    skipped += 1
+                    continue
 
-            for path, size in versions:
-                if path != keep_path:
-                    print(f"     ✖ Removing: {path.name} ({size} bytes)")
-                    try:
-                        path.unlink()
-                        removed += 1
-                    except Exception as e:
-                        print(f"     ERROR removing {path}: {e}")
+                try:
+                    # ---------------------------------------------
+                    # Parse capacity + base_frames from filename
+                    # ---------------------------------------------
+                    # Example:
+                    #   MultiRunEvaluator_8000-Random_Adversarial_Markov-4000_2000_10
+                    core = stem.replace("MultiRunEvaluator_", "")
+                    parts = core.split("-")
 
-        print(f"[✓] Removed {removed} duplicates in {root}")
+                    if len(parts) < 3:
+                        print("      ⚠️ Unexpected name format, skipping")
+                        skipped += 1
+                        continue
 
-        # Remove empty date directories
-        empty = 0
+                    capacity_from_name = int(parts[0])
+                    last_section       = parts[-1]      # e.g. "4000_2000_10"
+                    base_frames        = int(last_section.split("_")[0])
+
+                    # ---------------------------------------------
+                    # Compute SCALE from FILENAME (not object)
+                    # ---------------------------------------------
+                    scale_float = capacity_from_name / base_frames
+
+                    if abs(scale_float - 1.0) < 1e-9:
+                        scale_str = "S1"
+                    elif abs(scale_float - 1.5) < 1e-9:
+                        scale_str = "S1_5"
+                    elif abs(scale_float - 2.0) < 1e-9:
+                        scale_str = "S2"
+                    else:
+                        scale_str = "S" + str(scale_float).replace(".", "_")
+
+                    # ---------------------------------------------
+                    # Load object to get *actual* capacity
+                    # ---------------------------------------------
+                    data = _load_any_pickle(f)
+                    if data is None:
+                        print("      ❌ Could not load object; skipping")
+                        failed += 1
+                        continue
+
+                    # saved evaluator is a dict (from your save())
+                    if isinstance(data, dict):
+                        object_capacity = data.get("capacity", None)
+                    else:
+                        # Fallback: attribute on object (if for some reason we saved the instance)
+                        object_capacity = getattr(data, "capacity", None)
+
+                    if object_capacity is None:
+                        print("      ⚠️ No capacity field in loaded data; using filename only (assume Tb)")
+                        object_capacity = capacity_from_name
+
+                    # ---------------------------------------------
+                    # Decide T vs Tb using YOUR rule
+                    # ---------------------------------------------
+                    if object_capacity == capacity_from_name:
+                        T_type = "Tb"   # never changed → baseline
+                    else:
+                        T_type = "T"    # changed → scaled/runtime altered
+
+                    print(f"      → capacity_from_name: {capacity_from_name}")
+                    print(f"      → object_capacity:    {object_capacity}")
+                    print(f"      → scale:              {scale_float} → {scale_str}")
+                    print(f"      → T-type:             {T_type}")
+
+                    # ---------------------------------------------
+                    # Build new filename
+                    # ---------------------------------------------
+                    new_stem = f"{stem}_{scale_str}{T_type}"
+                    new_name = new_stem + ".pkl"
+                    new_path = date_dir / new_name
+
+                    print(f"      → New filename: {new_name}")
+                    f.rename(new_path)
+                    renamed += 1
+
+                except Exception as e:
+                    print(f"      ❌ Failed: {e}")
+                    failed += 1
+
+    print("\n[✓] MultiRunEvaluator tagging (filename + object) complete:")
+    print(f"    Renamed: {renamed}")
+    print(f"    Skipped: {skipped}")
+    print(f"    Failed:  {failed}")
+
+
+# ============================================================
+# DEDUPLICATION (LARGEST VERSION WINS)
+# ============================================================
+
+def cleanup_across_dates_single(root):
+    root = Path(root)
+
+    if not root.exists():
+        print(f"[SKIP] Missing path → {root}")
+        return
+
+    print(f"[CLEAN] {root}")
+
+    file_map = find_all_files(root)
+    removed = 0
+
+    for fname, versions in file_map.items():
+        if len(versions) <= 1:
+            continue
+
+        keep, keep_size = max(versions, key=lambda x: x[1])
+
+        for path, size in versions:
+            if path != keep:
+                try:
+                    path.unlink()
+                    removed += 1
+                except:
+                    pass
+
+    # remove empty dirs
+    for d in root.iterdir():
+        if d.is_dir() and not any(d.iterdir()):
+            d.rmdir()
+
+    print(f"[✓] {root}: removed {removed} duplicates")
+
+
+
+# ============================================================
+# RANDOM ALLOCATOR RENAMER
+# ============================================================
+def extract_and_rename_random_allocator_files(state_roots):
+    print(f"\n[EXTRACT] Processing Random allocator files...")
+
+    renamed = 0
+    failed = 0
+    skipped = 0
+
+    pattern = r'_\(\d+_\d+_\d+_\d+\)'
+    for root in state_roots:
+        root = Path(root)
+        if not root.exists():
+            continue
+
         for date_dir in root.iterdir():
-            if date_dir.is_dir() and not any(date_dir.iterdir()):
-                print(f"   → Removing empty dir: {date_dir}")
-                date_dir.rmdir()
-                empty += 1
+            if not date_dir.is_dir() or not date_dir.name.startswith("day_"):
+                continue
+            
+            for f in date_dir.iterdir():
+                if not f.is_file() or not f.suffix == ".pkl": continue
+                
+                # -----------------------------------------
+                # CLEAN NEW NAME (IGNORE OLD BROKEN NAME)
+                # -----------------------------------------
+                base_name = f.stem
+                new_base_name = base_name
+                count = len(re.findall(pattern, base_name))
 
-        print(f"[✓] Removed {empty} empty directories in {root}")
+                if count == 1:
+                    skipped += 1
+                    continue
+                elif "Random" not in f.name:
+                    skipped += 1
+                    continue
+
+                if count > 1: new_base_name = re.sub(r"[_-]*\([^)]*\)$", "", base_name)
+                print("\tNEW BASE:", new_base_name)
+                print(f"\n   Processing: {f.name}")
+                if new_base_name == base_name:
+                    try:
+                        data = {}
+                        try:
+                            # 1) Try standard pickle
+                            with open(f, "rb") as pf: data = pickle.load(pf)
+                        except Exception as e:
+                            try:
+                                # 2) Try cloudpickle
+                                with open(f, "rb") as pf: data = cloudpickle.load(pf)
+                            except Exception as e2:
+                                try:
+                                    # 3) Try SafeUnpickler
+                                    with open(f, "rb") as pf: data = SafeUnpickler(pf).load()
+                                except Exception as e3:
+                                    print(f"      ❌ Failed: {e3}")
+                                    failed += 1
+                                    continue
+
+                        # Extract allocation tuple
+                        qubit_alloc = data.get("key_attrs", {}).get("qubit_capacities", "")
+
+                        if not qubit_alloc:
+                            print("⚠️ No qubit_capacities found")
+                            failed += 1
+                            continue
+
+                        # Serialize allocation as q8_10_8_9
+                        alloc_str = "".join(str(v) for v in qubit_alloc)
+                        alloc_str = re.sub(r',\s*', "_", alloc_str)
+                        base_name = re.sub(r"[_-]*\([^)]*\)", "", base_name)
+
+                        # Construct new proper filename
+                        new_name = f"{base_name}_{alloc_str}.pkl"
+                        new_path = date_dir / new_name
+
+                        f.rename(new_path)
+                        print(f"      ✅ Renamed → {new_name}")
+                        print(f"      ✅ Renamed → {new_path}")
+
+                        renamed += 1
+
+                    except Exception as e:
+                        print(f"      ❌ Failed: {e}")
+                        failed += 1
+                else:
+                    print("FIXING ALLOCATION STRING")
+                    new_path = date_dir / f"{new_base_name}.pkl"
+                    print(f"      ✅ Renamed → {new_path}")
 
 
-def consolidate_to_today(root: Path):
+    print(f"\n[✓] Random allocator extraction complete:")
+    print(f"    Renamed: {renamed}")
+    print(f"    Failed: {failed}")
+    print(f"    Skipped: {skipped}")
+
+
+
+# ============================================================
+# CONSOLIDATION (MOVE ALL FILES → TODAY)
+# ============================================================
+
+def consolidate_to_today(root):
     root = Path(root)
 
     if not root.exists():
@@ -107,22 +429,17 @@ def consolidate_to_today(root: Path):
         if not date_dir.is_dir():
             continue
 
-        # skip the proper target directory
         if date_dir.name == today_dir_name:
             continue
 
-        # move files inside any older folder
         for f in date_dir.iterdir():
             if f.is_file():
                 dest = target_dir / f.name
-                print(f" → Moving {f.name} → {dest}")
                 shutil.move(str(f), str(dest))
                 moved += 1
 
-        # try removing the empty old directory
         try:
             date_dir.rmdir()
-            print(f"   Removed old directory: {date_dir}")
             removed_dirs += 1
         except OSError:
             pass
@@ -130,204 +447,295 @@ def consolidate_to_today(root: Path):
     print(f"[✓] Consolidation finished for {root}: moved {moved} files, removed {removed_dirs} directories.")
 
 
-# -------------------------------------------------------------
-# 3) OPTIONAL: SINGLE-ROOT DEDUPER (DETAILED VIEW)
-# -------------------------------------------------------------
-def dedupe_state_dir(root_dir):
-    """
-    Detailed version: prints file counts before and after cleanup.
-    """
-    root = Path(root_dir)
-    file_map = {}
 
-    print(f"\n📂 SCANNING: {root_dir}")
-    print("-" * 60)
-
-    for date_dir in root.iterdir():
-        if not date_dir.is_dir():
-            continue
-        for file_path in date_dir.iterdir():
-            if file_path.is_file():
-                size = file_path.stat().st_size
-                file_map.setdefault(file_path.name, []).append((file_path, size))
-
-    # Summary before cleanup
-    print("\n🔍 BEFORE CLEANUP")
-    for fname, versions in file_map.items():
-        print(f"{fname}: {len(versions)} versions")
-
-    # Dedupe
-    for fname, versions in file_map.items():
-        if len(versions) <= 1:
-            continue
-
-        keep_path, keep_size = max(versions, key=lambda x: x[1])
-        print(f"\n[KEEP] {fname} (size {keep_size})")
-
-        for path, size in versions:
-            if path != keep_path:
-                print(f"   ✖ Removing (size {size})")
-                path.unlink()
-
-    # Summary after cleanup
-    print("\n✅ AFTER CLEANUP")
-    final = {}
-    for date_dir in root.iterdir():
-        if date_dir.is_dir():
-            for f in date_dir.iterdir():
-                if f.is_file():
-                    final.setdefault(f.name, []).append(f)
-
-    for fname, paths in final.items():
-        print(f"{fname}: {len(paths)}")
-
-    print("\n🎉 DONE!\n")
-
-
+# ============================================================
+# REGISTRY UPDATER — dt_comp style
+# ============================================================
 def rebuild_registry(registry_path, state_roots, is_metadata=False):
-    """
-    Update registry entries in the structure:
-        component → day_X → filename → path
-
-    ONE LOOP ONLY.
-    try/except only for missing component/day.
-    Uses dt_comp update pattern exactly as requested.
-    """
-
     reg_path = Path(registry_path)
     if not reg_path.exists():
         print(f"[INFO] Registry not found, skipping update: {registry_path}")
         return
 
     print(f"\n[UPDATE] Updating registry: {registry_path}")
+    
+    registry = {}
+    if reg_path.exists():
+        with open(reg_path, "r") as f: registry = json.load(f)
 
-    # Load existing registry
-    with open(reg_path, "r") as f:
-        registry = json.load(f)
-
-    corrected = 0
     added = 0
+    corrected = 0
+    print(f"[DEBUG] State roots passed in:")
+    for p in state_roots: print(f"        - {p}  (exists={Path(p).exists()})")
 
-    # SINGLE LOOP: iterate real files on disk
+    for root in state_roots:
+        root = Path(root)
+
+        if not root.exists():
+            print(f"[SKIP] Root does not exist: {root}")
+            continue
+
+        component = root.name
+        print(f"\n[DEBUG] COMPONENT: {component}")
+        print(f"        root = {root}")
+
+        # --- FIRST LOOP: day_xxxxx dirs ---
+        for date_dir in root.iterdir():
+            print(f"[DEBUG]   Checking date_dir: {date_dir}")
+
+            if not date_dir.is_dir():
+                print(f"[SKIP]     Not a directory: {date_dir}")
+                continue
+            if not date_dir.name.startswith("day_"):
+                print(f"[SKIP]     Not a day folder: {date_dir.name}")
+                continue
+
+            date_key = date_dir.name
+            print(f"[DEBUG]   → Day folder accepted: {date_key}")
+
+            # --- SECOND LOOP: files ---
+            has_files = False
+            for f in date_dir.iterdir():
+                print(f"[DEBUG]       Inspect file/dir: {f}")
+
+                if not f.is_file():
+                    print(f"[SKIP]         Not a file: {f}")
+                    continue
+
+                has_files = True
+                abs_path = str(f.resolve())
+
+                print(f"[DEBUG]         File accepted: {f.name}")
+                print(f"[DEBUG]         Abs path: {abs_path}")
+
+                try:
+                    registry[component][f.name] = abs_path
+                    corrected += 1
+                    print(f"[CORRECTED]    Updated: {component}/{date_key}/{f.name}")
+                except Exception:
+                    if not is_metadata:
+                        print(f"[SKIP]         Missing metadata structure (component/date), skipping...")
+                        continue
+                    if component not in registry: registry[component] = {}
+                    registry[component].update({f.name: abs_path})
+                    added += 1
+                    print(f"[ADDED]        Inserted new entry: {component}/{date_key}/{f.name}")
+            if not has_files: print(f"[DEBUG]     (No files found in {date_dir})")
+
+    with open(reg_path, "w") as f: json.dump(registry, f, indent=4)
+    print(f"[✓] Registry updated: {corrected} corrected, {added} added")
+
+# ============================================================
+# MODEL FILE RENAMER
+# ============================================================
+
+def rename_model_files(state_roots):
+    """
+    Rename model files to proper format: <ClassOfModel>(mode).pkl
+    Special case: NeuralUCB_<Number>(mode).pkl
+    """
+    print(f"\n[RENAME] Processing model files...")    
+    renamed = 0
+    failed = 0
+    skipped = 0
+    
     for root in state_roots:
         root = Path(root)
         if not root.exists():
             continue
 
-        component = root.name  # "framework_state" / "model_state"
-
+        if "framework_state" in str(root): continue
+        print(root)
+        
         for date_dir in root.iterdir():
-            if not date_dir.is_dir() or not date_dir.name.startswith("day_"):
-                continue
-
-            date_key = date_dir.name
+            if not date_dir.is_dir() or not date_dir.name.startswith("day_"): continue
 
             for f in date_dir.iterdir():
-                if not f.is_file():
+                if not f.is_file() or f.suffix != ".pkl": continue
+                
+                name = f.name
+                if re.search(r'quantumrunner|multirunevaluator', name.lower()):
+                    skipped += 1
+                    continue
+                
+                print(f"\n   Checking: {name}")
+                try:
+                    parts=name.split("_")
+                    class_name = parts[0]
+                    model_name = re.sub(r'\(.*\)', '', class_name)
+
+                    is_neuralucb = "NeuralUCB" == model_name
+                    correct_name = f"{model_name}({MODEL_MODES[model_name]})" 
+                    if is_neuralucb:
+                        model_name = parts[0]
+                        if MODEL_MODES[model_name] in parts[1]: continue
+                        _class_name = f"{parts[0]}_{re.sub(r'\(.*\)', '', parts[1])}" 
+                        correct_name = f"{_class_name}({MODEL_MODES[model_name]})"
+                        class_name = f"{parts[0]}_{parts[1]}"
+        
+                    if class_name == correct_name:
+                        print(f"      ✓ Already correct: {name}")
+                        skipped += 1
+                        continue
+                    
+                    # Rename file
+                    new_path = date_dir / name.replace(class_name, correct_name)
+                    
+                    # Handle collision (unlikely but possible)
+                    if new_path.exists():
+                        print(f"      ⚠️ Target already exists: {correct_name}")
+                        # Keep larger file
+                        old_size = f.stat().st_size
+                        new_size = new_path.stat().st_size
+                        if old_size > new_size:
+                            new_path.unlink()
+                            f.rename(new_path)
+                            print(f"      ✅ Replaced with larger: {name} → {correct_name}")
+                            print(f"      ✅ Replaced with larger: {correct_name} → {new_path}")
+                        else:
+                            f.unlink()
+                            print(f"      ✅ Kept existing larger: {correct_name}")
+                        renamed += 1
+                    else:
+                        f.rename(new_path)
+                        print(f"      ✅ Renamed: {name} → {correct_name}")
+                        print(f"      ✅ Replaced with larger: {correct_name} → {new_path}")
+                        renamed += 1
+                
+                except Exception as e:
+                    print(f"      ❌ Failed: {e}")
+                    failed += 1
+    
+    print(f"\n[✓] Model file renaming complete:")
+    print(f"    Renamed: {renamed}")
+    print(f"    Failed: {failed}")
+    print(f"    Skipped: {skipped}")
+
+
+def rename_model_state_files(state_roots):
+    print(f"\n[RENAME] Processing model_state files...")
+
+    renamed = 0
+    failed = 0
+    skipped = 0
+
+    for root in state_roots:
+        root = Path(root)
+        if not root.exists(): continue
+        # ONLY process model_state directories
+        if "model_state" not in str(root): continue
+
+        for date_dir in root.iterdir():
+            if not date_dir.is_dir() or not date_dir.name.startswith("day_"): continue
+
+            for f in date_dir.iterdir():
+                if not f.is_file() or not f.suffix == ".pkl": continue
+                # EXCLUDE NeuralUCB files
+                if "NeuralUCB" in f.name:
+                    skipped += 1
                     continue
 
-                abs_path = str(f.resolve())
-
-                # ------------------------------------------------------------
-                # UPDATE using your dt_comp approach
-                # ------------------------------------------------------------
+                print(f"\n   Processing: {f.name}")
                 try:
-                    registry[component][date_key][f.name] = abs_path
-                    corrected += 1
-                except Exception:
-                    if not is_metadata: continue
-                    registry[component].get(date_key, {}).update({f.name: abs_path})
-                    added += 1
+                    data = {}
+                    try:
+                        # 1) Try standard pickle
+                        with open(f, "rb") as pf: data = pickle.load(pf)
+                    except Exception as e:
+                        try:
+                            # 2) Try cloudpickle
+                            with open(f, "rb") as pf: data = cloudpickle.load(pf)
+                        except Exception as e2:
+                            try:
+                                # 3) Try SafeUnpickler
+                                with open(f, "rb") as pf: data = SafeUnpickler(pf).load()
+                            except Exception as e3:
+                                print(f"      ❌ Failed: {e3}")
+                                failed += 1
+                                continue
 
-    # Save updated registry
-    with open(reg_path, "w") as f:
-        json.dump(registry, f, indent=4)
+                    # Extract file_name from loaded data
+                    correct_name = data.get("file_name", "")
 
-    print(f"[✓] Registry updated: {corrected} corrected")
-    print(f"[✓] Registry updated: {added} added (metadata only)")
+                    if not correct_name:
+                        print("      ⚠️ No file_name found in data")
+                        failed += 1
+                        continue
 
+                    # Check if already correct
+                    if f.name == correct_name:
+                        print(f"      ✓ Already correct: {f.name}")
+                        skipped += 1
+                        continue
 
+                    # Construct new path
+                    new_path = date_dir / correct_name
 
-def cleanup_across_dates_single(root):
-    root = Path(root)
+                    f.rename(new_path)
+                    print(f"      ✅ Renamed → {correct_name}")
+                    print(f"      ✅ Renamed → {new_path}")
 
-    if not root.exists():
-        print(f"[SKIP] Missing path → {root}")
-        return
+                    renamed += 1
 
-    print(f"[CLEAN] {root}")
+                except Exception as e:
+                    print(f"      ❌ Failed: {e}")
+                    failed += 1
 
-    file_map = find_all_files(root)
-    removed = 0
-
-    for fname, versions in file_map.items():
-        if len(versions) <= 1:
-            continue
-
-        # choose largest
-        keep, keep_size = max(versions, key=lambda x: x[1])
-
-        for path, size in versions:
-            if path != keep:
-                try:
-                    path.unlink()
-                    removed += 1
-                except:
-                    pass
-
-    # remove empty dirs
-    for d in root.iterdir():
-        if d.is_dir() and not any(d.iterdir()):
-            d.rmdir()
-
-    print(f"[✓] {root}: removed {removed} duplicates")
-
+    print(f"\n[✓] Model state file renaming complete:")
+    print(f"    Renamed: {renamed}")
+    print(f"    Failed: {failed}")
+    print(f"    Skipped: {skipped}")
 
 
+# ============================================================
+# MASTER FUNCTION
+# ============================================================
 
-# -------------------------------------------------------------
-# 4) MASTER FUNCTION
-# -------------------------------------------------------------
 def cleanup_and_consolidate():
     print("\n========== STARTING CLEANUP ==========")
 
-    # LOCAL + DATALAKE
+    # STEP 1 — rename model files to proper format
+    # rename_model_files(ALL_STATE_ROOTS)
+
+    # # for emergency use only
+    # # rename_model_state_files(ALL_STATE_ROOTS)
+
+    # Tag MultiRunEvaluators with scale/T-type
+    tag_multirun_evaluators_from_filename_and_object(ALL_STATE_ROOTS) # for emergency
+
+    # STEP 1 — rename Random allocator files
+    extract_and_rename_random_allocator_files(ALL_STATE_ROOTS)
+
+    # STEP 2 — dedupe
     for root in ALL_STATE_ROOTS:
         print(f"\n--- Cleaning: {root} ---")
         cleanup_across_dates_single(root)
 
-    print("\n========== CONSOLIDATING ==========")
-
+    # STEP 3 — consolidate
     for root in ALL_STATE_ROOTS:
         consolidate_to_today(root)
 
-    print("\n========== UPDATING REGISTRIES ==========")
+    # # STEP 4 — rebuild registries (use absolute paths)
+    # rebuild_registry(
+    #     PROJECT_ROOT / "daqr" / "config" / "local_backup_registry.json",
+    #     STATE_ROOTS_LOCAL,
+    #     is_metadata=True
+    # )
 
-    # Local registry
-    rebuild_registry(
-        registry_path="Dynamic_Routing_Eval_Framework/daqr/config/local_backup_registry.json",
-        state_roots=STATE_ROOTS_LOCAL
-    )
+    # rebuild_registry(
+    #     PROJECT_ROOT / "daqr" / "config" / "drive_backup_registry.json",
+    #     STATE_ROOTS_LOCAL,
+    #     is_metadata=True
+    # )
 
-    # Drive registry inside project folder
-    rebuild_registry(
-        registry_path="Dynamic_Routing_Eval_Framework/daqr/config/drive_backup_registry.json",
-        state_roots=STATE_ROOTS_LOCAL
-    )
-
-    # Datalake registry
-    rebuild_registry(
-        registry_path=DATALAKE_ROOT / "backup_registry.json",
-        state_roots=STATE_ROOTS_DATALAKE
-    )
+    # rebuild_registry(
+    #     DATALAKE_ROOT / "backup_registry.json",
+    #     STATE_ROOTS_DATALAKE,
+    #     is_metadata=True
+    # )
 
     print("\n========== DONE ==========\n")
 
-
-
-
-# -------------------------------------------------------------
-# MAIN
-# -------------------------------------------------------------
+# Update main
 if __name__ == "__main__":
     cleanup_and_consolidate()

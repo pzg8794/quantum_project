@@ -8,7 +8,7 @@ from daqr.algorithms.predictive_bandits    import UCB, RandomAlg, TS, LinTS, Lin
 from daqr.algorithms.predictive_bandits    import CPursuitNeuralUCB, CPursuit, iCPursuit, QuantumModel, NeuralUCB
 from daqr.core.qubit_allocator import *
 
-import  copy, os
+import  copy, os, re
 import  pathlib
 import  pickle
 import  shutil
@@ -50,7 +50,11 @@ class ExperimentConfiguration:
         self.attack_strategy    = None
         self.attack_type        = attack_type.lower()
         self.attack_intensity   = attack_intensity
-
+        
+        self.st = ""
+        self.random_runtime_qubits = ""
+        self.is_random_alloc    =   False
+        
         # Single unified manager - handles everything
         self.backup_mgr = LocalBackupManager(date_str=self.day_str, config_dir=self.dir, verbose=self.verbose)
 
@@ -168,27 +172,52 @@ class ExperimentConfiguration:
         ]
 
         self.algorithm_configs = {
-            'Quantum': {'model_class': QuantumModel, 'seed_offset': seed_offset * 1, 'kwargs': {'mode': 'hybrid'}, 'runner_type': 'step-wise'},
-            'Oracle': {'model_class': Oracle, 'seed_offset': seed_offset * 2, 'kwargs': {'mode': 'hybrid'}, 'runner_type': 'step-wise'},
-            'GNeuralUCB': {'model_class': GNeuralUCB, 'seed_offset': seed_offset * 3, 'kwargs': {'mode': 'neural', 'beta': 1.0}, 'runner_type': 'batch'},
-            'EXPUCB': {'model_class': EXPUCB, 'seed_offset': seed_offset * 4, 'kwargs': {'mode': 'exp3', 'gamma_factor': 0.1, 'eta_factor': 0.005, 'beta': 1.0}, 'runner_type': 'batch'},
-            'EXPNeuralUCB': {'model_class': EXPNeuralUCB, 'seed_offset': seed_offset * 5, 'kwargs': {'mode': 'hybrid', 'gamma_factor': 0.01, 'eta_factor': 0.05, 'beta': 1.0}, 'runner_type': 'batch'},
-            'CPursuitNeuralUCB': {'model_class': CPursuitNeuralUCB, 'seed_offset': seed_offset * 6, 'kwargs': {'mode': 'neural', 'learning_rate': 0.1, 'beta': 1.0}, 'runner_type': 'batch'},
-            'iCPursuitNeuralUCB': {'model_class': iCPursuitNeuralUCB, 'seed_offset': seed_offset * 7, 'kwargs': {'mode': 'neural', 'learning_rate': 0.1, 'beta': 1.0, 'gamma_factor': 0.1, 'eta_factor': 0.005, 'obs': None}, 'runner_type': 'batch'},
-            'CEpsilonGreedy': {'model_class': CEpsilonGreedy, 'seed_offset': seed_offset * 8, 'kwargs': {'mode': 'hybrid', 'epsilon': 0.1, 'n_experts': 4}, 'runner_type': 'step-wise'},
-            'CEXP4': {'model_class': CEXP4, 'seed_offset': seed_offset * 9, 'kwargs': {'mode': 'hybrid', 'gamma': 0.1, 'n_experts': 4}, 'runner_type': 'step-wise'},
-            'CPursuit': {'model_class': CPursuit, 'seed_offset': seed_offset * 10, 'kwargs': {'mode': 'hybrid', 'learning_rate': 0.1, 'n_experts': 4}, 'runner_type': 'step-wise'},
-            'CEpochGreedy': {'model_class': CEpochGreedy, 'seed_offset': seed_offset * 11, 'kwargs': {'mode': 'hybrid', 'n_experts': 4}, 'runner_type': 'step-wise'},
-            'CThompsonSampling': {'model_class': CThompsonSampling, 'seed_offset': seed_offset * 12, 'kwargs': {'mode': 'hybrid', 'n_experts': 4}, 'runner_type': 'step-wise'},
-            'CKernelUCB': {'model_class': CKernelUCB, 'seed_offset': seed_offset * 13, 'kwargs':{'mode': 'hybrid',  'gamma': 0.1, 'eta': 1.0, 'n_experts': 4}, 'runner_type': 'step-wise'},
-            'iCEpsilonGreedy': {'model_class': iCEpsilonGreedy, 'seed_offset': seed_offset * 14, 'kwargs':{'mode': 'hybrid',  'epsilon': 0.1, 'n_experts': 4}, 'runner_type': 'step-wise'},
-            'iCEXP4': {'model_class': iCEXP4, 'seed_offset': seed_offset * 15, 'kwargs': {'mode': 'hybrid', 'gamma': 0.1, 'n_experts': 4}, 'runner_type': 'step-wise'},
-            'iCPursuit': {'model_class': iCPursuit, 'seed_offset': seed_offset * 16, 'kwargs': {'mode': 'hybrid', 'learning_rate': 0.1, 'n_experts': 4}, 'runner_type': 'step-wise'},
-            'iCEpochGreedy': {'model_class': iCEpochGreedy, 'seed_offset': seed_offset * 17, 'kwargs': {'mode': 'hybrid','n_experts': 4}, 'runner_type': 'step-wise'},
-            'iCThompsonSampling': {'model_class': iCThompsonSampling, 'seed_offset': seed_offset * 18, 'kwargs': {'mode': 'hybrid', 'n_experts': 4}, 'runner_type': 'step-wise'},
-            'iCKernelUCB': {'model_class': iCKernelUCB, 'seed_offset': seed_offset * 19, 'kwargs': {'mode': 'hybrid','gamma': 0.1, 'eta': 1.0, 'n_experts': 4}, 'runner_type': 'step-wise'},
-            'LinUCB': {'model_class': LinUCB, 'seed_offset': seed_offset * 20, 'kwargs': {'mode': 'hybrid', 'alpha': 1.0, 'lambda_reg': 1.0, 'n_features': 6, 'quantum_state_dim': 6, 'entanglement_aware': True, 'prediction_window': 10, 'anomaly_threshold': 0.2}, 'runner_type': 'step-wise'},
-            'CEXPNeuralUCB': {'model_class': CEXPNeuralUCB, 'seed_offset': seed_offset * 21, 'kwargs': {'mode': 'neural', 'beta': 1.0, 'n_experts': 4}, 'runner_type': 'batch'}
+            'Quantum': {
+                'model_class': QuantumModel,     'seed_offset': seed_offset * 1, 'kwargs': {'mode': 'base'}, 'runner_type': 'step-wise'},
+            'Oracle': {
+                'model_class': Oracle,           'seed_offset': seed_offset * 2, 'kwargs': {'mode': 'base'}, 'runner_type': 'step-wise'},
+            'NeuralUCB': {
+                'model_class': NeuralUCB,        'seed_offset': seed_offset * 22,'kwargs': {'mode': 'neural', 'beta': 1.0, 'lamb': 1,
+                'hidden_size': 128, 'lr': 1e-4, 'reg': 0.000625},
+                'runner_type': 'batch'},
+            'GNeuralUCB': {
+                'model_class': GNeuralUCB,       'seed_offset': seed_offset * 3, 'kwargs': {'mode': 'neural', 'beta': 1.0}, 'runner_type': 'batch'},
+            'EXPUCB': {
+                'model_class': EXPUCB,           'seed_offset': seed_offset * 4, 'kwargs': {'mode': 'exp3', 'gamma_factor': 0.1, 'eta_factor': 0.005, 'beta':1.0},'runner_type': 'batch'},
+            'EXPNeuralUCB': {
+                'model_class': EXPNeuralUCB,     'seed_offset': seed_offset * 5, 'kwargs': {'mode': 'hybrid', 'gamma_factor': 0.01, 'eta_factor': 0.05, 'beta': 1.0},'runner_type': 'batch'},
+            'CPursuitNeuralUCB': {
+                'model_class': CPursuitNeuralUCB,'seed_offset': seed_offset * 6, 'kwargs': {'mode': 'neural', 'learning_rate': 0.1, 'beta': 1.0}, 'runner_type': 'batch'},
+            'iCPursuitNeuralUCB': {
+                'model_class':iCPursuitNeuralUCB,'seed_offset': seed_offset * 7, 'kwargs': {'mode': 'neural', 'learning_rate': 0.1, 'beta': 1.0, 'gamma_factor': 0.1,'eta_factor' : 0.005, 'obs': None}, 'runner_type': 'batch'},
+            'CEpsilonGreedy': {
+                'model_class': CEpsilonGreedy,   'seed_offset': seed_offset * 8, 'kwargs': {'mode': 'hybrid', 'epsilon': 0.1, 'n_experts': 4}, 'runner_type':  'step-wise'},
+            'CEXP4': {
+                'model_class': CEXP4,            'seed_offset': seed_offset * 9, 'kwargs': {'mode': 'hybrid', 'gamma': 0.1, 'n_experts': 4}, 'runner_type':  'step-wise'},
+            'CPursuit': {
+                'model_class': CPursuit,         'seed_offset': seed_offset * 10,'kwargs': {'mode': 'hybrid', 'learning_rate': 0.1, 'n_experts': 4}, 'runner_type':  'step-wise'},
+            'CEpochGreedy': {
+                'model_class': CEpochGreedy,     'seed_offset': seed_offset * 11,'kwargs': {'mode': 'hybrid', 'n_experts': 4}, 'runner_type': 'step-wise'},
+            'CThompsonSampling': {
+                'model_class': CThompsonSampling,'seed_offset': seed_offset * 12,'kwargs': {'mode': 'hybrid', 'n_experts': 4}, 'runner_type': 'step-wise'},
+            'CKernelUCB': {
+                'model_class': CKernelUCB,       'seed_offset': seed_offset * 13,'kwargs': {'mode': 'hybrid',  'gamma': 0.1, 'eta': 1.0, 'n_experts': 4}, 'runner_type': 'step-wise'},
+            'iCEpsilonGreedy': {
+                'model_class': iCEpsilonGreedy,  'seed_offset': seed_offset * 14,'kwargs': {'mode': 'hybrid',  'epsilon': 0.1, 'n_experts': 4}, 'runner_type':  'step-wise'},
+            'iCEXP4': {
+                'model_class': iCEXP4,           'seed_offset': seed_offset * 15,'kwargs': {'mode': 'hybrid', 'gamma': 0.1, 'n_experts': 4}, 'runner_type':  'step-wise'},
+            'iCPursuit': {
+                'model_class': iCPursuit,        'seed_offset': seed_offset * 16,'kwargs': {'mode': 'hybrid', 'learning_rate': 0.1, 'n_experts': 4}, 'runner_type':  'step-wise'},
+            'iCEpochGreedy': {
+                'model_class': iCEpochGreedy,    'seed_offset': seed_offset * 17,'kwargs': {'mode': 'hybrid','n_experts': 4}, 'runner_type': 'step-wise'},
+            'iCThompsonSampling': {
+                'model_class':iCThompsonSampling,'seed_offset': seed_offset * 18,'kwargs': {'mode': 'hybrid', 'n_experts': 4}, 'runner_type': 'step-wise'},
+            'iCKernelUCB': {
+                'model_class': iCKernelUCB,      'seed_offset': seed_offset * 19,'kwargs': {'mode': 'hybrid','gamma': 0.1, 'eta': 1.0, 'n_experts': 4}, 'runner_type':  'step-wise'},
+            'LinUCB': {
+                'model_class': LinUCB,           'seed_offset': seed_offset * 20,'kwargs': {'mode': 'neural', 'alpha': 1.0, 'lambda_reg': 1.0, 'n_features': 6, 'quantum_state_dim': 6, 'entanglement_aware': True, 'prediction_window': 10, 'anomaly_threshold': 0.2}, 'runner_type': 'step-wise'},
+            'CEXPNeuralUCB': {
+                'model_class': CEXPNeuralUCB,    'seed_offset': seed_offset * 21,'kwargs': {'mode': 'neural', 'beta': 1.0, 'n_experts': 4}, 'runner_type': 'batch'}
         }
 
         self.use_last_backup = use_last_backup
@@ -205,6 +234,40 @@ class ExperimentConfiguration:
         # self.attack_id    = self.attack_strategy
         # self.cap_id       = (int(self.base_frames if self.configs.base_capacity else self.frames_count)*self.configs.scale)
         # self.file_name = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{self.base_frames}_{int(self.frame_step)}_{self.runs_id}.pkl"
+
+    def _get_random_runtime_qubits(self):
+        print("\n⚡ Random allocator detected → scanning registry for qubit allocation")
+        
+        # If we've already found it once, reuse it
+        if self.random_runtime_qubits:
+            return f"_{self.random_runtime_qubits}"
+
+        runtime_qubits = ""
+
+        # Pattern: anything like (8_10_8_9)
+        pattern = re.compile(r"\(\d+_\d+_\d+_\d+\)")
+
+        for comp, file_map in self.backup_registry.items():
+            if comp == "model_state": continue
+            for fname, path in file_map.items():
+                parts = fname.split("-")
+                # keep your existing check on the allocator label
+                print(parts)
+                if len(parts) < 2 or "Random" not in parts[1] or "MultiRunEvaluator" not in parts[0]:
+                    continue
+                print(fname)
+                match = pattern.search(fname)
+                if match:
+                    runtime_qubits = match.group(0)  # <-- EXACTLY "(x_x_x_x)"
+                    print(f"  → Found qubit allocation: {runtime_qubits or 'None'}")
+                    break
+            if runtime_qubits:
+                break
+
+        self.random_runtime_qubits = runtime_qubits
+        # If you still want the _{self.st} suffix:
+        return f"_{self.random_runtime_qubits}"
+
 
 
     def generate_expected_keys(self, evaluator_filename: str):
@@ -237,12 +300,35 @@ class ExperimentConfiguration:
         # Example rest:
         #   800-alloc0_env_stochastic-16000_200_1
         # ---------------------------------------------------------------
+        file_qubits = ""
         parts = rest.split("-")
-
+        alloc_env_attack = parts[1].split("_")
         cap_id = int(round(float(parts[0])))
-        alloc_env_attack = parts[1]
-        base_frames, frame_step, runs_id = map(int, parts[2].split("_"))
-        allocator_id, env_id, attack_id = alloc_env_attack.split("_")
+        self.is_random_alloc = True if "random" in alloc_env_attack[0].lower() else False
+        
+
+        pattern = re.compile(r"\(\d+_\d+_\d+_\d+\)(_S\d*T\w*)?|(_S\d*T\w*)")
+        last_params = parts[2]
+        self.st = last_params.split("_")[-1]
+        if self.is_random_alloc: 
+            match = pattern.search(parts[2])
+            if match: file_qubits = match.group(0)
+            last_params = last_params.replace(f"_{file_qubits}", '').strip()
+            self.st = re.sub(r'_?\(.*\)_?', "", file_qubits)
+        else:
+            match = pattern.search(parts[2])
+            if match: file_qubits = match.group(0)
+            last_params = last_params.replace(f"{file_qubits}", '').strip()
+            self.st = re.sub(r'_?\(.*\)_?', "", file_qubits)
+            # file_qubits = "" d
+
+
+        # print(self.st)
+        # print(file_qubits)
+        # print(last_params)
+        
+        allocator_id, env_id, attack_id = alloc_env_attack
+        base_frames, frame_step, runs_id = map(int, last_params.split("_"))
 
         print("\n🧩 PARSED COMPONENTS")
         print(f"  • cap_id:        {cap_id}")
@@ -253,8 +339,17 @@ class ExperimentConfiguration:
         print(f"  • frame_step:    {frame_step}")
         print(f"  • runs_id:       {runs_id}")
         print(f"  • Total runs:    {self.runs}")
+        print(f"  • Qubit Caps:    {file_qubits or "N/A"}")
 
 
+        # =====================================================
+        # RANDOM ALLOCATOR → extract qubit allocation from backup
+        # =====================================================
+        runtime_qubits = file_qubits
+        if self.is_random_alloc: 
+            runtime_qubits = self._get_random_runtime_qubits()
+            if not runtime_qubits: print("\t⚠️ No qubit allocation found → using default [the system will fail gracefully]")
+        
         attack_mapping = {
             'none': NoAttack(),
             'random': RandomAttack(attack_rate=self.attack_rate * self.attack_intensity),
@@ -293,7 +388,7 @@ class ExperimentConfiguration:
                     runner_key = (
                         f"QuantumExperimentRunner_{run_idx+1}_{cap_id}-"
                         f"{allocator_id}_{env_id}_{attack_id}-"
-                        f"{frame_no}_{run_idx+1}.pkl"
+                        f"{frame_no}_{run_idx+1}{runtime_qubits}.pkl"
                     )
                     framework_state[runner_key] = runner_key
                     print(f"  → Runner key: {runner_key}")
@@ -310,7 +405,7 @@ class ExperimentConfiguration:
                         model_key = (
                             f"{model_class}({mode})_{cap_id}-"
                             f"{allocator_id}_{env_id}_{attack_id}-"
-                            f"{frame_no}.pkl"
+                            f"{frame_no}{runtime_qubits}.pkl"
                         )
                         model_state[model_key] = model_key
                         print(f"    → {model_key}")
@@ -361,8 +456,23 @@ class ExperimentConfiguration:
         
         # 2) Try registry lookup - reconstruct path for current environment
         # Get both local and drive base paths for this component
+        if self.is_random_alloc:
+            target_qubits = self._get_random_runtime_qubits()
+            print(target_qubits)
+            print(item_v)   
+            if target_qubits not in item_v: 
+                old_item_v = item_v
+                new_item_v = re.sub(r'_\(.*\)(_S\d*T\w*)?', f"{self._get_random_runtime_qubits()}_{self.st}", item_v)
+                if "multirunevaluator" not in item_v.lower(): 
+                    new_item_v = new_item_v.replace(f"_{self.st}", "")
+                    # item_v = new_item_v
+                item_v = re.sub(r"\s+", '', new_item_v)
+                if item_v == old_item_v: item_v = item_v.replace(".pkl", f"{self._get_random_runtime_qubits()}.pkl")
+                print(item_v)    
+        print(item_v)    
         component_paths = self.backup_mgr.quantum_data_paths["obj"][item_k]
         try:
+            if item_k not in self.backup_registry.keys(): self._build_backup_registry(force=True)
             registry_path = self.backup_registry[item_k][item_v]
             registry_path_obj = Path(registry_path)
             
@@ -386,22 +496,28 @@ class ExperimentConfiguration:
                         self.backup_registry[item_k][item_v] = str(reconstructed_path)
                         return str(reconstructed_path)
                         
-                except ValueError:
+                except Exception as e:
                     # relative_to() failed - path not under this base
-                    continue
+                    print(f"\t⚠️ Not in registry (registry path relative): {mode} \n\t\t{e}")
+                    # continue
             
-            # Also try with current day appended (filesystem direct path)
-            for mode in ["local", "drive"]:
-                current_path = component_paths[mode] / self.day_str / item_v
-                if current_path.exists():
-                    print(f"\t✅ Found via {mode} filesystem: {current_path}")
-                    self.backup_registry[item_k][item_v] = str(current_path)
-                    return str(current_path)
+                    # Also try with current day appended (filesystem direct path)
+                    # for mode in ["local", "drive"]:
+                    try:
+                        current_path = component_paths[mode] / self.day_str / item_v
+                        if current_path.exists():
+                            print(f"\t✅ Found via {mode} filesystem: {current_path}")
+                            self.backup_registry[item_k][item_v] = str(current_path)
+                            return str(current_path)
+                    except Exception as e:
+                        # relative_to() failed - path not under this base
+                        print(f"\t⚠️ Not in registry (filesystem direct path): {mode} \n\t\t Error: {e}")
+                        continue
             
             print(f"\t⚠️ Registry path doesn't exist and couldn't reconstruct: {registry_path}")
             
-        except KeyError:
-            print(f"\t⚠️ Not in registry: {item_k}/{item_v}")
+        except Exception as e:
+            print(f"\t⚠️ Not in registry: {item_k}/{item_v} \n\t\t{e}")
         
         # 3) Try filesystem direct search with current mode
         search_path = component_paths[self.backup_mgr.mode] / self.day_str / item_v
@@ -440,8 +556,8 @@ class ExperimentConfiguration:
             bool: True on success
         """
         if self.use_last_backup is None: return False
-        if len(self.backup_registry) == 0:
-            print(f"BUILDING REGISTRY WITH {len(self.expected_keys)} EXPECTED KEYS")
+        if len(self.backup_registry) == 0 or force:
+            print(f"BUILDING REGISTRY WITH {len(self.expected_keys)} EXPECTED COMPONENTS KEYS")
             self.backup_registry = self.backup_mgr.build_registry(force=force, expected_keys=self.expected_keys)
         return True
 
@@ -795,6 +911,115 @@ class ExperimentConfiguration:
             raise
             
         return str(save_path)
+    
+    def _validate_path(self, obj, config_path):
+        """
+        Validate that config_path can be converted to a Path object.
+        
+        Args:
+            obj: Object being resumed (for logging)
+            config_path: Path string or Path object to validate
+        
+        Returns:
+            bool: True if valid Path, False otherwise
+        """
+        try:
+            Path(config_path)
+            print(f"\t✓ {obj} Path validated: {config_path!r}")
+            return True
+        except Exception as e:
+            print(f"\t❌ Failed converting path to Path object: {e}")
+            return False
+
+
+    def _load_obj(self, obj, state_path):
+        """
+        Load and validate pickle file from disk with triple-fallback strategy.
+        Handles:
+        1. Standard pickle
+        2. cloudpickle (cross-environment)
+        3. SafeUnpickler (ignores missing module imports like pathlib._local)
+        """
+        print(f"\t   Loading from: {state_path}")
+
+        exists = state_path.exists()
+        size = state_path.stat().st_size if exists else "N/A"
+        print(f"\t   File exists: {exists}, size: {size}")
+
+        if not exists or size == 0:
+            print("\t⚠️  File missing or empty")
+            return None, False
+
+        loaded_dict = None
+        eq_result = False
+
+        # ============================================================
+        # 1) Standard pickle
+        # ============================================================
+        try:
+            with open(state_path, "rb") as f:
+                loaded_dict = pickle.load(f)
+            print("\t✓ Pickle loaded (standard pickle)")
+            if loaded_dict is not None:
+                eq_result = (obj == loaded_dict)
+                print(f"\t   Equality check: {eq_result}")
+            return loaded_dict, eq_result
+        except Exception as e:
+            print(f"\t⚠️  Standard pickle failed: {e}")
+
+        # ============================================================
+        # 2) cloudpickle fallback
+        # ============================================================
+        try:
+            import cloudpickle
+            with open(state_path, "rb") as f:
+                loaded_dict = cloudpickle.load(f)
+            print("\t✓ Pickle loaded (cloudpickle fallback)")
+            if loaded_dict is not None:
+                eq_result = (obj == loaded_dict)
+                print(f"\t   Equality check: {eq_result}")
+            return loaded_dict, eq_result
+        except ImportError:
+            print("\t⚠️  cloudpickle not installed, skipping")
+        except Exception as e:
+            print(f"\t⚠️  cloudpickle failed: {e}")
+
+        # ============================================================
+        # 3) SafeUnpickler — FIXES corrupted module references
+        # ============================================================
+        print("\t🔄 Attempting SafeUnpickler (ignore missing modules)...")
+
+        class Dummy:
+            def __init__(self, *args, **kwargs):
+                pass
+
+        class SafeUnpickler(pickle.Unpickler):
+            """Custom Unpickler that replaces missing module references with Dummy()."""
+            def find_class(self, module, name):
+                try:
+                    return super().find_class(module, name)
+                except Exception:
+                    print(f"\t   → Replacing missing: {module}.{name}")
+                    return Dummy
+
+        try:
+            with open(state_path, "rb") as f:
+                loaded_dict = SafeUnpickler(f).load()
+
+            print(f"\t✓ Pickle loaded (SafeUnpickler recovered import errors)")
+
+            if loaded_dict is not None:
+                eq_result = (obj == loaded_dict)
+                print(f"\t   Equality check: {eq_result}")
+
+            return loaded_dict, eq_result
+
+        except Exception as e:
+            print(f"\t❌ SafeUnpickler failed: {e}")
+
+        print("\t❌ All load attempts failed")
+        return None, False
+
 
     def resume_obj(self, obj, component="model_state"):
         """
@@ -802,70 +1027,53 @@ class ExperimentConfiguration:
         
         Strategy:
         - Looks up path in registry (points to data lake)
-        - Loads from: quantum_datalake_path (the source of truth)
-        - Falls back to: config backup if data lake file missing
+        - Loads from: quantum_datalake_path (source of truth)
+        - Deletes corrupted files
         
         Args:
-            obj: Object to resume (must have __dict__ and __eq__)
-            file_name: Name of the pickle file to resume from
-            component: Component type ("model_state" or "framework_state")
+            obj: Object to resume (must have __dict__, __eq__, file_name, configs)
+            component (str): Component type ("model_state" or "framework_state")
         
         Returns:
-            bool: True if resumed successfully, False otherwise
+            bool: True if successfully resumed, False otherwise
         """
-        # print(self.file_name)
-        config_path  = self.get_latest_state(obj.component, obj.file_name)
-        mode = self.backup_mgr.mode
-        if not config_path: config_path = self.backup_mgr.quantum_data_paths[mode] / obj.component / obj.file_name
+        print(f"\n\t🔄 Resume: {obj}")
         
-        state_path = None
-        # print(config_path)
-        if config_path:
-            # print(f"\t\t[TRACE] config_path = {config_path!r} (type={type(config_path)})")
-            # --- TRACE 2: STATE PATH CONSTRUCTION ---
-            try:
-                print(f"\t {obj} Path Found = {config_path!r} (type={type(config_path)})")
-                state_path = Path(config_path)
-            except Exception as e:
-                print(f"\t[ERROR] Failed converting config_path to Path: {e}")
-                print(f"\t\t[TRACE] config_path was: {config_path!r}")
-
-            print(f"\t\t[TRACE] state_path = {state_path!r} (type={type(state_path)})")
-            # --- TRACE 3: FILE EXISTENCE ---
-            try:
-                exists = state_path.exists()
-                size = state_path.stat().st_size if exists else "N/A"
-                print(f"\t\t[TRACE] state_path.exists() = {exists}, size = {size}")
-                if not exists or size == 0: print(f"\t[WARN] No saved state at {state_path} or Empty ({size})")
-                
-                # --- TRACE 4: LOAD PICKLE ---
-                eq_result = None
-                try:
-                    with open(state_path, "rb") as f:
-                        loaded_dict = pickle.load(f)
-                        print(f"\t\t[TRACE] loaded_dict type: {type(loaded_dict)}")
-                        # --- TRACE 5: EQUALITY CHECK ---
-                        try:
-                            eq_result = (obj == loaded_dict)
-                            print(f"\t\t[TRACE] self == loaded_dict → {eq_result!r} (type={type(eq_result)})")
-                        except Exception as e:  print(f"\t[ERROR] Equality comparison failed: {e}")
-                except Exception as e:  print(f"\t[ERROR] Failed loading pickle from {state_path}: {e}")
-
-                # --- TRACE 6: UPDATE ---
-                if eq_result:
-                    print(f"\t🔄 {obj} Resuming state from: {state_path}")
-                    try:
-                        configs = obj.configs
-                        obj.__dict__.update(loaded_dict)
-                        obj.configs = configs
-                        return True
-                    except Exception as e:
-                        print(f"\t[ERROR] __dict__.update failed: {e}")
-                        print(f"\t\t[TRACE] loaded_dict = {loaded_dict!r}")
-                else:   self.delete_file(state_path, obj)
-            except Exception as e:  print(f"\t[ERROR] Checking path existence failed: {e}")
-
+        # Get path from registry
+        config_path = self.get_latest_state(obj.component, obj.file_name)
+        if not config_path:
+            print(f"\t❌ Not found in registry or fallback locations")
             return False
+        
+        # Validate path
+        if not self._validate_path(obj, config_path):
+            return False
+        
+        state_path = Path(config_path)
+        
+        # Load and validate
+        loaded_dict, eq_result = self._load_obj(obj, state_path)
+        if not loaded_dict:
+            return False
+        
+        # Update or delete
+        if eq_result:
+            print(f"\t✅ Resuming state")
+            try:
+                configs = obj.configs
+                old_file_name = obj.file_name
+                obj.__dict__.update(loaded_dict)
+                obj.configs = configs
+                obj.file_name = old_file_name
+                return True
+            except Exception as e:
+                print(f"\t❌ Update failed: {e}")
+                return False
+        else:
+            print(f"\t❌ Corrupted—deleting")
+            # self.delete_file(state_path, obj)
+            return False
+
 
     def delete_file(self, state_path, obj):
         """

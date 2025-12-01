@@ -5,7 +5,7 @@ import json
 import time
 import copy
 import psutil
-import random
+import random, re
 import warnings, gc
 import numpy as np
 import pandas as pd
@@ -59,7 +59,7 @@ class QuantumModel(ABC):
     Enhanced minimal interface that every model (policy/algorithm) in the quantum environment obeys.
     Keep methods generic so both 'step-wise' (Oracle) and 'batch' (EXPNeuralUCB) fit.
     """
-    def __init__(self, configs, X_n, reward_list, frame_number, attack_list=[], capacity=10000,     mode='hybrid', beta=0.2, gamma_factor=0.01, eta_factor=0.05, lamb=1):
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list=[], capacity=10000, mode='base', beta=0.2, gamma_factor=0.01, eta_factor=0.05, lamb=1):
         super().__init__()
 
         # Directory structure setup
@@ -75,8 +75,9 @@ class QuantumModel(ABC):
         self.frame_number = frame_number
         self.num_groups = len(reward_list)
 
-        self.mode = mode
+        self.mode = self.configs.algorithm_configs[str(self)]['kwargs']['mode']
         self.beta = beta
+        print(self, " ", self.mode)
         # self.verbose = self.configs.verbose
         
         # EXP3 parameters (used in 'hybrid' and 'exp3' modes)
@@ -85,19 +86,22 @@ class QuantumModel(ABC):
         self.eta = eta_factor
         self.state = 0
 
-        self.component = "model_state"
-        self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
+        self.component   = "model_state"
+        self.key_attrs   = getattr(self.configs, "get_key_attrs", lambda: {})()
         self.save_to_dir = Path(f"{self.configs.dir}/model_state/{self.configs.day_str}/")
 
+        mode              = self.configs.backup_mgr.mode
+        component_path    = self.configs.backup_mgr.quantum_data_paths["obj"][self.component][mode]
+        self.save_to_dir  = component_path / self.configs.day_str
 
-        mode = self.configs.backup_mgr.mode
-        component_path = self.configs.backup_mgr.quantum_data_paths["obj"][self.component][mode]
-        self.save_to_dir = component_path / self.configs.day_str
-
+        frame_no_str      = str(int(self.frame_number))
         self.allocator_id = str(getattr(self.configs, "allocator", "alloc"))
         self.env_id       = str(getattr(self.configs, "environment", "env"))
         self.attack_id    = str(getattr(self.configs, "attack_strategy", "None"))
-        self.file_name = f"{self.id}({self.mode})_{int(self.capacity)}-{self.allocator_id}_{self.env_id }_{self.attack_id}-{self.frame_number}.pkl"
+        alloc_str         = " ".join(str(v) for v in self.key_attrs["qubit_capacities"])
+        if "random" in str(self.configs.allocator).lower(): frame_no_str += f"_({re.sub(r'^_', '', alloc_str)})"
+        self.file_name    = f"{self.id}({self.mode})_{int(self.capacity)}-{self.allocator_id}_{self.env_id }_{self.attack_id}-{frame_no_str}.pkl"
+
 
         self.thresholds = {
                 'EXPNeuralUCB': {'stochastic': 0.628, 'adversarial': 0.598},

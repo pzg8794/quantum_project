@@ -48,7 +48,6 @@ class GoogleDriveBackupManager:
         self.quantum_data_paths["obj"]["framework_state"]           = {}
         self.quantum_data_paths["obj"]["model_state"]["local"]      = self.dir / "model_state"
         self.quantum_data_paths["obj"]["model_state"]["drive"]      = self.dir / "model_state"
-        self.quantum_data_paths["obj"]["model_state"]["drive"]      = self.dir / "model_state"
         self.quantum_data_paths["obj"]["framework_state"]["local"]  = self.dir / "framework_state"
         self.quantum_data_paths["obj"]["framework_state"]["drive"]  = self.dir / "framework_state"
         
@@ -56,15 +55,10 @@ class GoogleDriveBackupManager:
         self.registry_file_paths            = {'drive':"", "local":"", "datalake":""}
         self.registry_file_paths["drive"]   = self.dir / "drive_backup_registry.json"
         self.registry_file_paths["local"]   = self.dir / "local_backup_registry.json"
-        self.registry_file_paths["datalake"]= drive_path / "full_backup_registry.json"
+        self.registry_file_paths["datalake"]= drive_path / "backup_registry.json"
 
         self.in_share_drive             = True if self.quantum_data_paths["logs"]["drive"].exists() else False
         self.mode                       = "drive" if self.in_share_drive else "local"
-
-        parent_dir                      = self.dir.parent.parent.parent.parent
-        if not self.quantum_data_paths["logs"]["drive"].exists(): 
-            parent_dir                  = self.dir
-            self.in_share_drive         = False
 
         # ------------------------------------------------------------
         # Credential auto-discovery
@@ -72,8 +66,7 @@ class GoogleDriveBackupManager:
         creds_path = self._find_credentials()
         if creds_path:
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
-            if self.verbose:
-                print(f"\tUsing Drive credentials: {creds_path}")
+            if self.verbose: print(f"\tUsing Drive credentials: {creds_path}")
 
         # ------------------------------------------------------------
         # Initialize Google Drive API
@@ -88,15 +81,9 @@ class GoogleDriveBackupManager:
 
         except Exception as e:
             self.remote_available = False
-            if self.verbose:
-                print(f"\t⚠️ Drive unavailable: {e}")
+            if self.verbose: print(f"\t⚠️ Drive unavailable: {e}")
 
-        # ------------------------------------------------------------
-        # Load registry from Drive if available
-        # ------------------------------------------------------------
-        self.backup_registry = self._fetch_registry_from_drive()
-        if self.verbose:
-            print(f"\t📁 Registry loaded: {len(self.backup_registry)} components")
+        if self.verbose: print(f"\t📁 Registry loaded: {len(self.backup_registry)} components")
 
 
     # ------------------------------------------------------------
@@ -180,10 +167,9 @@ class GoogleDriveBackupManager:
                     if not Path(entry_path).exists():
                         recovered = self._download_file_from_drive(self.date_str, comp, key)
                         if recovered:
-                            print(f"   ☁️ Recovered from Drive → {recovered}")
+                            print(f"   ☁️ Recovered from Drive {" Remotely" if not self.in_share_drive else " Locally"} → {recovered}")
                             entry_path = recovered
-                        else:
-                            print(f"   ⚠️ Drive had no copy → falling back to local expected path")
+                        else: print(f"   ⚠️ Drive had no copy → falling back to local expected path")
 
                     # Store final resolved path
                     registry[comp][key] = entry_path
@@ -209,34 +195,33 @@ class GoogleDriveBackupManager:
 
 
 
-    def _fetch_registry_from_drive(self, expected_keys=None):
+    def _fetch_registry_from_drive(self, expected_keys=None, force=False):
         """
         Fetch registry.json from Google Drive.
         If expected_keys is provided, filter down the registry to only those keys.
         """
-        if not expected_keys: return self.backup_registry
-
+        if len(self.metadata) != 0 and not force: return self.metadata
         print("\n==================== FETCH FROM DRIVE START ====================")
 
         if not self.remote_available:
             print("⚠️ Drive NOT available -> cannot fetch registry")
-            return self.backup_registry
+            return self.metadata
 
         print(f"→ Looking for 'backup_registry.json' in Drive folder: {self.DRIVE_FOLDER_ID}")
-        file_id = self._find_drive_file("drive_backup_registry.json")
+        file_id = self._find_drive_file("backup_registry.json")
 
         if not file_id:
             print("→ No registry file found in Drive")
             print("==================== FETCH FROM DRIVE END =====================\n")
-            return self.backup_registry
+            return self.metadata
 
         print(f"→ Registry FOUND in Drive with file_id={file_id}")
         print("→ Downloading...")
 
         # ------------------------------------------------------------
-        # Download JSON
+        # Download JSON Metadata
         # ------------------------------------------------------------
-        registry = {}
+        self.metadata = {}
         try:
             request = self.drive.files().get_media(fileId=file_id)
             fh = io.BytesIO()
@@ -245,18 +230,26 @@ class GoogleDriveBackupManager:
             done = False
             while not done:
                 status, done = downloader.next_chunk()
-                if status:
-                    print(f"   Download progress: {int(status.progress() * 100)}%")
+                if status: print(f"   Download progress: {int(status.progress() * 100)}%")
 
             fh.seek(0)
-            registry = json.loads(fh.read().decode("utf-8"))
+            self.metadata = json.loads(fh.read().decode("utf-8"))
         except Exception as e:
             print(f"❌ ERROR decoding registry JSON: {e}")
             print("==================== FETCH FROM DRIVE END =====================\n")
             return self.backup_registry
 
-        num_components = len(registry)
-        if num_components > 0:
+        num_components = len(self.metadata)
+        if num_components > 0 and expected_keys:
+            # ------------------------------------------------------------
+            # Optional filtering
+            # ------------------------------------------------------------
+            # if expected_keys:
+            print("→ Filtering registry based on expected keys...")
+            self.backup_registry = self._filter_registry(self.metadata, expected_keys)
+            print("→ Filtering completed.")
+            print("==================== FETCH FROM DRIVE END =====================\n")
+
             print(f"→ Successfully loaded registry JSON from Drive: {num_components} components")
             # ------------------------------------------------------------
             # Cache local
@@ -264,62 +257,52 @@ class GoogleDriveBackupManager:
             file = str(self.registry_file_paths[self.mode].replace(".pkl", ".json"))
             print(f"→ Caching registry locally: {file}")
             try:
-                with open(file, "w") as f:
-                    json.dump(registry, f)
+                with open(file, "w") as f: json.dump(self.backup_registry, f)
             except Exception as e:  print(f"❌ ERROR writing local cache: {e}")
-
-            # ------------------------------------------------------------
-            # Optional filtering
-            # ------------------------------------------------------------
-            if expected_keys:
-                print("→ Filtering registry based on expected keys...")
-                registry = self._filter_registry(registry, expected_keys)
-                print("→ Filtering completed.")
-            print("==================== FETCH FROM DRIVE END =====================\n")
-        return registry
+        return self.backup_registry or self.metadata
 
 
-    # ------------------------------------------------------------
-    # Remote SAVE (exact GCP naming: _save_registry_to_gcs)
-    # ------------------------------------------------------------
-    def _save_registry_to_gcs(self, registry_path):
-        file = self.registry_file_paths[self.mode]
-        if not registry_path: registry_path = file.replace(".pkl", ".json")
+    # # ------------------------------------------------------------
+    # # Remote SAVE (exact GCP naming: _save_registry_to_gcs)
+    # # ------------------------------------------------------------
+    # def _save_registry_to_gcs(self):
+    #     registry_path = self.registry_file_paths[self.mode]
+    #     registry_path.replace(".pkl", ".json")
         
-        # Direct filesystem write in shared drive
-        with open(registry_path, "w") as f:
-            json.dump(self.backup_registry, f, indent=2)
-        if self.verbose: print(f"💾 Registry saved locally: {registry_path}")
+    #     # # Direct filesystem write in shared drive
+    #     # with open(registry_path, "w") as f:
+    #     #     json.dump(self.backup_registry, f, indent=2)
+    #     if self.verbose: print(f"💾 Registry Saved in {self.mode.title()} Directory: {registry_path}")
 
-        if not self.remote_available or not self.drive: return False
+    #     if not self.remote_available or not self.drive: return False
         
-        # Drive API for non-shared-drive environments
-        json_bytes = json.dumps(self.backup_registry).encode("utf-8")
-        buffer = io.BytesIO(json_bytes)
-        media = MediaIoBaseUpload(buffer, mimetype="application/json", resumable=False)
+    #     # # Drive API for non-shared-drive environments
+    #     # json_bytes = json.dumps(self.backup_registry).encode("utf-8")
+    #     # buffer = io.BytesIO(json_bytes)
+    #     # media = MediaIoBaseUpload(buffer, mimetype="application/json", resumable=False)
         
-        data_lake_id = self._ensure_drive_folder("quantum_logs", self.DRIVE_FOLDER_ID)
-        metadata = {
-            "name": "backup_registry.json",
-            "parents": [data_lake_id]
-        }
-        file_id = self._find_drive_file("backup_registry.json")
+    #     # data_lake_id = self._ensure_drive_folder("quantum_logs", self.DRIVE_FOLDER_ID)
+    #     # metadata = {
+    #     #     "name": "backup_registry.json",
+    #     #     "parents": [data_lake_id]
+    #     # }
+    #     # file_id = self._find_drive_file("backup_registry.json")
         
-        if file_id:
-            self.drive.files().update(
-                fileId=file_id,
-                media_body=media,
-                supportsAllDrives=True
-            ).execute()
-        else:
-            self.drive.files().create(
-                body=metadata,
-                media_body=media,
-                supportsAllDrives=True
-            ).execute()
+    #     # if file_id:
+    #     #     self.drive.files().update(
+    #     #         fileId=file_id,
+    #     #         media_body=media,
+    #     #         supportsAllDrives=True
+    #     #     ).execute()
+    #     # else:
+    #     #     self.drive.files().create(
+    #     #         body=metadata,
+    #     #         media_body=media,
+    #     #         supportsAllDrives=True
+    #     #     ).execute()
         
-        if self.verbose: print("☁️ Registry (in-memory) synced to Drive")
-        return True
+    #     # if self.verbose: print("☁️ Registry (in-memory) synced to Drive")
+    #     return True
 
 
     def build_registry(self, force=False, expected_keys=None):
@@ -331,39 +314,17 @@ class GoogleDriveBackupManager:
         - whether Drive returned something
         - whether fallback happened
         """
-
-        print("\n===================== BUILD REGISTRY START =====================")
-
-        # ------------------------------------------------------------
-        # 1. Try local cached registry
-        # ------------------------------------------------------------
-        file = str(self.registry_file_paths[self.mode].replace(".pkl", ".json"))
-        if not force and Path(file).exists():
-            try:
-                print("→ Attempting to load local registry cache...")
-                with open(file, "r") as f: self.backup_registry = json.load(f)
-                total_local = sum(len(v) for v in self.backup_registry.values())
-                print(f"✓ Local registry loaded ({total_local} keys)")
-                # print("====================== BUILD REGISTRY END ======================\n")
-                # return self._fetch_registry_from_drive(expected_keys=expected_keys)
-            except Exception as e:
-                print(f"⚠️  Local registry exists but could not be read: {e}")
-                print("→ Falling back to Drive...")
-        else:   print("→ Skipping local cache (force=True or file missing)")
-
         # ------------------------------------------------------------
         # 2. Try Drive
         # ------------------------------------------------------------
         print("→ Attempting to fetch registry from Google Drive...")
         reg = self._fetch_registry_from_drive(expected_keys=expected_keys)
-        if reg is None:
-            print("⚠️  Drive returned NO registry (None)")
-            self.backup_registry = {}
+        if reg is None: print("⚠️  Drive returned NO registry (None)")
+            # self.backup_registry = {}
         else:
             total_remote = sum(len(v) for v in reg.values())
             print(f"✓ Drive registry loaded ({total_remote} keys)")
-            self.backup_registry = reg
-
+            # self.backup_registry = reg
         print("====================== BUILD REGISTRY END ======================\n")
         return self.backup_registry
 
@@ -372,21 +333,15 @@ class GoogleDriveBackupManager:
         reg = registry or self.backup_registry
 
         # Local JSON save
-        file = str(self.registry_file_paths[self.mode])
-        with open(file.replace(".pkl", ".json"), "w") as f:
-            json.dump(reg, f)
-
         # Local pickle save
-        with open(file, "wb") as f:
-            pickle.dump(reg, f)
-
-        print(f"\t📦 {self} Registry saved locally")
-
+        file = str(self.registry_file_paths[self.mode])
+        with open(file, "wb") as f: pickle.dump(reg, f)
+        with open(file.replace(".pkl",".json"),"w") as f:json.dump(reg,f)
+        print(f"\t📦 {self} Registry Saved Locally in {self.mode.upper()}")
         # Remote save
-        remote_status = self._save_registry_to_gcs(file)
-        if remote_status: print(f"\t☁️ {self} Registry synced to Google Drive")
-
-        return remote_status
+        # remote_status = self._save_registry_to_gcs()
+        # if remote_status: print(f"\t☁️ {self} Registry synced to Google Drive")
+        return True
 
 
     def get_latest_state(self, component, filename):
@@ -652,7 +607,7 @@ class GoogleDriveBackupManager:
         self.backup_registry = restored
         return True
     
-    def load_new_entries(self, entries=None):
+    def load_new_entries(self, entries=None, force=False):
         """
         Upload a batch of new entries to Drive.
         entries = {
@@ -665,18 +620,65 @@ class GoogleDriveBackupManager:
         if not entries: entries = self.new_entries
         if self.in_share_drive: return False
 
+        files_skipped = 0
+        files_uploaded = 0
+        files_overwritten = 0
+
+        self._fetch_registry_from_drive()
+
         for component, files in entries.items():
+            if not files:
+                print(f"         ⚠️ No files under component '{component}'. Skipping.")
+                continue
+            if component not in self.metadata:
+                print(f"         ⚠️ Unknown component '{component}', creating entry.")
+                self.metadata[component] = {}
+
             for filename, local_path in files.items():
-                # auto-extract date from parent folder
-                if Path(local_path).exists():
-                    # date_str = self.normalize_day_prefix(str(Path(local_path).parent.name))
-                    self._upload_file_to_drive(
-                        component=component,
-                        date_str=str(Path(local_path).parent.name),
-                        local_path=local_path,
-                        filename=filename
-                    )
+                path_obj = Path(local_path)
+                if not path_obj.exists():
+                    print(f"         ❌ Local path not found: {local_path}")
+                    files_skipped += 1
+                    continue
+
+                # Detect zero-byte files
+                if path_obj.stat().st_size == 0:
+                    print(f"         ❌ File '{filename}' is empty. Skipping upload.")
+                    files_skipped += 1
+                    continue
+
+                print(f"         🔄 Checking Drive status for {filename}...")
+                # Already in Drive?
+                try:
+                    self.metadata[component][filename]
+                    print(f"            ✓ Already in Drive")
+                    if not force:
+                        print(f"            ⊘ Skipping (force=False)")
+                        files_skipped += 1
+                        continue
+                    print(f"            → Overwriting (force=True)")
+                    files_overwritten += 1
+                except Exception as e:  print(f"            ℹ️ New file, will upload.")
+
+                print(f"            📤 Uploading...")
+                self._upload_file_to_drive(
+                    component=component,
+                    date_str=str(path_obj.parent.name),
+                    local_path=local_path,
+                    filename=filename
+                )
+                files_uploaded += 1
+                print(f"            ✓ Uploaded: {filename}")
+
+            # Component-level summary
+            print(
+                f"         📊 Component '{component}': "
+                f"{files_uploaded} uploaded, "
+                f"{files_skipped} skipped, "
+                f"{files_overwritten} overwritten."
+            )
         return True
+
 
     def download_any_date(self, component, filename):
         """
@@ -741,56 +743,6 @@ class GoogleDriveBackupManager:
             
             return str(local_path)
         return None
-
-
-    def normalize_day_prefix(self, value: str) -> str:
-        """
-        Always returns exactly 'day_YYYYMMDD' format.
-        Extracts 8-digit date from ANYWHERE in the string.
-        If no valid date found, constructs current date and prints warning.
-        
-        Examples:
-            '20251123'                                    → 'day_20251123'
-            'day_20251123'                                → 'day_20251123'
-            '/config/framework_state/day_20251123/file'   → 'day_20251123'
-            'invalid_date'                                → 'day_20251123' (current date)
-            '20251340' (invalid month)                    → 'day_20251123' (current date)
-        """
-        if value is None or value == "":
-            print(f"⚠️ Invalid date: empty input → using current date")
-            return f"day_{datetime.now().strftime('%Y%m%d')}"
-        
-        s = str(value).strip()
-        
-        # Search for day_YYYYMMDD or just YYYYMMDD anywhere in string
-        match = DAY_REGEX.search(s)
-        
-        if match:
-            # Extract the 8-digit date (from group 1 if day_ prefix, else group 2)
-            date_str = match.group(1) if match.group(1) else match.group(2)
-            
-            # Validate it's a real calendar date
-            try:
-                year = int(date_str[0:4])
-                month = int(date_str[4:6])
-                day = int(date_str[6:8])
-                
-                # Basic range validation
-                if not (1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31):
-                    raise ValueError(f"Date out of range: {year}-{month:02d}-{day:02d}")
-                
-                # Strict validation (catches Feb 30, etc.)
-                datetime(year, month, day)
-                
-                return f"day_{date_str}"
-                
-            except (ValueError, OverflowError) as e:
-                print(f"\t⚠️ Invalid date: '{date_str}' in '{s}' ({e}) → using current date")
-                return f"day_{datetime.now().strftime('%Y%m%d')}"
-        
-        # No 8-digit pattern found
-        print(f"\t⚠️ Invalid date: no YYYYMMDD in '{s}' → using current date")
-        return f"day_{datetime.now().strftime('%Y%m%d')}"
 
 
     def normalize_path(self, path: str, project_root: str = None) -> str:

@@ -2,7 +2,7 @@ import json
 import pickle
 import threading
 import os, sys, io
-import pathlib
+import shutil, pathlib
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
@@ -16,62 +16,219 @@ class LocalBackupManager(GoogleDriveBackupManager):
     def __init__(self, date_str, config_dir, verbose=False):
         super().__init__(date_str, config_dir, verbose=verbose)
         # FIX: Minimal locks only where needed
+        # ------------------------------------------------------------
+        # Load registry from Drive if available
+        # ------------------------------------------------------------
+        self.backup_registry = self.build_registry()
+        if self.in_share_drive:
+            for component, comp_path in self.quantum_data_paths["obj"].items():
+                if self.mode not in comp_path: continue
+                mode_comp_path = pathlib.Path(comp_path[self.mode])
+                shutil.rmtree(mode_comp_path)
+                mode_comp_path.mkdir(parents=True, exist_ok=True)
+
+            result_dir = self.dir.parent.parent/"results"
+            if result_dir.exists():
+                shutil.rmtree(result_dir)
+                result_dir.mkdir(parents=True, exist_ok=True)
+
+    def _iterate_files(self, date_str, temp, component, filenames, dir_path, valid_exts, load_to_drive, force):
+        """
+        Process individual files in a directory.
+        
+        Args:
+            date_str (str): Date string (e.g., "day_20251128")
+            temp (dict): Temporary registry accumulator
+            component (str): Component type (e.g., "model_state", "framework_state")
+            filenames (list): List of filenames in current directory
+            dir_path (Path): Current directory path
+            valid_exts (set): Valid file extensions {".pkl", ".json"}
+            load_to_drive (bool): Whether to upload to Drive
+            force (bool): Whether to force re-upload existing files
+        
+        Returns:
+            dict: Updated temp registry
+        """
+        print(f"      📄 Processing {len(filenames)} files in {component}/{date_str}")
+        files_added = 0
+        files_skipped = 0
+        files_conflicted = 0
+        self._fetch_registry_from_drive()
+        # print(self.metadata.keys())
+
+        for fname in filenames:
+            if Path(fname).suffix not in valid_exts:
+                files_conflicted += 1
+                print(f"         ⊘ Skip (invalid ext): {fname}")
+                continue
+            
+            abs_path = str(dir_path / fname)
+            temp[component][fname] = abs_path
+
+            if load_to_drive:
+                print(f"         🔄 Checking Drive status for {fname}...")
+                # self.download_drive_metadata()
+                try:    
+                    self.metadata[component][fname]
+                    print(f"            ✓ Already in Drive")
+                    if not force:
+                        print(f"            ⊘ Skipping (force=False)")
+                        files_skipped += 1
+                        continue
+                    else:   print(f"            → Overwriting (force=True)")
+                except Exception as e:  print(f"            ℹ️  New file, will upload: {e}")
+
+                print(f"            📤 Uploading...")
+                self._upload_file_to_drive(component, date_str=date_str, local_path=abs_path, filename=fname)
+            print(f"         ✅ Added: {fname} → {abs_path.split('/')[-2]}")
+            files_added += 1
+        print(f"      📊 {component}/{date_str}: {files_added}/{len(filenames)} files processed")
+        print(f"      📊 {component}/{date_str}: {files_skipped}/{len(filenames)} files skipped")
+        print(f"      📊 {component}/{date_str}: {files_conflicted}/{len(filenames)} files conflicted")
+        return temp
+
+
+    def _iterate_component_dir(self, mode_dir, temp, valid_exts, load_to_drive, force):
+        """
+        Walk directory tree and process all component subdirectories.
+        
+        Args:
+            mode_dir (Path): Base directory to walk (e.g., quantum_data_paths["drive"])
+            temp (dict): Temporary registry accumulator
+            valid_exts (set): Valid file extensions
+            load_to_drive (bool): Whether to upload to Drive
+            force (bool): Whether to force re-upload
+        
+        Returns:
+            dict: Updated temp registry with all files found
+        """
+        print(f"   🚶 Walking directory tree: {mode_dir}")
+        dirs_processed = 0
+        
+        for dirpath, _, filenames in os.walk(mode_dir):
+            dir_path = Path(dirpath)
+
+            # Calculate relative path from mode base
+            try: relative_path = dir_path.relative_to(mode_dir)
+            except ValueError as e:
+                print(f"      ❌ Could not compute relative path: {e}")
+                continue
+
+            # Extract component from first part of path
+            # print(f"      ⊘ Empty path parts, skipping")
+            parts = relative_path.parts
+            if not parts: continue            
+            component = parts[0]
+
+            # Extract date_str from path (e.g., day_20251128)
+            date_str = None
+            for p in parts:
+                if p.startswith("day_"):
+                    date_str = p
+                    break
+            
+            # print(f"      ⚠️  No date found in {parts}, skipping")
+            if not date_str: continue
+            
+            print(f"\n   📁 Directory: {dir_path}")
+            print(f"      Relative: {relative_path}")
+            print(f"      Component: {component}")
+            print(f"      Date: {date_str}")
+            
+            # Process files in this directory
+            if filenames:
+                temp = self._iterate_files(date_str, temp, component, filenames, dir_path, valid_exts, load_to_drive, force)
+                dirs_processed += 1
+            else: print(f"      ℹ️  No files in directory")
+        print(f"\n   📊 Processed {dirs_processed} directories")
+        return temp
+
 
     def _scan_local_files(self, expected_keys=None, load_to_drive=False, force=False):
-        """Scan local filesystem and optionally mirror to Google Drive."""
+        """
+        Scan local filesystem (drive + local modes) and build registry.
+        
+        Args:
+            expected_keys (dict, optional): Expected keys for validation
+            load_to_drive (bool): Whether to mirror findings to Google Drive
+            force (bool): Whether to force re-upload existing files
+        
+        Returns:
+            dict: Registry mapping {component: {filename: absolute_path}}
+        """
+        print(f"\n{'='*80}")
+        print(f"🔍 SCANNING LOCAL FILES")
+        print(f"{'='*80}")
+        print(f"Parameters: load_to_drive={load_to_drive}, force={force}")
+        
         temp = defaultdict(dict)
         valid_exts = {".pkl", ".json"}
+        modes_scanned = 0
 
-        for mode in ["drive", "local"]: # check boths storage locations in drive
-            if self.quantum_data_paths[mode].exists(): continue # skip systems without dual storage (not drive)
+        for mode in ["drive", "local"]:
+            mode_path = self.quantum_data_paths[mode]
+            print(f"\n📂 Checking {mode.upper()} mode: {mode_path}")
             
-            for dirpath, _, filenames in os.walk(self.quantum_data_paths[mode]):
-                dir_path = Path(dirpath)
+            # Skip if path doesn't exist
+            if not mode_path.exists():
+                print(f"   ⚠️  Path does not exist, skipping")
+                continue
+            
+            print(f"   ✅ Path exists, starting walk...")
+            modes_scanned += 1
+            
+            # Walk the directory tree
+            temp = self._iterate_component_dir(mode_path, temp, valid_exts, load_to_drive, force)
 
-                try: relative_path = dir_path.relative_to(self.quantum_data_paths[mode])
-                except ValueError: continue
-
-                parts = relative_path.parts
-                if not parts: continue
-                component = parts[0]
-
-                # Extract date_str from folders like day_20251120
-                date_str = None
-                for p in parts:
-                    if p.startswith("day_"):
-                        date_str = p
-                        break
-                if not date_str: continue
-
-                for fname in filenames:
-                    if Path(fname).suffix not in valid_exts: continue
-                    abs_path = str(dir_path / fname)
-                    temp[component][fname] = abs_path
-
-                    if load_to_drive:
-                        self.download_drive_metadata()
-                        try:    
-                            self.metadata[fname]
-                            print(f"\t→ Files {fname} was already stored")
-                            if not force: continue
-                        except Exception as e: print(f"\t→ Files {fname} is uploading")
-                        self._upload_file_to_drive(component, date_str=date_str, local_path=abs_path, filename=fname)
-
-        # Final registry build
+        # Build final registry
+        print(f"\n{'='*80}")
+        print(f"📦 BUILDING FINAL REGISTRY")
+        print(f"{'='*80}")
+        
         registry = {comp: {fname: meta for fname, meta in files.items()} for comp, files in temp.items()}
+        
+        print(f"Components found: {list(registry.keys())}")
+        for comp, files in registry.items():
+            print(f"  • {comp}: {len(files)} files")
+        
+        total_files = sum(len(f) for f in registry.values())
+        print(f"\n✅ SCAN COMPLETE")
+        print(f"Modes scanned: {modes_scanned}")
+        print(f"Total files in registry: {total_files}")
+        print(f"{'='*80}\n")
+        
         return registry
+
     
     def build_registry(self, force=False, expected_keys=None):
         """Build registry with recursion protection."""
-        self.backup_registry = self._scan_local_files(expected_keys=None)  # Always full scan first
-        total = sum(len(v) for v in self.backup_registry.values())
-        print(f"\t→ Filesystem scan found {total} files")
+        print("\n===================== GET LOCAL REGISTRY =====================")
+        # ------------------------------------------------------------
+        # 1. Try local cached registry
+        # ------------------------------------------------------------
+        file = self.registry_file_paths[self.mode].with_suffix('.json')
+        if not force and Path(file).exists():
+            try:
+                print("→ Attempting to load local registry cache...")
+                with open(file, "r") as f: self.backup_registry = json.load(f)
+                total_local = sum(len(v) for v in self.backup_registry.values())
+                print(f"✓ Local registry loaded ({total_local} keys)")
+            except Exception as e:
+                print(f"⚠️  Local registry exists but could not be read: {e}")
+                print("→ Falling back to Drive...")
+        else:   print("→ Skipping local cache (force=True or file missing)")
+
+        if len(self.backup_registry) == 0:
+            print("\n===================== BUILD LOCAL REGISTRY =====================")
+            self.backup_registry = self._scan_local_files(expected_keys=None)  # Always full scan first
+            total = sum(len(v) for v in self.backup_registry.values())
+            print(f"\t→ Filesystem scan found {total} files")
+            print("\n===================== GET DRIVE REGISTRY =====================")
+            if len(self.backup_registry) == 0: super().build_registry()
+            print("===================== REGISTRY BUILD COMPLETE =====================\n")
+
+        if not self.in_share_drive: self._fetch_registry_from_drive(expected_keys=None)
         
-        # Upload to Drive ONLY if forced
-        self._save_registry_to_gcs(self.registry_file_paths[self.mode])
-        print("\t→ Drive registry updated")
-        
-        print("===================== REGISTRY BUILD COMPLETE =====================\n")
         self.save_registry()
         return self.backup_registry
     

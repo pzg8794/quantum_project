@@ -495,7 +495,6 @@ class GoogleDriveBackupManager:
 
         This mirrors the same structure created by _upload_file_to_drive.
         """
-        
         if self.in_share_drive:
             # Direct filesystem path in shared drive - no download needed
             local_path =  self.quantum_data_paths["obj"][component]["drive"] / date_str / filename
@@ -616,7 +615,7 @@ class GoogleDriveBackupManager:
             }
         }
         """
-        if not self.remote_available: return False
+        if not self.remote_available or not self.drive: return False
         if not entries: entries = self.new_entries
         if self.in_share_drive: return False
 

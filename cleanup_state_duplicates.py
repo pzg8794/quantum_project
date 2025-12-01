@@ -569,7 +569,7 @@ def rename_model_files(state_roots):
                     if is_neuralucb:
                         model_name = parts[0]
                         if MODEL_MODES[model_name] in parts[1]: continue
-                        _class_name = f"{parts[0]}_{re.sub(r'\(.*\)', '', parts[1])}" 
+                        _class_name = "{}_{}".format(parts[0], re.sub(r'\(.*\)', '', parts[1]))
                         correct_name = f"{_class_name}({MODEL_MODES[model_name]})"
                         class_name = f"{parts[0]}_{parts[1]}"
         

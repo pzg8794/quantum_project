@@ -339,7 +339,7 @@ class ExperimentConfiguration:
         print(f"  • frame_step:    {frame_step}")
         print(f"  • runs_id:       {runs_id}")
         print(f"  • Total runs:    {self.runs}")
-        print(f"  • Qubit Caps:    {file_qubits or "N/A"}")
+        print(f"  • Qubit Caps:    {file_qubits or 'N/A'}")
 
 
         # =====================================================

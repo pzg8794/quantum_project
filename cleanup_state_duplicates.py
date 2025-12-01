@@ -695,7 +695,7 @@ def cleanup_and_consolidate():
     print("\n========== STARTING CLEANUP ==========")
 
     # STEP 1 — rename model files to proper format
-    # rename_model_files(ALL_STATE_ROOTS)
+    rename_model_files(ALL_STATE_ROOTS)
 
     # # for emergency use only
     # # rename_model_state_files(ALL_STATE_ROOTS)
@@ -715,24 +715,24 @@ def cleanup_and_consolidate():
     for root in ALL_STATE_ROOTS:
         consolidate_to_today(root)
 
-    # # STEP 4 — rebuild registries (use absolute paths)
-    # rebuild_registry(
-    #     PROJECT_ROOT / "daqr" / "config" / "local_backup_registry.json",
-    #     STATE_ROOTS_LOCAL,
-    #     is_metadata=True
-    # )
+    # STEP 4 — rebuild registries (use absolute paths)
+    rebuild_registry(
+        PROJECT_ROOT / "daqr" / "config" / "local_backup_registry.json",
+        STATE_ROOTS_LOCAL,
+        is_metadata=True
+    )
 
-    # rebuild_registry(
-    #     PROJECT_ROOT / "daqr" / "config" / "drive_backup_registry.json",
-    #     STATE_ROOTS_LOCAL,
-    #     is_metadata=True
-    # )
+    rebuild_registry(
+        PROJECT_ROOT / "daqr" / "config" / "drive_backup_registry.json",
+        STATE_ROOTS_LOCAL,
+        is_metadata=True
+    )
 
-    # rebuild_registry(
-    #     DATALAKE_ROOT / "backup_registry.json",
-    #     STATE_ROOTS_DATALAKE,
-    #     is_metadata=True
-    # )
+    rebuild_registry(
+        DATALAKE_ROOT / "backup_registry.json",
+        STATE_ROOTS_DATALAKE,
+        is_metadata=True
+    )
 
     print("\n========== DONE ==========\n")
 

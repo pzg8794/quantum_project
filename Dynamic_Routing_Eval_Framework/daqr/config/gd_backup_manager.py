@@ -167,7 +167,7 @@ class GoogleDriveBackupManager:
                     if not Path(entry_path).exists():
                         recovered = self._download_file_from_drive(self.date_str, comp, key)
                         if recovered:
-                            print(f"   ☁️ Recovered from Drive {" Remotely" if not self.in_share_drive else " Locally"} → {recovered}")
+                            print(f"   ☁️ Recovered from Drive {' Remotely' if not self.in_share_drive else ' Locally'} → {recovered}")
                             entry_path = recovered
                         else: print(f"   ⚠️ Drive had no copy → falling back to local expected path")
 

@@ -249,20 +249,20 @@ class ExperimentConfiguration:
 
         for comp, file_map in self.backup_registry.items():
             if comp == "model_state": continue
+            found_evaluator =False
             for fname, path in file_map.items():
                 parts = fname.split("-")
                 # keep your existing check on the allocator label
-                print(parts)
-                if len(parts) < 2 or "Random" not in parts[1] or "MultiRunEvaluator" not in parts[0]:
-                    continue
+                # print(parts)
+                if len(parts) < 2 or "Random" not in parts[1]: continue
                 print(fname)
                 match = pattern.search(fname)
                 if match:
                     runtime_qubits = match.group(0)  # <-- EXACTLY "(x_x_x_x)"
                     print(f"  → Found qubit allocation: {runtime_qubits or 'None'}")
-                    break
-            if runtime_qubits:
-                break
+                    found_evaluator = "MultiRunEvaluator" not in parts[0]
+                    if found_evaluator and runtime_qubits: break
+            if runtime_qubits and found_evaluator: break
 
         self.random_runtime_qubits = runtime_qubits
         # If you still want the _{self.st} suffix:

@@ -203,7 +203,7 @@ class GoogleDriveBackupManager:
         if len(self.metadata) != 0 and not force: return self.metadata
         print("\n==================== FETCH FROM DRIVE START ====================")
 
-        if not self.remote_available:
+        if not self.remote_available or not self.drive:
             print("⚠️ Drive NOT available -> cannot fetch registry")
             return self.metadata
 
@@ -377,6 +377,7 @@ class GoogleDriveBackupManager:
 
     def _ensure_drive_folder(self, folder_name, parent_id):
         """Find or create a folder under a given parent (or Drive root)."""
+        if not self.remote_available or not self.drive: return None
 
         is_drive_root = (parent_id == self.DRIVE_FOLDER_ID)
 
@@ -701,6 +702,7 @@ class GoogleDriveBackupManager:
                     return str(file_path)
             return None
         
+        if not self.remote_available or not self.drive: return None
         # Drive API for non-shared-drive environments
         data_lake_id= self._ensure_drive_folder("quantum_data_lake", self.DRIVE_FOLDER_ID)
         comp_id     = self._ensure_drive_folder(component, data_lake_id)

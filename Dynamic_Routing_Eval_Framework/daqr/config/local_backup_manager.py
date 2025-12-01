@@ -593,6 +593,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
 
     def _download_metadata_remote(self, parent_dir="quantum_data_lake", filename="metadata.json"):
         """Download metadata.json from Drive."""
+        if not self.remote_available or not self.drive: return False
         root_id = self._ensure_drive_folder(parent_dir, self.DRIVE_FOLDER_ID)
         query   = f"name='{filename}' and '{root_id}' in parents"
         response= self.drive.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
@@ -640,6 +641,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
 
     def load_drive_metadata(self, parent_dir="quantum_logs"):
         """Download metadata.json from Drive if present."""
+        if not self.remote_available or not self.drive: return False
         if not self.update_drive_metadata(parent_dir=parent_dir): return False
         
         if self.in_share_drive: 

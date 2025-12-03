@@ -945,7 +945,7 @@ def cleanup_and_consolidate():
 
 
     # Tag MultiRunEvaluators with scale/T-type
-    tag_multirun_evaluators_from_filename_and_object(ALL_STATE_ROOTS) # for emergency
+    # tag_multirun_evaluators_from_filename_and_object(ALL_STATE_ROOTS) # for emergency
 
 
     # STEP 1 — rename Random allocator files

@@ -337,6 +337,9 @@ def cleanup_across_dates_single(root):
 # ============================================================
 # RANDOM ALLOCATOR RENAMER
 # ============================================================
+# ============================================================
+# RANDOM ALLOCATOR RENAMER (Fixed with Regex)
+# ============================================================
 def extract_and_rename_random_allocator_files(state_roots):
     print(f"\n[EXTRACT] Processing Random allocator files...")
 
@@ -401,10 +404,22 @@ def extract_and_rename_random_allocator_files(state_roots):
                             failed += 1
                             continue
 
-                        # --- FIX: Ensure integers in allocation string ---
-                        # e.g. [8.0, 10.0] -> 8_10
-                        alloc_str = "".join(str(int(v)) for v in qubit_alloc)
-                        alloc_str = re.sub(r',\s*', "_", alloc_str)
+                        # --- FIX: ROBUST REGEX EXTRACTION ---
+                        # 1. Convert to string (handles tuple/list/string input)
+                        raw_str = str(qubit_alloc)
+                        # 2. Find all numbers (ints or floats like 8.0)
+                        # Matches: 8, 10, 8.0, 9.00, etc.
+                        nums = re.findall(r"[-+]?\d*\.\d+|\d+", raw_str)
+                        
+                        if not nums:
+                             print(f"⚠️ Could not parse numbers from: {raw_str}")
+                             failed += 1
+                             continue
+                             
+                        # 3. Convert to float->int to clean decimals, then join
+                        # e.g. ['8.0', '10'] -> [8, 10] -> "8_10..."
+                        alloc_str = "_".join(str(int(float(n))) for n in nums)
+                        
                         base_name = re.sub(r"[_-]*\([^)]*\)", "", base_name)
 
                         # Construct new proper filename
@@ -416,7 +431,6 @@ def extract_and_rename_random_allocator_files(state_roots):
                         print(f" ✅ Renamed → {new_path}")
 
                         renamed += 1
-
                     except Exception as e:
                         print(f" ❌ Failed: {e}")
                         failed += 1

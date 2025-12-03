@@ -50,9 +50,9 @@ def fix_files_aggressive():
                 tail = match.group(0)
                 nums_search = re.search(r"(\d+_\d+_\d+_\d+)", tail)
                 
-                if not nums_search:
-                    print(f"⚠️ Matched pattern but found no digits? {f.name}")
-                    continue
+                # if not nums_search:
+                #     print(f"⚠️ Matched pattern but found no digits? {f.name}")
+                #     continue
                     
                 digits = nums_search.group(1) # e.g. "8_10_8_9"
                 

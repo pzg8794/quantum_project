@@ -243,7 +243,7 @@ class ExperimentConfiguration:
         has_adversarial_env = "Adversarial" in self.test_scenarios
         attack_id           = f"{scenarios_no}_attacks" if scenarios_no > 0 else self.attack_type
         env_id              = "all_envs" if (has_stochastic_env and has_adversarial_env) else self.environment 
-        self.log_name       = f"quantum_exps-{self.allocator}_alloc-{"all_envs"}-{attack_id}-{base_frames}_{int(frame_step)}-{self.runs}_runs-S{self.scale}{'Tb' if self.base_capacity else 'T'}"
+        self.log_name       = f"quantum_exps-{self.allocator}_alloc-{'all_envs'}-{attack_id}-{base_frames}_{int(frame_step)}-{self.runs}_runs-S{self.scale}{'Tb' if self.base_capacity else 'T'}"
         print(self.log_name)
         return True
 

@@ -16,18 +16,14 @@ STATE_ROOTS = [
     DATALAKE_ROOT / "model_state",
 ]
 
-def fix_files_aggressive():
-    print("🔥 STARTING AGGRESSIVE REGEX FIX 🔥")
+def fix_missing_underscore_before_paren():
+    print("🔧 STARTING UNDERSCORE INSERTION (REGEX MODE)...")
     fixed = 0
     
-    # EXPLANATION OF REGEX:
-    # 1. (_\d+_\d+_\d+_\d+)   -> Capture the first valid block of numbers (e.g., _8_10_8_9)
-    # 2. (?:...)+             -> Match that block (or variations with parens) appearing 1 or more times
-    # 3. \.pkl$               -> Must end with .pkl
-    # This eats up "_8_10_8_9", "_8_10_8_9_8_10_8_9", "_(8_10_8_9)_8_10_8_9", etc.
-    
-    # We capture just the digits part in group 1 to reconstruct the clean version.
-    mess_pattern = re.compile(r"((?:_|\()\d+_\d+_\d+_\d+(?:\))?)+\.pkl$")
+    # Regex:
+    # Capture digits (\d+) that are IMMEDIATELY followed by an opening parenthesis \(
+    # This matches "10000(" in "Random-10000(8_10...)"
+    pattern = re.compile(r"(\d+)\(")
 
     for root in STATE_ROOTS:
         root = Path(root)
@@ -37,50 +33,30 @@ def fix_files_aggressive():
             if not date_dir.is_dir(): continue
             
             for f in date_dir.iterdir():
-                if not f.name.endswith(".pkl"): continue
+                if not f.is_file() or not f.suffix == ".pkl": continue
                 
-                # Check if this file has the allocator pattern at all
-                match = mess_pattern.search(f.name)
-                if not match: 
-                    continue
-
-                # Extract the numbers from the match string
-                # We find the first occurrence of "d_d_d_d" in the matched tail
-                # This is the "source of truth" numbers
-                tail = match.group(0)
-                nums_search = re.search(r"(\d+_\d+_\d+_\d+)", tail)
-                
-                if not nums_search:
-                    print(f"⚠️ Matched pattern but found no digits? {f.name}")
-                    continue
+                # Check if the file matches the "digit(" pattern
+                if pattern.search(f.name):
                     
-                digits = nums_search.group(1) # e.g. "8_10_8_9"
-                
-                # Construct the CLEAN tail
-                clean_tail = f"({digits}).pkl"
-                
-                # Replace the entire dirty tail with the clean tail
-                new_name = mess_pattern.sub(clean_tail, f.name)
-                
-                if new_name == f.name:
-                    continue # Already clean
-                
-                new_path = date_dir / new_name
-                
-                print(f"🔧 FIXING: {f.name}")
-                print(f"   →     {new_name}")
-                
-                try:
-                    # If target exists (deduplication), remove it first
-                    if new_path.exists():
-                        new_path.unlink()
-                        
-                    f.rename(new_path)
-                    fixed += 1
-                except Exception as e:
-                    print(f"   ❌ ERROR: {e}")
+                    # Replace:
+                    # \1 is the digits
+                    # We insert "_" between \1 and "("
+                    new_name = pattern.sub(r"\1_(", f.name)
+                    
+                    print(f"🔧 FIXING: {f.name}")
+                    print(f"   →     {new_name}")
+                    
+                    new_path = date_dir / new_name
+                    
+                    try:
+                        if new_path.exists():
+                            new_path.unlink() # Dedupe
+                        f.rename(new_path)
+                        fixed += 1
+                    except Exception as e:
+                        print(f"   ❌ ERROR: {e}")
 
-    print(f"\n🔥 DONE. Fixed {fixed} files.")
+    print(f"\n🔧 DONE. Fixed {fixed} files.")
 
 if __name__ == "__main__":
-    fix_files_aggressive()
+    fix_missing_underscore_before_paren()

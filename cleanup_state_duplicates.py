@@ -57,7 +57,7 @@ def fix_files_aggressive():
                 digits = nums_search.group(1) # e.g. "8_10_8_9"
                 
                 # Construct the CLEAN tail
-                clean_tail = f"_({digits}).pkl"
+                clean_tail = f"({digits}).pkl"
                 
                 # Replace the entire dirty tail with the clean tail
                 new_name = mess_pattern.sub(clean_tail, f.name)

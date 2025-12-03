@@ -959,8 +959,8 @@ def cleanup_and_consolidate():
 
 
     # STEP 3 — consolidate
-    # for root in ALL_STATE_ROOTS:
-    #     consolidate_to_today(root)
+    for root in ALL_STATE_ROOTS:
+        consolidate_to_today(root)
 
 
     # STEP 4 — rebuild registries (use absolute paths)

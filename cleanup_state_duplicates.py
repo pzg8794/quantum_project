@@ -848,6 +848,78 @@ def fix_float_filenames(state_roots):
 
     print(f"[✓] Float artifacts fixed: {fixed_count}")
 
+# ============================================================
+# FIX DOUBLE DAY DIRECTORIES (day_day_ -> day_)
+# ============================================================
+def fix_double_day_directories(state_roots):
+    print("\n[CLEANUP] Checking for 'day_day_' directory patterns...")
+    from datetime import datetime, timedelta
+    
+    # Regex to find the bad pattern and capture the date part
+    # Matches: day_day_20251124
+    bad_pattern = re.compile(r"^day_day_(\d{8})$")
+    
+    fixed_count = 0
+    
+    for root in state_roots:
+        root = Path(root)
+        if not root.exists(): continue
+
+        # Iterate over directories
+        # We convert to list to avoid modifying the iterator while renaming
+        for d in list(root.iterdir()):
+            if not d.is_dir(): continue
+            
+            match = bad_pattern.match(d.name)
+            if match:
+                date_str = match.group(1)
+                
+                # 1. Determine the ideal clean name (day_YYYYMMDD)
+                # Using regex sub as requested: replace "day_day_" with "day_"
+                clean_name = re.sub(r"^day_day_", "day_", d.name)
+                clean_path = root / clean_name
+                
+                final_new_path = clean_path
+                
+                # 2. Check for Conflict
+                if clean_path.exists():
+                    print(f"   ⚠️ Conflict: {clean_name} already exists.")
+                    
+                    # 3. Conflict Resolution: Subtract 10 days
+                    try:
+                        # Parse current date
+                        dt = datetime.strptime(date_str, "%Y%m%d")
+                        
+                        # Subtract 10 days
+                        new_dt = dt - timedelta(days=10)
+                        new_date_str = new_dt.strftime("%Y%m%d")
+                        
+                        # Form new name
+                        conflict_name = f"day_{new_date_str}"
+                        final_new_path = root / conflict_name
+                        
+                        print(f"   💡 Resolving: Shifting date -10 days -> {conflict_name}")
+                        
+                        # Safety check: If THAT exists too, just append a suffix to be safe
+                        if final_new_path.exists():
+                             print(f"   ⚠️ Double Conflict on {conflict_name}! Appending '_restored'")
+                             final_new_path = root / f"{conflict_name}_restored"
+                             
+                    except ValueError:
+                        print(f"   ❌ Could not parse date {date_str}, skipping logic.")
+                        continue
+
+                # 4. Rename
+                try:
+                    print(f"   🔧 Renaming: {d.name}")
+                    print(f"       ->       {final_new_path.name}")
+                    d.rename(final_new_path)
+                    fixed_count += 1
+                except Exception as e:
+                    print(f"   ❌ Failed: {e}")
+
+    print(f"[✓] 'day_day_' directories fixed: {fixed_count}")
+
 
 # ============================================================
 # MASTER FUNCTION
@@ -856,6 +928,9 @@ def fix_float_filenames(state_roots):
 
 def cleanup_and_consolidate():
     print("\n========== STARTING CLEANUP ==========")
+
+    # STEP 0a — Fix Directory Names (day_day_)
+    fix_double_day_directories(ALL_STATE_ROOTS)
     
     # STEP 0 — Fix float filenames first (so other regexes work on clean ints)
     fix_float_filenames(ALL_STATE_ROOTS)

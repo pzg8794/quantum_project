@@ -329,8 +329,10 @@ class LocalBackupManager(GoogleDriveBackupManager):
             print(f"❌ Failed to load data from {path}: {e}")
             return None
     
-    def init_logging_redirect(self, file_name="quantum_quick_runs"):
-        self.quantum_logs_file_name = f"quantum_{file_name}_log_{self.date_str}.txt"
+    def init_logging_redirect(self, evaluator):
+        # if file_name is None:
+        log_day = f"{datetime.now().strftime('%Y%m%d')}"
+        self.quantum_logs_file_name = f"{evaluator.configs.log_name}_{log_day}_log.txt"
         logfile = self.quantum_data_paths["logs"][self.mode] / self.quantum_logs_file_name
         self.quantum_data_paths["logs"][self.mode].mkdir(parents=True, exist_ok=True)
 

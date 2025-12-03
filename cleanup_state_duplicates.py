@@ -20,8 +20,6 @@ class SafeUnpickler(pickle.Unpickler):
             # print(f"\t → Replacing missing: {module}.{name}")
             return Dummy
 
-
-
 # Get the script's directory
 SCRIPT_DIR = Path(__file__).parent.resolve()
 
@@ -73,7 +71,7 @@ print(f"Project root: {PROJECT_ROOT}")
 print(f"\nState roots:")
 for root in ALL_STATE_ROOTS:
     exists = "✅" if root.exists() else "❌"
-    print(f"  {exists} {root}")
+    print(f" {exists} {root}")
 
 
 
@@ -125,32 +123,32 @@ def _load_any_pickle(path: Path):
             data = SafeUnpickler(f).load()
         return data
     except Exception as e:
-        print(f"      ❌ Unpickle failed: {e}")
+        print(f" ❌ Unpickle failed: {e}")
         return None
 
 
 def tag_multirun_evaluators_from_filename_and_object(state_roots):
     """
     TEMP FIX for MultiRunEvaluator files.
-
+    
     Uses BOTH:
-      • capacity from filename
-      • capacity from saved object
-
+    • capacity from filename (cleaning floats if present)
+    • capacity from saved object
+    
     Logic:
-      scale = capacity_from_name / base_frames_from_name
-
-      Tb → object_capacity == capacity_from_name
-      T  → object_capacity != capacity_from_name
-
-    Final tag:   MultiRunEvaluator_... → MultiRunEvaluator_..._S{scale}{T|Tb}.pkl
+    scale = capacity_from_name / base_frames_from_name
+    
+    Tb → object_capacity == capacity_from_name
+    T  → object_capacity != capacity_from_name
+    
+    Final tag: MultiRunEvaluator_... → MultiRunEvaluator_..._S{scale}{T|Tb}.pkl
     """
 
     print("\n[RENAME] Tagging MultiRunEvaluator files (filename + object capacity)...")
 
     renamed = 0
     skipped = 0
-    failed  = 0
+    failed = 0
 
     for root in state_roots:
         root = Path(root)
@@ -171,12 +169,12 @@ def tag_multirun_evaluators_from_filename_and_object(state_roots):
                 if not f.name.startswith("MultiRunEvaluator_"):
                     continue
 
-                print(f"\n   Processing: {f.name}")
+                print(f"\n Processing: {f.name}")
                 stem = f.stem
                 # stem = re.sub(r"_S[\d_]+(T|Tb)$", '', stem) # for emergency
                 # Already tagged? (_S…T or _S…Tb at the end)
                 if re.search(r"_S[\d_]+(T|Tb)$", stem):
-                    print("      ✓ Already tagged")
+                    print(" ✓ Already tagged")
                     skipped += 1
                     continue
 
@@ -185,18 +183,49 @@ def tag_multirun_evaluators_from_filename_and_object(state_roots):
                     # Parse capacity + base_frames from filename
                     # ---------------------------------------------
                     # Example:
-                    #   MultiRunEvaluator_8000-Random_Adversarial_Markov-4000_2000_10
+                    # MultiRunEvaluator_8000-Random_Adversarial_Markov-4000_2000_10
+                    # Or: MultiRunEvaluator_8000.0-Random...-4000.0_...
+                    
                     core = stem.replace("MultiRunEvaluator_", "")
                     parts = core.split("-")
 
                     if len(parts) < 3:
-                        print("      ⚠️ Unexpected name format, skipping")
+                        print(" ⚠️ Unexpected name format, skipping")
                         skipped += 1
                         continue
 
-                    capacity_from_name = int(parts[0])
-                    last_section       = parts[-1]      # e.g. "4000_2000_10"
-                    base_frames        = int(last_section.split("_")[0])
+                    # --- FIX: Handle float strings in capacity (head) ---
+                    raw_cap = parts[0]
+                    try:
+                        capacity_from_name = int(raw_cap)
+                    except ValueError:
+                        capacity_from_name = int(float(raw_cap))
+                        print(f"   (Fixed float capacity: {raw_cap} -> {capacity_from_name})")
+
+                    last_section = parts[-1] # e.g. "4000_2000_10" or "4000.0_2000_10"
+                    
+                    # --- FIX: Handle float strings in horizon (tail) ---
+                    tail_parts = last_section.split("_")
+                    raw_horizon = tail_parts[0]
+                    try:
+                        base_frames = int(raw_horizon)
+                    except ValueError:
+                        base_frames = int(float(raw_horizon))
+                        print(f"   (Fixed float horizon: {raw_horizon} -> {base_frames})")
+
+                    # ---------------------------------------------
+                    # RECONSTRUCT CLEAN STEM (Ints only)
+                    # ---------------------------------------------
+                    # Rebuild the tail section with integer horizon
+                    tail_parts[0] = str(base_frames)
+                    clean_tail = "_".join(tail_parts)
+                    
+                    # Rebuild the middle section
+                    middle = parts[1:-1]
+                    
+                    # New clean core name: 8000-Random...-4000_2000_10
+                    clean_core = f"{capacity_from_name}-{'-'.join(middle)}-{clean_tail}"
+                    new_stem_base = f"MultiRunEvaluator_{clean_core}"
 
                     # ---------------------------------------------
                     # Compute SCALE from FILENAME (not object)
@@ -217,7 +246,7 @@ def tag_multirun_evaluators_from_filename_and_object(state_roots):
                     # ---------------------------------------------
                     data = _load_any_pickle(f)
                     if data is None:
-                        print("      ❌ Could not load object; skipping")
+                        print(" ❌ Could not load object; skipping")
                         failed += 1
                         continue
 
@@ -229,41 +258,41 @@ def tag_multirun_evaluators_from_filename_and_object(state_roots):
                         object_capacity = getattr(data, "capacity", None)
 
                     if object_capacity is None:
-                        print("      ⚠️ No capacity field in loaded data; using filename only (assume Tb)")
+                        print(" ⚠️ No capacity field in loaded data; using filename only (assume Tb)")
                         object_capacity = capacity_from_name
 
                     # ---------------------------------------------
                     # Decide T vs Tb using YOUR rule
                     # ---------------------------------------------
                     if object_capacity == capacity_from_name:
-                        T_type = "Tb"   # never changed → baseline
+                        T_type = "Tb" # never changed → baseline
                     else:
-                        T_type = "T"    # changed → scaled/runtime altered
+                        T_type = "T" # changed → scaled/runtime altered
 
-                    print(f"      → capacity_from_name: {capacity_from_name}")
-                    print(f"      → object_capacity:    {object_capacity}")
-                    print(f"      → scale:              {scale_float} → {scale_str}")
-                    print(f"      → T-type:             {T_type}")
+                    print(f"   → capacity_from_name: {capacity_from_name}")
+                    print(f"   → object_capacity: {object_capacity}")
+                    print(f"   → scale: {scale_float} → {scale_str}")
+                    print(f"   → T-type: {T_type}")
 
                     # ---------------------------------------------
                     # Build new filename
                     # ---------------------------------------------
-                    new_stem = f"{stem}_{scale_str}{T_type}"
+                    new_stem = f"{new_stem_base}_{scale_str}{T_type}"
                     new_name = new_stem + ".pkl"
                     new_path = date_dir / new_name
 
-                    print(f"      → New filename: {new_name}")
+                    print(f"   → New filename: {new_name}")
                     f.rename(new_path)
                     renamed += 1
 
                 except Exception as e:
-                    print(f"      ❌ Failed: {e}")
+                    print(f" ❌ Failed: {e}")
                     failed += 1
 
     print("\n[✓] MultiRunEvaluator tagging (filename + object) complete:")
-    print(f"    Renamed: {renamed}")
-    print(f"    Skipped: {skipped}")
-    print(f"    Failed:  {failed}")
+    print(f" Renamed: {renamed}")
+    print(f" Skipped: {skipped}")
+    print(f" Failed: {failed}")
 
 
 # ============================================================
@@ -272,7 +301,7 @@ def tag_multirun_evaluators_from_filename_and_object(state_roots):
 
 def cleanup_across_dates_single(root):
     root = Path(root)
-
+    
     if not root.exists():
         print(f"[SKIP] Missing path → {root}")
         return
@@ -285,7 +314,7 @@ def cleanup_across_dates_single(root):
     for fname, versions in file_map.items():
         if len(versions) <= 1:
             continue
-
+        
         keep, keep_size = max(versions, key=lambda x: x[1])
 
         for path, size in versions:
@@ -295,7 +324,7 @@ def cleanup_across_dates_single(root):
                     removed += 1
                 except:
                     pass
-
+    
     # remove empty dirs
     for d in root.iterdir():
         if d.is_dir() and not any(d.iterdir()):
@@ -324,10 +353,10 @@ def extract_and_rename_random_allocator_files(state_roots):
         for date_dir in root.iterdir():
             if not date_dir.is_dir() or not date_dir.name.startswith("day_"):
                 continue
-            
+
             for f in date_dir.iterdir():
                 if not f.is_file() or not f.suffix == ".pkl": continue
-                
+
                 # -----------------------------------------
                 # CLEAN NEW NAME (IGNORE OLD BROKEN NAME)
                 # -----------------------------------------
@@ -344,7 +373,7 @@ def extract_and_rename_random_allocator_files(state_roots):
 
                 if count > 1: new_base_name = re.sub(r"[_-]*\([^)]*\)$", "", base_name)
                 print("\tNEW BASE:", new_base_name)
-                print(f"\n   Processing: {f.name}")
+                print(f"\n Processing: {f.name}")
                 if new_base_name == base_name:
                     try:
                         data = {}
@@ -360,7 +389,7 @@ def extract_and_rename_random_allocator_files(state_roots):
                                     # 3) Try SafeUnpickler
                                     with open(f, "rb") as pf: data = SafeUnpickler(pf).load()
                                 except Exception as e3:
-                                    print(f"      ❌ Failed: {e3}")
+                                    print(f" ❌ Failed: {e3}")
                                     failed += 1
                                     continue
 
@@ -372,8 +401,9 @@ def extract_and_rename_random_allocator_files(state_roots):
                             failed += 1
                             continue
 
-                        # Serialize allocation as q8_10_8_9
-                        alloc_str = "".join(str(v) for v in qubit_alloc)
+                        # --- FIX: Ensure integers in allocation string ---
+                        # e.g. [8.0, 10.0] -> 8_10
+                        alloc_str = "".join(str(int(v)) for v in qubit_alloc)
                         alloc_str = re.sub(r',\s*', "_", alloc_str)
                         base_name = re.sub(r"[_-]*\([^)]*\)", "", base_name)
 
@@ -382,24 +412,24 @@ def extract_and_rename_random_allocator_files(state_roots):
                         new_path = date_dir / new_name
 
                         f.rename(new_path)
-                        print(f"      ✅ Renamed → {new_name}")
-                        print(f"      ✅ Renamed → {new_path}")
+                        print(f" ✅ Renamed → {new_name}")
+                        print(f" ✅ Renamed → {new_path}")
 
                         renamed += 1
 
                     except Exception as e:
-                        print(f"      ❌ Failed: {e}")
+                        print(f" ❌ Failed: {e}")
                         failed += 1
                 else:
                     print("FIXING ALLOCATION STRING")
                     new_path = date_dir / f"{new_base_name}.pkl"
-                    print(f"      ✅ Renamed → {new_path}")
+                    print(f" ✅ Renamed → {new_path}")
 
 
     print(f"\n[✓] Random allocator extraction complete:")
-    print(f"    Renamed: {renamed}")
-    print(f"    Failed: {failed}")
-    print(f"    Skipped: {skipped}")
+    print(f" Renamed: {renamed}")
+    print(f" Failed: {failed}")
+    print(f" Skipped: {skipped}")
 
 
 
@@ -418,7 +448,7 @@ def consolidate_to_today(root):
     today_dir_name = f"day_{today}"
     target_dir = root / today_dir_name
     target_dir.mkdir(parents=True, exist_ok=True)
-
+    
     print(f"\n\n========== CONSOLIDATION: {root} ==========")
     print(f"Target date directory: {target_dir}")
 
@@ -428,16 +458,16 @@ def consolidate_to_today(root):
     for date_dir in root.iterdir():
         if not date_dir.is_dir():
             continue
-
+        
         if date_dir.name == today_dir_name:
             continue
-
+            
         for f in date_dir.iterdir():
             if f.is_file():
                 dest = target_dir / f.name
                 shutil.move(str(f), str(dest))
                 moved += 1
-
+        
         try:
             date_dir.rmdir()
             removed_dirs += 1
@@ -458,7 +488,7 @@ def rebuild_registry(registry_path, state_roots, is_metadata=False):
         return
 
     print(f"\n[UPDATE] Updating registry: {registry_path}")
-    
+
     registry = {}
     if reg_path.exists():
         with open(reg_path, "r") as f: registry = json.load(f)
@@ -466,61 +496,61 @@ def rebuild_registry(registry_path, state_roots, is_metadata=False):
     added = 0
     corrected = 0
     print(f"[DEBUG] State roots passed in:")
-    for p in state_roots: print(f"        - {p}  (exists={Path(p).exists()})")
+    for p in state_roots: print(f" - {p} (exists={Path(p).exists()})")
 
     for root in state_roots:
         root = Path(root)
-
+        
         if not root.exists():
             print(f"[SKIP] Root does not exist: {root}")
             continue
 
         component = root.name
         print(f"\n[DEBUG] COMPONENT: {component}")
-        print(f"        root = {root}")
+        print(f" root = {root}")
 
         # --- FIRST LOOP: day_xxxxx dirs ---
         for date_dir in root.iterdir():
-            print(f"[DEBUG]   Checking date_dir: {date_dir}")
+            print(f"[DEBUG] Checking date_dir: {date_dir}")
 
             if not date_dir.is_dir():
-                print(f"[SKIP]     Not a directory: {date_dir}")
+                print(f"[SKIP] Not a directory: {date_dir}")
                 continue
             if not date_dir.name.startswith("day_"):
-                print(f"[SKIP]     Not a day folder: {date_dir.name}")
+                print(f"[SKIP] Not a day folder: {date_dir.name}")
                 continue
-
+            
             date_key = date_dir.name
-            print(f"[DEBUG]   → Day folder accepted: {date_key}")
+            print(f"[DEBUG] → Day folder accepted: {date_key}")
 
             # --- SECOND LOOP: files ---
             has_files = False
             for f in date_dir.iterdir():
-                print(f"[DEBUG]       Inspect file/dir: {f}")
+                print(f"[DEBUG] Inspect file/dir: {f}")
 
                 if not f.is_file():
-                    print(f"[SKIP]         Not a file: {f}")
+                    print(f"[SKIP] Not a file: {f}")
                     continue
-
+                
                 has_files = True
                 abs_path = str(f.resolve())
-
-                print(f"[DEBUG]         File accepted: {f.name}")
-                print(f"[DEBUG]         Abs path: {abs_path}")
+                
+                print(f"[DEBUG] File accepted: {f.name}")
+                print(f"[DEBUG] Abs path: {abs_path}")
 
                 try:
                     registry[component][f.name] = abs_path
                     corrected += 1
-                    print(f"[CORRECTED]    Updated: {component}/{date_key}/{f.name}")
+                    print(f"[CORRECTED] Updated: {component}/{date_key}/{f.name}")
                 except Exception:
                     if not is_metadata:
-                        print(f"[SKIP]         Missing metadata structure (component/date), skipping...")
+                        print(f"[SKIP] Missing metadata structure (component/date), skipping...")
                         continue
                     if component not in registry: registry[component] = {}
                     registry[component].update({f.name: abs_path})
                     added += 1
-                    print(f"[ADDED]        Inserted new entry: {component}/{date_key}/{f.name}")
-            if not has_files: print(f"[DEBUG]     (No files found in {date_dir})")
+                    print(f"[ADDED] Inserted new entry: {component}/{date_key}/{f.name}")
+            if not has_files: print(f"[DEBUG] (No files found in {date_dir})")
 
     with open(reg_path, "w") as f: json.dump(registry, f, indent=4)
     print(f"[✓] Registry updated: {corrected} corrected, {added} added")
@@ -534,11 +564,11 @@ def rename_model_files(state_roots):
     Rename model files to proper format: <ClassOfModel>(mode).pkl
     Special case: NeuralUCB_<Number>(mode).pkl
     """
-    print(f"\n[RENAME] Processing model files...")    
+    print(f"\n[RENAME] Processing model files...")
     renamed = 0
     failed = 0
     skipped = 0
-    
+
     for root in state_roots:
         root = Path(root)
         if not root.exists():
@@ -546,70 +576,70 @@ def rename_model_files(state_roots):
 
         if "framework_state" in str(root): continue
         print(root)
-        
+
         for date_dir in root.iterdir():
             if not date_dir.is_dir() or not date_dir.name.startswith("day_"): continue
 
             for f in date_dir.iterdir():
                 if not f.is_file() or f.suffix != ".pkl": continue
-                
+
                 name = f.name
                 if re.search(r'quantumrunner|multirunevaluator', name.lower()):
                     skipped += 1
                     continue
-                
-                print(f"\n   Checking: {name}")
+
+                print(f"\n Checking: {name}")
                 try:
                     parts=name.split("_")
                     class_name = parts[0]
                     model_name = re.sub(r'\(.*\)', '', class_name)
 
                     is_neuralucb = "NeuralUCB" == model_name
-                    correct_name = f"{model_name}({MODEL_MODES[model_name]})" 
+                    correct_name = f"{model_name}({MODEL_MODES[model_name]})"
                     if is_neuralucb:
                         model_name = parts[0]
                         if MODEL_MODES[model_name] in parts[1]: continue
                         _class_name = "{}_{}".format(parts[0], re.sub(r'\(.*\)', '', parts[1]))
                         correct_name = f"{_class_name}({MODEL_MODES[model_name]})"
                         class_name = f"{parts[0]}_{parts[1]}"
-        
+
                     if class_name == correct_name:
-                        print(f"      ✓ Already correct: {name}")
+                        print(f" ✓ Already correct: {name}")
                         skipped += 1
                         continue
-                    
+
                     # Rename file
                     new_path = date_dir / name.replace(class_name, correct_name)
                     
                     # Handle collision (unlikely but possible)
                     if new_path.exists():
-                        print(f"      ⚠️ Target already exists: {correct_name}")
+                        print(f" ⚠️ Target already exists: {correct_name}")
                         # Keep larger file
                         old_size = f.stat().st_size
                         new_size = new_path.stat().st_size
                         if old_size > new_size:
                             new_path.unlink()
                             f.rename(new_path)
-                            print(f"      ✅ Replaced with larger: {name} → {correct_name}")
-                            print(f"      ✅ Replaced with larger: {correct_name} → {new_path}")
+                            print(f" ✅ Replaced with larger: {name} → {correct_name}")
+                            print(f" ✅ Replaced with larger: {correct_name} → {new_path}")
                         else:
                             f.unlink()
-                            print(f"      ✅ Kept existing larger: {correct_name}")
+                            print(f" ✅ Kept existing larger: {correct_name}")
                         renamed += 1
                     else:
                         f.rename(new_path)
-                        print(f"      ✅ Renamed: {name} → {correct_name}")
-                        print(f"      ✅ Replaced with larger: {correct_name} → {new_path}")
+                        print(f" ✅ Renamed: {name} → {correct_name}")
+                        print(f" ✅ Replaced with larger: {correct_name} → {new_path}")
                         renamed += 1
-                
+
                 except Exception as e:
-                    print(f"      ❌ Failed: {e}")
+                    print(f" ❌ Failed: {e}")
                     failed += 1
-    
+
     print(f"\n[✓] Model file renaming complete:")
-    print(f"    Renamed: {renamed}")
-    print(f"    Failed: {failed}")
-    print(f"    Skipped: {skipped}")
+    print(f" Renamed: {renamed}")
+    print(f" Failed: {failed}")
+    print(f" Skipped: {skipped}")
 
 
 def rename_model_state_files(state_roots):
@@ -635,7 +665,7 @@ def rename_model_state_files(state_roots):
                     skipped += 1
                     continue
 
-                print(f"\n   Processing: {f.name}")
+                print(f"\n Processing: {f.name}")
                 try:
                     data = {}
                     try:
@@ -650,7 +680,7 @@ def rename_model_state_files(state_roots):
                                 # 3) Try SafeUnpickler
                                 with open(f, "rb") as pf: data = SafeUnpickler(pf).load()
                             except Exception as e3:
-                                print(f"      ❌ Failed: {e3}")
+                                print(f" ❌ Failed: {e3}")
                                 failed += 1
                                 continue
 
@@ -658,13 +688,13 @@ def rename_model_state_files(state_roots):
                     correct_name = data.get("file_name", "")
 
                     if not correct_name:
-                        print("      ⚠️ No file_name found in data")
+                        print(" ⚠️ No file_name found in data")
                         failed += 1
                         continue
 
                     # Check if already correct
                     if f.name == correct_name:
-                        print(f"      ✓ Already correct: {f.name}")
+                        print(f" ✓ Already correct: {f.name}")
                         skipped += 1
                         continue
 
@@ -672,19 +702,19 @@ def rename_model_state_files(state_roots):
                     new_path = date_dir / correct_name
 
                     f.rename(new_path)
-                    print(f"      ✅ Renamed → {correct_name}")
-                    print(f"      ✅ Renamed → {new_path}")
+                    print(f" ✅ Renamed → {correct_name}")
+                    print(f" ✅ Renamed → {new_path}")
 
                     renamed += 1
 
                 except Exception as e:
-                    print(f"      ❌ Failed: {e}")
+                    print(f" ❌ Failed: {e}")
                     failed += 1
 
     print(f"\n[✓] Model state file renaming complete:")
-    print(f"    Renamed: {renamed}")
-    print(f"    Failed: {failed}")
-    print(f"    Skipped: {skipped}")
+    print(f" Renamed: {renamed}")
+    print(f" Failed: {failed}")
+    print(f" Skipped: {skipped}")
 
 
 # ============================================================
@@ -693,47 +723,47 @@ def rename_model_state_files(state_roots):
 
 def cleanup_and_consolidate():
     print("\n========== STARTING CLEANUP ==========")
-
+    
     # STEP 1 — rename model files to proper format
     rename_model_files(ALL_STATE_ROOTS)
-
+    
     # # for emergency use only
     # # rename_model_state_files(ALL_STATE_ROOTS)
-
-    # Tag MultiRunEvaluators with scale/T-type
+    
+    # Tag MultiRunEvaluators with scale/T-type (FIXED: Handles float strings)
     tag_multirun_evaluators_from_filename_and_object(ALL_STATE_ROOTS) # for emergency
-
-    # STEP 1 — rename Random allocator files
+    
+    # STEP 1 — rename Random allocator files (FIXED: Handles float strings)
     extract_and_rename_random_allocator_files(ALL_STATE_ROOTS)
-
+    
     # STEP 2 — dedupe
     for root in ALL_STATE_ROOTS:
         print(f"\n--- Cleaning: {root} ---")
         cleanup_across_dates_single(root)
-
+    
     # STEP 3 — consolidate
-    for root in ALL_STATE_ROOTS:
-        consolidate_to_today(root)
-
+    # for root in ALL_STATE_ROOTS:
+    #     consolidate_to_today(root)
+        
     # STEP 4 — rebuild registries (use absolute paths)
     rebuild_registry(
         PROJECT_ROOT / "daqr" / "config" / "local_backup_registry.json",
         STATE_ROOTS_LOCAL,
         is_metadata=True
     )
-
+    
     rebuild_registry(
         PROJECT_ROOT / "daqr" / "config" / "drive_backup_registry.json",
         STATE_ROOTS_LOCAL,
         is_metadata=True
     )
-
+    
     rebuild_registry(
         DATALAKE_ROOT / "backup_registry.json",
         STATE_ROOTS_DATALAKE,
         is_metadata=True
     )
-
+    
     print("\n========== DONE ==========\n")
 
 # Update main

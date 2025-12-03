@@ -11,7 +11,7 @@ from daqr.core.qubit_allocator import *
 import  copy, os, re
 import  pathlib
 import  pickle
-import  shutil
+import  shutil, random
 from pathlib import Path
 from datetime import datetime
 from .local_backup_manager import LocalBackupManager
@@ -52,9 +52,11 @@ class ExperimentConfiguration:
         self.attack_intensity   = attack_intensity
         
         self.st = ""
+        self.log_name = ""
         self.random_runtime_qubits = ""
         self.is_random_alloc    =   False
-        
+        self.eval_file_name = ""
+
         # Single unified manager - handles everything
         self.backup_mgr = LocalBackupManager(date_str=self.day_str, config_dir=self.dir, verbose=self.verbose)
 
@@ -235,52 +237,89 @@ class ExperimentConfiguration:
         # self.cap_id       = (int(self.base_frames if self.configs.base_capacity else self.frames_count)*self.configs.scale)
         # self.file_name = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{self.base_frames}_{int(self.frame_step)}_{self.runs_id}.pkl"
 
-    def _get_random_runtime_qubits(self):
-        print("\n⚡ Random allocator detected → scanning registry for qubit allocation")
-        
-        # If we've already found it once, reuse it
-        if self.random_runtime_qubits:
-            return f"_{self.random_runtime_qubits}"
+    def set_log_name(self, base_frames, frame_step):
+        scenarios_no        = len(self.test_scenarios)
+        has_stochastic_env  = "stochastic" in self.test_scenarios
+        has_adversarial_env = "Adversarial" in self.test_scenarios
+        attack_id           = f"{scenarios_no}_attacks" if scenarios_no > 0 else self.attack_type
+        env_id              = "all_envs" if (has_stochastic_env and has_adversarial_env) else self.environment 
+        self.log_name       = f"quantum_exps-{self.allocator}_alloc-{"all_envs"}-{attack_id}-{base_frames}_{int(frame_step)}-{self.runs}_runs-S{self.scale}{'Tb' if self.base_capacity else 'T'}"
+        print(self.log_name)
+        return True
 
-        runtime_qubits = ""
+    # def _get_random_runtime_qubits(self, old_eval_file_name=None, file_qubits=None):
+    #     """
+    #     Scans the registry for a matching Random allocator file with the same 
+    #     run parameters (Base, Step, Runs) and picks a valid qubit allocation tuple.
+    #     """
+    #     print("\n\t⚡ Random allocator detected → scanning registry for qubit allocation")
 
-        # Pattern: anything like (8_10_8_9)
-        pattern = re.compile(r"\(\d+_\d+_\d+_\d+\)")
+    #     # If we've already found it once, reuse it to ensure consistency within this session
+    #     if self.random_runtime_qubits or not old_eval_file_name: return f"_{self.random_runtime_qubits}"
 
-        for comp, file_map in self.backup_registry.items():
-            if comp == "model_state": continue
-            found_evaluator =False
-            for fname, path in file_map.items():
-                parts = fname.split("-")
-                # keep your existing check on the allocator label
-                # print(parts)
-                if len(parts) < 2 or "Random" not in parts[1]: continue
-                print(fname)
-                match = pattern.search(fname)
-                if match:
-                    runtime_qubits = match.group(0)  # <-- EXACTLY "(x_x_x_x)"
-                    print(f"  → Found qubit allocation: {runtime_qubits or 'None'}")
-                    found_evaluator = "MultiRunEvaluator" not in parts[0]
-                    if found_evaluator and runtime_qubits: break
-            if runtime_qubits and found_evaluator: break
+    #     candidates = []
+    #     pattern = re.compile(r"\(\d+_\d+_\d+_\d+\)")
+    #     try:
+    #         # 1. Parse parameters from the CURRENT filename (old_eval_file_name) we are trying to match
+    #         # Expecting format like: MultiRunEvaluator_800-allocRandom_env_stochastic-4000_200_10.pkl
+    #         core = old_eval_file_name.replace(".pkl", "")
+    #         _, rest = core.split("_", 1)
+    #         parts = rest.split("-")
+            
+    #         # parts[2] should contain "4000_200_10" or similar
+    #         last_params = parts[2]
+            
+    #         # Extract Base, Step, Runs
+    #         target_match = re.search(r"(\d+)_(\d+)_(\d+)", last_params)
+    #         if not target_match:
+    #             print(f"\t  ⚠️ Could not parse params from {old_eval_file_name}. Aborting random match.")
+    #             return ""
+            
+    #         target_base, target_step, target_runs = target_match.groups()
+    #         print(f"\t  🎯 Looking for Random evaluators with: Base={target_base}, Step={target_step}, Runs={target_runs}")
 
-        self.random_runtime_qubits = runtime_qubits
-        # If you still want the _{self.st} suffix:
-        return f"_{self.random_runtime_qubits}"
+    #     except Exception as e:
+    #         print(f"\t  ⚠️ Error parsing target filename: {e}")
+    #         return ""
 
+    #     # 2. Scan registry for candidates
+    #     for comp, file_map in self.backup_registry.items():
+    #         # Skip model states, we only care about Evaluator files for the allocation source
+    #         if comp == "model_state": continue
+            
+    #         for fname, path in file_map.items():
+    #             # Must be a MultiRunEvaluator file
+    #             found_evaluator = "MultiRunEvaluator" in fname
+    #             if not found_evaluator: continue
 
+    #             # Must be a Random allocator file
+    #             parts = fname.split("-")
+    #             if len(parts) < 2 or ("Random" not in parts[1] and "random" not in parts[1].lower()): continue
+
+    #             # Must contain a valid qubit tuple (x_x_x_x)
+    #             match = pattern.search(fname)
+    #             if not match: continue
+                
+    #             # Must match the numeric parameters (Base_Step_Runs)
+    #             # We construct the signature to look for
+    #             param_sig = f"{target_base}_{target_step}_{target_runs}"
+    #             if param_sig in fname: candidates.append(match.group(0))
+    #                 # print(f"\t  ✅ Candidate found: {match.group(0)}")
+
+    #     # 3. Select a candidate
+    #     if candidates:
+    #         self.random_runtime_qubits = random.choice(candidates)
+    #         print(f"\t  🎲 Selected random allocation from {len(candidates)} candidates: {self.random_runtime_qubits}")
+    #         return f"_{self.random_runtime_qubits}"
+    #     else:
+    #         print("\t  ❌ No matching Random evaluators found in registry.")
+    #         return f"_{file_qubits}"
 
     def generate_expected_keys(self, evaluator_filename: str):
         """
         Given an evaluator filename, parse its components and generate the full set
         of expected runner and model state filenames for all runs.
-
-        ✓ No structure changes
-        ✓ No new folders
-        ✓ Uses EXACT filename formats you already use
-        ✓ Includes PRINT STATEMENTS for full transparency
         """
-
         print("\n=====================================================")
         print("🔍 GENERATING EXPECTED KEYS FROM EVALUATOR")
         print("=====================================================")
@@ -292,9 +331,9 @@ class ExperimentConfiguration:
         core = evaluator_filename.replace(".pkl", "")
         prefix, rest = core.split("_", 1)
 
-        print(f"  • Core (no .pkl): {core}")
-        print(f"  • Prefix: {prefix}")
-        print(f"  • Remainder: {rest}")
+        # print(f"  • Core (no .pkl): {core}")
+        # print(f"  • Prefix: {prefix}")
+        # print(f"  • Remainder: {rest}")
 
         # ---------------------------------------------------------------
         # Example rest:
@@ -302,33 +341,50 @@ class ExperimentConfiguration:
         # ---------------------------------------------------------------
         file_qubits = ""
         parts = rest.split("-")
+        
+        # Safety check for split
+        if len(parts) < 3:
+            print(f"  ⚠️ Filename format unexpected: {rest}")
+            return {}, {}
+
         alloc_env_attack = parts[1].split("_")
         cap_id = int(round(float(parts[0])))
-        self.is_random_alloc = True if "random" in alloc_env_attack[0].lower() else False
         
-
-        pattern = re.compile(r"\(\d+_\d+_\d+_\d+\)(_S\d*T\w*)?|(_S\d*T\w*)")
+        # Detect Random Allocator
+        self.is_random_alloc = True if "random" in alloc_env_attack[0].lower() else False
+        pattern = re.compile(r"\(\d+_\d+_\d+_\d+\)(_S\d*(_\d*)?T\w*)?|(_S\d*(_\d*)?T\w*)")
         last_params = parts[2]
-        self.st = last_params.split("_")[-1]
+        
+        # Initial ST extraction (suffix)
+        if "_" in last_params: self.st = last_params.split("_")[-1]
+        else: self.st = ""
+
         if self.is_random_alloc: 
             match = pattern.search(parts[2])
-            if match: file_qubits = match.group(0)
-            last_params = last_params.replace(f"_{file_qubits}", '').strip()
-            self.st = re.sub(r'_?\(.*\)_?', "", file_qubits)
+            if match:  file_qubits = match.group(0)
+            # Remove the qubit tuple from parameters string for parsing
+            if file_qubits:
+                last_params = last_params.replace(f"_{file_qubits}", '').strip()
+                # Clean up ST to remove any tuple remnants
+                self.st = re.sub(r'_?\(.*\)_?', "", file_qubits)
+            
+            # If we found qubits in the filename, set them as the runtime qubits
+            if file_qubits: self.random_runtime_qubits = file_qubits
+                # Normalize formatting if needed, usually it keeps parens in filename
         else:
             match = pattern.search(parts[2])
             if match: file_qubits = match.group(0)
-            last_params = last_params.replace(f"{file_qubits}", '').strip()
-            self.st = re.sub(r'_?\(.*\)_?', "", file_qubits)
-            # file_qubits = "" d
+            
+            if file_qubits:
+                last_params = last_params.replace(f"{file_qubits}", '').strip()
+                self.st = re.sub(r'_?\(.*\)_?', "", file_qubits)
 
-
-        # print(self.st)
-        # print(file_qubits)
-        # print(last_params)
-        
         allocator_id, env_id, attack_id = alloc_env_attack
-        base_frames, frame_step, runs_id = map(int, last_params.split("_"))
+        
+        try: base_frames, frame_step, runs_id = map(int, last_params.split("_"))
+        except ValueError as e:
+            print(f"  ❌ Error parsing parameters '{last_params}': {e}")
+            return {}, {}
 
         print("\n🧩 PARSED COMPONENTS")
         print(f"  • cap_id:        {cap_id}")
@@ -338,17 +394,15 @@ class ExperimentConfiguration:
         print(f"  • base_frames:   {base_frames}")
         print(f"  • frame_step:    {frame_step}")
         print(f"  • runs_id:       {runs_id}")
-        print(f"  • Total runs:    {self.runs}")
-        print(f"  • Qubit Caps:    {file_qubits or 'N/A'}")
-
-
-        # =====================================================
-        # RANDOM ALLOCATOR → extract qubit allocation from backup
-        # =====================================================
+        # print(f"  • Qubit Caps:    {file_qubits or 'N/A'}")
+        
         runtime_qubits = file_qubits
-        if self.is_random_alloc: 
-            runtime_qubits = self._get_random_runtime_qubits()
-            if not runtime_qubits: print("\t⚠️ No qubit allocation found → using default [the system will fail gracefully]")
+
+        # If Random and no qubits in filename, try to find them in registry
+        if self.is_random_alloc and not runtime_qubits:
+            # Pass the ORIGINAL full filename to the helper
+            runtime_qubits = self._get_random_runtime_qubits(evaluator_filename, file_qubits)
+            if not runtime_qubits: print("  ⚠️ No qubit allocation found for Random allocator. The system may fail if files are not found.")
         
         attack_mapping = {
             'none': NoAttack(),
@@ -441,7 +495,102 @@ class ExperimentConfiguration:
         print("\nEXPECTED KEY GENERATION COMPLETE\n")
         if len(self.backup_registry) != 0: self._build_backup_registry(force=False)
         return results
+    
+    def _get_random_runtime_qubits(self, filename=None, file_qubits=None, component_type="MultiRunEvaluator"):
+        """
+        Scans the registry for a matching Random file (Evaluator or Runner) with the same
+        run parameters (stem) and picks a valid qubit allocation tuple.
+        """
+        # If this is an Evaluator and we already have a global choice, stick to it to ensure consistency.
+        if self.random_runtime_qubits and component_type == "MultiRunEvaluator": return f"_{self.random_runtime_qubits}"
+        if not filename: return f"_{self.random_runtime_qubits}" if self.random_runtime_qubits else ""
+        print(f"\n\t⚡ Random {component_type} detected → scanning registry for substitute")
 
+        candidates = []
+        eval_suffix = f"_{self.st}" if "evaluator" in component_type.lower() else ""
+        pattern = re.compile(fr"\(\d+_\d+_\d+_\d+\){eval_suffix}")
+
+        try:
+            # 1. Generate 'Search Stem' by stripping the qubit tuple from the filename
+            #    This stem (e.g., "MultiRunEvaluator_...-4000_200_10") represents the unique run config.
+            if file_qubits: search_stem = filename.replace(f"_{file_qubits}", "").replace(file_qubits, "")
+            else:
+                match = pattern.search(filename)
+                if match: search_stem = filename.replace(f"_{match.group(0)}", "").replace(match.group(0), "")
+                else: search_stem = filename
+            
+            search_stem = search_stem.replace(".pkl", "")
+            # print(f"\t  🎯 Search stem: {search_stem}")
+
+        except Exception as e:
+            print(f"\t  ⚠️ Error parsing filename {filename}: {e}")
+            return ""
+
+        # 2. Scan registry for candidates matching the stem
+        registry_section = "framework_state" # Evaluators and Runners are both here
+        
+        if registry_section in self.backup_registry:
+            for fname, path in self.backup_registry[registry_section].items():
+                # Must match the component type (Evaluator vs Runner)
+                if component_type not in fname: continue
+                
+                # Must be Random allocator
+                if "Random" not in fname and "random" not in fname.lower(): continue
+                
+                # Must contain a valid qubit tuple
+                match = pattern.search(fname)
+                if not match: continue
+                
+                # Create candidate stem to compare
+                candidate_qubits = match.group(0)
+                candidate_stem = fname.replace(f"_{candidate_qubits}", "").replace(candidate_qubits, "").replace(".pkl", "")
+                
+                # Fuzzy match: check if stems are effectively identical
+                if search_stem == candidate_stem: candidates.append(candidate_qubits)
+
+        # 3. Select a candidate
+        if candidates:
+            selected = random.choice(candidates)
+            print(f"\t  🎲 Selected random substitute from {len(candidates)} candidates: {selected}")
+            # If this was the Evaluator, lock it in globally for this session
+            if component_type == "MultiRunEvaluator": self.random_runtime_qubits = selected
+            return f"_{selected}"
+        else:
+            print(f"\t  ❌ No matching {component_type} found in registry.")
+            # Fallback: return the original one (if it existed) or empty
+            return f"_{file_qubits}{eval_suffix}" if file_qubits else ""
+
+    def _resolve_random_filename(self, item_v):
+        """
+        If using Random Allocator, reconstruct the filename to match a valid 
+        random file from the registry (handling missing Runners or Evaluators).
+        """
+        if not self.is_random_alloc:
+            return item_v
+            
+        # Determine component type
+        if "MultiRunEvaluator" in item_v: comp_type = "MultiRunEvaluator"
+        elif "QuantumExperimentRunner" in item_v: comp_type = "QuantumExperimentRunner"
+        else: return item_v # Models don't need this logic yet
+            
+        # Extract existing qubits from item_v if present
+        
+        eval_suffix = f"_{self.st}" if "evaluator" in comp_type.lower() else ""
+        pattern = re.compile(fr"\(\d+_\d+_\d+_\d+\){eval_suffix}")
+        match = pattern.search(item_v)
+        file_qubits = match.group(0) if match else None
+        
+        # Get a valid tuple (either existing global, or new random substitute)
+        resolved_suffix = self._get_random_runtime_qubits(item_v, file_qubits, comp_type)
+        
+        # Construct new filename
+        if not resolved_suffix: return item_v # Failed to resolve, try original
+
+        if file_qubits: new_item_v = item_v.replace(f"_{file_qubits}", resolved_suffix)
+        else: new_item_v = item_v.replace(".pkl", f"{resolved_suffix}.pkl")
+             
+        # Cleanup potential double underscores
+        return re.sub(r"__", "_", new_item_v)
 
     def get_latest_state(self, item_k, item_v):
         """
@@ -449,86 +598,63 @@ class ExperimentConfiguration:
         Reconstructs paths to work in current environment (Drive or local).
         """
         
-        # 1) Generate expected keys if needed
+        # 1) Generate expected keys if needed (for MultiRunEvaluator)
         if len(self.expected_keys) == 0 and "multirunevaluator" in item_v.lower():
             self.generate_expected_keys(item_v)
             self.backup_mgr.restore_from_drive(self.day_str, self.expected_keys)
         
-        # 2) Try registry lookup - reconstruct path for current environment
-        # Get both local and drive base paths for this component
-        if self.is_random_alloc:
-            target_qubits = self._get_random_runtime_qubits()
-            print(target_qubits)
-            print(item_v)   
-            if target_qubits not in item_v: 
-                old_item_v = item_v
-                new_item_v = re.sub(r'_\(.*\)(_S\d*T\w*)?', f"{self._get_random_runtime_qubits()}_{self.st}", item_v)
-                if "multirunevaluator" not in item_v.lower(): 
-                    new_item_v = new_item_v.replace(f"_{self.st}", "")
-                    # item_v = new_item_v
-                item_v = re.sub(r"\s+", '', new_item_v)
-                if item_v == old_item_v: item_v = item_v.replace(".pkl", f"{self._get_random_runtime_qubits()}.pkl")
-                print(item_v)    
-        print(item_v)    
+        # 2) Handle Random Allocator filename resolution (Evaluators AND Runners)
+        item_v = self._resolve_random_filename(item_v)
+
+        # 3) Try Registry Lookup
+        if item_k not in self.backup_registry.keys(): self._build_backup_registry(force=True)
         component_paths = self.backup_mgr.quantum_data_paths["obj"][item_k]
+        
         try:
-            if item_k not in self.backup_registry.keys(): self._build_backup_registry(force=True)
-            registry_path = self.backup_registry[item_k][item_v]
-            registry_path_obj = Path(registry_path)
-            
-            # If path exists as-is, return it
-            if registry_path_obj.exists(): return str(registry_path_obj)
-            
-            # Try to determine which base the registry path is relative to
-            for mode in ["local", "drive"]:
-                try:
-                    # Try to make registry path relative to this mode's base
-                    base_path = component_paths[mode]
-                    relative = registry_path_obj.relative_to(base_path)
-                    
-                    # Now try reconstructing with the OTHER mode
-                    other_mode = "drive" if self.backup_mgr.in_share_drive else "local"
-                    reconstructed_path = component_paths[other_mode] / relative
-                    
-                    if reconstructed_path.exists():
-                        print(f"\t✅ Registry hit (reconstructed from {mode} to {other_mode}): {reconstructed_path}")
-                        # Update registry with correct path
-                        self.backup_registry[item_k][item_v] = str(reconstructed_path)
-                        return str(reconstructed_path)
-                        
-                except Exception as e:
-                    # relative_to() failed - path not under this base
-                    print(f"\t⚠️ Not in registry (registry path relative): {mode} \n\t\t{e}")
-                    # continue
-            
-                    # Also try with current day appended (filesystem direct path)
-                    # for mode in ["local", "drive"]:
+            # Only proceed if item is in registry
+            if item_v in self.backup_registry[item_k]:
+                registry_path = self.backup_registry[item_k][item_v]
+                registry_path_obj = Path(registry_path)
+                
+                # 3a. Direct check
+                if registry_path_obj.exists(): return str(registry_path_obj)
+                
+                # 3b. Cross-environment reconstruction
+                for mode in ["local", "drive"]:
+                    try:
+                        base_path = component_paths[mode]
+                        if base_path in registry_path_obj.parents:
+                            relative = registry_path_obj.relative_to(base_path)
+                            other_mode = "drive" if self.backup_mgr.in_share_drive else "local"
+                            reconstructed_path = component_paths[other_mode] / relative
+                            
+                            if reconstructed_path.exists():
+                                print(f"\t✅ Registry hit (reconstructed {mode}->{other_mode}): {reconstructed_path}")
+                                self.backup_registry[item_k][item_v] = str(reconstructed_path)
+                                return str(reconstructed_path)
+                    except Exception: continue
+
+                # 3c. Filesystem check (registry path might be stale, but file exists in day dir)
+                for mode in ["local", "drive"]:
                     try:
                         current_path = component_paths[mode] / self.day_str / item_v
                         if current_path.exists():
                             print(f"\t✅ Found via {mode} filesystem: {current_path}")
                             self.backup_registry[item_k][item_v] = str(current_path)
                             return str(current_path)
-                    except Exception as e:
-                        # relative_to() failed - path not under this base
-                        print(f"\t⚠️ Not in registry (filesystem direct path): {mode} \n\t\t Error: {e}")
-                        continue
-            
-            print(f"\t⚠️ Registry path doesn't exist and couldn't reconstruct: {registry_path}")
-            
-        except Exception as e:
-            print(f"\t⚠️ Not in registry: {item_k}/{item_v} \n\t\t{e}")
-        
-        # 3) Try filesystem direct search with current mode
+                    except Exception: continue
+        except Exception as e: print(f"\t⚠️ Registry lookup error: {e}")
+
+        # 4) Try Filesystem Direct Search (Current Mode)
         search_path = component_paths[self.backup_mgr.mode] / self.day_str / item_v
-        print(f"\tChecking FS ({self.backup_mgr.mode}): {search_path} | Exists? {search_path.exists()}")
+        # print(f"\tChecking FS: {search_path}")
         
         if search_path.exists():
             print(f"\t✓ Found via filesystem: {search_path}")
             self.backup_registry.setdefault(item_k, {})[item_v] = str(search_path)
             return str(search_path)
         
-        # 4) Drive fallback
+        # 5) Drive Fallback (Download)
         print(f"\t☁️ Attempting Drive download: {item_k}/{item_v}")
         drive_path = self.backup_mgr.download_any_date(component=item_k, filename=item_v)
         
@@ -537,7 +663,7 @@ class ExperimentConfiguration:
             self.backup_registry.setdefault(item_k, {})[item_v] = drive_path
             return str(drive_path)
         
-        # 5) Not found
+        # 6) Not Found
         print(f"\t❌ Not found anywhere: {item_k}/{item_v}")
         return None
 
@@ -887,7 +1013,7 @@ class ExperimentConfiguration:
         comp = obj.component
         mode = self.backup_mgr.mode
         component_path = self.backup_mgr.quantum_data_paths["obj"][comp]
-        save_path = component_path[mode] / self.day_str / obj.file_name
+        save_path = component_path[mode] / self.day_str / obj.file_name.replace("1.5", "1_5")
         # ensure parent directory (NOT the file) exists
         save_path.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -1040,7 +1166,7 @@ class ExperimentConfiguration:
         print(f"\n\t🔄 Resume: {obj}")
         
         # Get path from registry
-        config_path = self.get_latest_state(obj.component, obj.file_name)
+        config_path = self.get_latest_state(obj.component, obj.file_name.replace("1.5", "1_5"))
         if not config_path:
             print(f"\t❌ Not found in registry or fallback locations")
             return False

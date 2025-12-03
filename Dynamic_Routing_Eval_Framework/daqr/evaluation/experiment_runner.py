@@ -110,10 +110,15 @@ class QuantumExperimentRunner:
             else:   print("ℹ️ Could not infer saved models for Runner — skipping model check")
 
             # temp fix
+            temp_qubit_capacities = None
             if 'runs' in other_attrs:   del other_attrs['runs']
             if "seed" in other_attrs:   del other_attrs["seed"]
             if 'runs' in self.key_attrs:del self.key_attrs['runs']
-            
+            if "random" in str(self.configs.allocator).lower(): 
+                temp_qubit_capacities = other_attrs['qubit_capacities']
+                del other_attrs['qubit_capacities']
+                del self.key_attrs['qubit_capacities']
+
             if (
                 self.id == other.get("id") and
                 self.allocator_id == other.get("allocator_id") and
@@ -122,13 +127,14 @@ class QuantumExperimentRunner:
                 self.cap_id == other.get("cap_id") and
                 self.key_attrs == other_attrs
             ):
-                if "random" in str(self.configs.allocator).lower(): 
-                    self.key_attrs.update(other.get("key_attrs", {}))
-                    for attr, val in self.key_attrs.items():
-                        if attr in self.configs._env_params.keys(): self.configs._env_params[attr] = val
-                    # reset environment with random found capacity
-                    qubit_cap = self.key_attrs['qubit_capacities']
-                    self._build_environment_once(frames_count=self.frames_count, qubit_cap=qubit_cap)
+                if temp_qubit_capacities: self.key_attrs['qubit_capacities'] = temp_qubit_capacities
+                # if "random" in str(self.configs.allocator).lower(): 
+                #     self.key_attrs.update(other.get("key_attrs", {}))
+                #     for attr, val in self.key_attrs.items():
+                #         if attr in self.configs._env_params.keys(): self.configs._env_params[attr] = val
+                #     # reset environment with random found capacity
+                #     qubit_cap = self.key_attrs['qubit_capacities']
+                #     self._build_environment_once(frames_count=self.frames_count, qubit_cap=qubit_cap)
                 return True
             
             import json

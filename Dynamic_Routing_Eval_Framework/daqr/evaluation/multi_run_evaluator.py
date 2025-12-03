@@ -88,15 +88,6 @@ class MultiRunEvaluator:
         self.cap_id         = (int(self.base_frames if self.is_base_t else self.frames_count)*self.configs.scale)
         self.file_name      = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{self.base_frames}_{int(self.frame_step)}_{run_id_str}_S{self.configs.scale}{'Tb' if self.is_base_t else 'T'}.pkl"
         
-
-
-        scenarios_no        = len(self.configs.test_scenarios)
-        has_stochastic_env  = "stochastic" in self.configs.test_scenarios
-        has_adversarial_env = "Adversarial" in self.configs.test_scenarios
-        attack_id           = f"{scenarios_no}_attacks" if scenarios_no > 0 else self.attack_id
-        env_id              = "all-envs" if has_stochastic_env and has_adversarial_env else self.env_id 
-        self.log_name       = f"{self.cap_id}-{self.allocator_id}_{env_id}_{attack_id}-{self.base_frames}_{int(self.frame_step)}_{self.runs_id}_S{self.configs.scale}{'Tb' if self.is_base_t else 'T'}"
-
         # NOW resume can work
         try:    self.resume(backups=[self.runs_id])
         except Exception as e:  print(f"⚠️ {self} Resume failed: {e}")
@@ -261,11 +252,6 @@ class MultiRunEvaluator:
         """
         self.update_configs(runs, models, attack_type)
 
-        # -----------------------------
-        # START LOGGING (UNIQUE NAME)
-        # -----------------------------
-        self.configs.backup_mgr.init_logging_redirect(file_name=self.log_name)
-
         try:
             print(f"\nSTARTING EXPERIMENTS: {self.configs.attack_type.upper()}")
             attack_category = self.configs.category_map.get(self.configs.attack_type, 'Unknown')
@@ -295,12 +281,7 @@ class MultiRunEvaluator:
             raise
 
         finally:
-            # ------------------------------------
-            # ALWAYS STOP LOGGING CLEANLY
-            # ------------------------------------
-            self.configs.backup_mgr.load_new_entries()
-            self.configs.backup_mgr.stop_logging_redirect()
-
+            pass
 
     def calculate_scenario_performance(self, scenario):
         """

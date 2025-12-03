@@ -337,7 +337,7 @@ class EXPNeuralUCB(QuantumModel):
         if verbose is None: verbose = self.verbose
         
         # Try to resume from saved state
-        if self.overwrite and self.resume():
+        if self.overwrite or self.resume():
             if verbose: print(f"\n\t✓ {self}: Resuming from saved state - skipping execution")
             return  True
         

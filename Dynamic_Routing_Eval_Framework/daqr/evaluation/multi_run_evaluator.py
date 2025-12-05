@@ -50,10 +50,11 @@ class MultiRunEvaluator:
         self.run_state = 0        # 0: not run, 1: completed, -1: failed
         self.total_time = 0
         self.start_time = None
-        
+        self.resumed = False
         self.key_attrs = {}
         self.file_name = None
         self.cal_winner = True
+        self.is_complete = False
         self.env_type = 'stochastic'
         self.capacity = self.base_frames
         self.t_scale  = self.configs.scale
@@ -85,11 +86,11 @@ class MultiRunEvaluator:
         run_id_str          = str(self.runs_id)
         alloc_str           = "_".join(str(v) for v in qubit_cap)
         if "random" in str(self.configs.allocator).lower(): run_id_str += f"_({re.sub(r'^_', '', alloc_str)})"
-        self.cap_id         = (int(self.base_frames if self.is_base_t else self.frames_count)*self.configs.scale)
-        self.file_name      = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{self.base_frames}_{int(self.frame_step)}_{run_id_str}_S{self.configs.scale}{'Tb' if self.is_base_t else 'T'}.pkl"
+        self.cap_id         = int(float(int(self.base_frames if self.is_base_t else self.frames_count)*self.configs.scale))
+        self.file_name      = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{int(self.base_frames)}_{int(self.frame_step)}_{run_id_str}_S{self.configs.scale}{'Tb' if self.is_base_t else 'T'}.pkl"
         
         # NOW resume can work
-        try:    self.resume(backups=[self.runs_id])
+        try:    self.resume()
         except Exception as e:  print(f"⚠️ {self} Resume failed: {e}")
 
         print("Multi-Run Evaluator Initialized")
@@ -175,9 +176,16 @@ class MultiRunEvaluator:
             else:   print("ℹ️ Could not infer models from saved state — skipping model check")
 
             # temp fix
+            temp_qubit_capacities = None
             if 'runs' in other_attrs:   del other_attrs['runs']
             if "seed" in other_attrs:   del other_attrs["seed"]
             if 'runs' in self.key_attrs:del self.key_attrs['runs']
+            if 'frame_length' in other_attrs:   del other_attrs['frame_length']
+            if 'frame_length' in self.key_attrs:   del self.key_attrs['frame_length']
+            if "random" in str(self.configs.allocator).lower(): 
+                temp_qubit_capacities = other_attrs.get('qubit_capacities', None)
+                if 'qubit_capacities' in other_attrs: del other_attrs['qubit_capacities']
+                if 'qubit_capacities' in self.key_attrs: del self.key_attrs['qubit_capacities']
             
             if (
                 # self.capacity == other.get("capacity") and
@@ -190,13 +198,13 @@ class MultiRunEvaluator:
                 self.cap_id == other.get("cap_id") and
                 self.key_attrs == other_attrs
             ):
-                if "random" in str(self.configs.allocator).lower(): 
+                if temp_qubit_capacities: 
                     self.key_attrs.update(other.get("key_attrs", {}))
+                    self.key_attrs.update({'qubit_capacities':temp_qubit_capacities})
                     for attr, val in self.key_attrs.items():
                         if attr in self.configs._env_params.keys(): self.configs._env_params[attr] = val
                     # reset environment with random found capacity
-                    qubit_cap = self.key_attrs['qubit_capacities']
-                    self._build_environment_once(frames_count=self.frames_count, qubit_cap=qubit_cap)
+                    self._build_environment_once(frames_count=self.frames_count, qubit_cap=temp_qubit_capacities)
                 return True
             
             print(f"\n❌ Evaluator comparison failed:")
@@ -230,20 +238,129 @@ class MultiRunEvaluator:
         # This now always writes to the config backup (safe, never corrupts data lake)
         return self.configs.save_obj(self)
 
-    def resume(self, backups=[3, 5, 8, 10]):
-        # This now always loads from the correct data lake (or backup if not found)
-        curr_runs = self.runs_id
-        curr_file_name = self.file_name
-        for runs_id in backups: # horizons used in current system
-            resumed = False
-            if self.runs_id <= runs_id:
-                if self.runs_id != runs_id: 
-                    self.file_name = self.file_name.replace(f"{int(self.frame_step)}_{self.runs_id}", f"{int(self.frame_step)}_{runs_id}")
-                resumed = self.configs.resume_obj(self)  # or framework_state for runner
-                self.file_name = curr_file_name
-                self.runs_id = curr_runs
-            if resumed: return resumed
-        return False    
+
+    def _subset_reconstruct(self, obj):
+        print("\n[Subset] Starting subset reconstruction...")
+        target_runs = self.runs_id
+        print(f"[Subset] target_runs: {target_runs}")
+        print(f"[Subset] source obj type: {type(obj)}")
+
+        # Figure out how to get env_experiments / evaluation_results safely
+        if hasattr(obj, "env_experiments"):
+            src_env_experiments = obj.env_experiments
+            src_eval_results   = getattr(obj, "evaluation_results", {})
+            print("[Subset] Using attributes from obj (obj.env_experiments, obj.evaluation_results)")
+        elif isinstance(obj, dict):
+            src_env_experiments = obj.get("env_experiments", {})
+            src_eval_results   = obj.get("evaluation_results", {})
+            print("[Subset] Using dict keys from obj['env_experiments'], obj['evaluation_results']")
+        else:
+            print("[Subset ERROR] obj has neither attributes nor dict keys for env_experiments/evaluation_results")
+            return False
+
+        try:
+            print(f"[Subset] src_env_experiments type: {type(src_env_experiments)}, len: {len(src_env_experiments) if hasattr(src_env_experiments, '__len__') else 'N/A'}")
+            print(f"[Subset] src_eval_results   type: {type(src_eval_results)}, len: {len(src_eval_results) if hasattr(src_eval_results, '__len__') else 'N/A'}")
+            
+            for scenario in src_env_experiments.keys():
+                self.env_experiments[scenario] = {
+                    k: v for k, v in src_env_experiments[scenario].items()
+                    if int(k) <= target_runs
+                }
+
+                
+                if scenario not in src_eval_results: continue
+                self.evaluation_results[scenario] = {
+                    k: v for k, v in src_eval_results[scenario].items()
+                    if int(k) <= target_runs
+                }
+
+            print(f"[Subset] Reconstructed env_experiments keys: {list(self.env_experiments.keys())}")
+            print(f"[Subset] Reconstructed evaluation_results keys: {list(self.evaluation_results.keys())}")
+            print("[Subset] ✅ Subset reconstruction successful")
+            return True
+
+        except Exception as e:
+            print(f"[Subset] ❌ Subset Reconstruction Failed: {e}")
+            return False
+
+
+
+    def _resume_from_supersets(self, sub_registry):
+        """
+        Try to reconstruct this evaluator from any larger-horizon saved evaluator.
+        Returns True if successful, False otherwise.
+        """
+        target_runs = self.runs_id
+        print(f"[Resume-Supersets] target_runs={target_runs}, backups={sub_registry.keys()}")
+        # Iterate horizons from largest to smallest
+        for horizon in sorted(sub_registry.keys(), key=lambda x: int(x), reverse=True):
+
+            file_name = sub_registry[horizon]
+            
+            print(f"\n[Resume-Supersets] ----- Checking horizon={horizon} -----")
+            # Only supersets, skip exact match and insufficient horizons
+            if horizon == target_runs:
+                print(f"[Resume-Supersets] Skipping {horizon} (equal than target_runs)")
+                continue
+        
+            if horizon not in sub_registry.keys(): continue
+            print(f"[Superset] Superset file: {file_name}")
+            print(f"[Superset] Trying horizon={horizon} for target_runs={target_runs}")
+
+            file_path = Path(self.configs.backup_mgr.backup_registry[self.component][file_name])
+            obj, loaded = self.configs._load_obj(self, file_path)
+
+            print(f"[Superset] _load_obj returned loaded={loaded}")
+            print(f"[Resume-Supersets] Horizon={horizon} loaded, attempting subset reconstruction...")
+            if self._subset_reconstruct(obj):
+                print(f"[Resume-Supersets] ✅ Successfully resumed from horizon={horizon}")
+                self.resumed = True
+                return self.resumed
+            
+            print("[Resume-Supersets] ❌ No valid supersets found for resume")
+        return False
+
+
+    def _get_superset_subregistry(self):
+        """
+        Parse backup_registry['framework_state'] once and build:
+            { run_id: [file_paths] }
+
+        Uses regex to strip trailing '_d+_d+_d+_d+' (qubit allocations)
+        from each file name, then matches '<run>_runs' in the cleaned name.
+        """
+        registry = self.configs.backup_mgr.backup_registry.get(self.component, {})
+        # pattern to strip trailing '_d+_d+_d+_d+' before the extension
+        pattern = r"\d+_(\(\d+_\d+_\d+_\d+\)_)?"
+        sub_registry = {}
+
+        for file_name in registry.keys():
+            if "evaluator" not in file_name.lower(): continue
+            
+            # remove qubit allocation tail if present
+            _file_name = re.sub(pattern, "", file_name)
+            if re.sub(pattern, "", self.file_name) == _file_name:
+                part_with_runs = re.sub(r"(_\(\d+_\d+_\d+_\d+\))?(_S\d*(_\d*)?T\w*)?\.pkl", "", file_name)
+                runs = int(part_with_runs.split("_")[-1])
+                sub_registry[runs] = file_name
+
+        return sub_registry
+
+
+    def resume(self):
+        if not self.resumed: 
+            if self.configs.resume_obj(self): 
+                self.resumed = True
+                return self.resumed
+            print("[Resume] exact failed → Looking for supersets")
+            sub_registry = self._get_superset_subregistry()
+            return self._resume_from_supersets(sub_registry)
+        return self.resumed
+
+
+
+
 
 
     def run_experiments(self, runs=None, attack_type=None, models=None):
@@ -264,9 +381,9 @@ class MultiRunEvaluator:
                 exp_id = i + 1
                 if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
                     scaled_cap = self.capacity * self.configs.scale
-                    # print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
-                    # self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
-                    # continue
+                    print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
+                    self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
+                    continue
                 self.run_experiment(exp_no=i, attack_category=attack_category)
 
             self.total_time = time.time() - self.start_time
@@ -1004,7 +1121,7 @@ class MultiRunEvaluator:
             finally:
                 del runner
                 gc.collect()
-            # self.save()
+                self.save()
 
         return self.env_experiments[self.configs.attack_type][exp_id]
     
@@ -1078,7 +1195,7 @@ class MultiRunEvaluator:
             finally:
                 del runner
                 gc.collect()
-            # self.save()
+                self.save()
 
         return self.env_experiments[self.configs.attack_type][exp_id]
 
@@ -1144,10 +1261,11 @@ class MultiRunEvaluator:
                 exp_id = exp_no + 1
                 try:
                     future.result()
-                    # self.save()
                     # print(f"✅ Experiment {exp_id} completed (frames: {self.base_frames + exp_no * self.frame_step})")
                 except Exception as e:
                     print(f"❌ Experiment {exp_id} failed: {e}")
+                finally:
+                    self.save()
         self.total_time = time.time() - self.start_time
 
         print(f"\n\t⏱️  Total multi-run time: {self.total_time:05.1f}s")

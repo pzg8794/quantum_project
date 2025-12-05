@@ -35,7 +35,9 @@ class QuantumExperimentRunner:
         self.results = {}
         # self.model = None
         self.winner = None
+        self.resumed = False
         self.environment = None
+        self.is_complete = True
         self.experiment_seed = None
         self.frames_count = frames_count
         self.component    = "framework_state"
@@ -98,16 +100,24 @@ class QuantumExperimentRunner:
             # -------------------------------------------------
             # TEMP FIX: Infer models from saved runner state
             # -------------------------------------------------
-            saved_models = self._infer_saved_models(other)
-            current_models = set(self.configs.models)
-            if saved_models:
-                saved_set = set(saved_models)
-                if not current_models.issubset(saved_set):
-                    print("\n❌ MODEL SET MISMATCH in Runner — forcing rerun")
-                    print(f"   Current models: {sorted(current_models)}")
-                    print(f"   Saved models:   {sorted(saved_set)}")
-                    return False
-            else:   print("ℹ️ Could not infer saved models for Runner — skipping model check")
+            # saved_models = self._infer_saved_models(other)
+            # current_models = set(self.configs.models)
+            # if saved_models:
+            #     saved_set = set(saved_models)
+            #     if not current_models.issubset(saved_set):
+            #         print("\n❌ MODEL SET MISMATCH in Runner — forcing rerun")
+            #         print(f"   Current models: {sorted(current_models)}")
+            #         print(f"   Saved models:   {sorted(saved_set)}")
+            #         return False
+                # if not current_models.issubset(saved_set) and not saved_set.issubset(current_models):
+                #     print("\n❌ MODEL SET MISMATCH in Runner — forcing rerun")
+                #     print(f"   Current models: {sorted(current_models)}")
+                #     print(f"   Saved models:   {sorted(saved_set)}")
+                #     return False
+                # elif not current_models.issubset(saved_set) and saved_set.issubset(current_models): self.is_complete = False
+                # elif current_models.issubset(saved_set): self.is_complete = True
+            
+            # else:   print("ℹ️ Could not infer saved models for Runner — skipping model check")
 
             # temp fix
             temp_qubit_capacities = None
@@ -137,7 +147,6 @@ class QuantumExperimentRunner:
                 #     self._build_environment_once(frames_count=self.frames_count, qubit_cap=qubit_cap)
                 return True
             
-            import json
             print(f"\n❌ Evaluator comparison failed:")
             print(f"  ID: {self.id} vs {other.get('id')}")
             print(f"  Allocator: {self.allocator_id} vs {other.get('allocator_id')}")
@@ -167,7 +176,9 @@ class QuantumExperimentRunner:
     
     def resume(self):
         # This now always loads from the correct data lake (or backup if not found)
-        return self.configs.resume_obj(self, "framework_state")  # or framework_state for runner
+        if not self.resumed: 
+            if self.configs.resume_obj(self): self.resumed = True
+        return self.resumed 
     
     def remove_model(self, model_name):
         if model_name in self.algorithm_configs.keys():

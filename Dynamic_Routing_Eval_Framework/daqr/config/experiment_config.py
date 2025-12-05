@@ -29,7 +29,7 @@ class ExperimentConfiguration:
         # MODEL NAME COLLECTIONS FOR TESTING
         # =============================================================================
         self.verbose = verbose
-        self.resume = resume
+        self.resumed = resume
         self.base_model = None
         self._env_params = None
         self.environment = None
@@ -979,64 +979,96 @@ class ExperimentConfiguration:
         print(f"Total Models: {len(self.ALL_QUANTUM_MODELS)}")
         print("=" * 60)
 
-
-    def save_obj(self, obj):
+    def _build_save_dict(self, obj):
         """
-        Save object state to config backup directory.
-        
-        Strategy:
-        - Reads lookups from: quantum_datalake_path (via get_latest_state)
-        - Writes copies to: config backup (self.config_backup_path)
-        - This protects the shared data lake from corrupted files during development
-        
-        Args:
-            obj: Object to save (model, runner, evaluator)
-            save_to_dir: Original path where object would be saved in data lake
-            file_name: Name of the pickle file
-        
-        Returns:
-            str: Path where file was saved
+        Build a pickleable dict from obj.__dict__, tracking unpickleable fields.
         """
-        # Build pickleable dict
         save_dict = {}
         unpickleable = []
         for attr, value in obj.__dict__.items():
             try:
                 pickle.dumps(value)
                 save_dict[attr] = value
-            except: 
-                unpickleable.append(attr)
-        
-        if unpickleable and self.verbose:
-            print(f"\t⚠️ {obj} Excluded unpickleable fields: {', '.join(unpickleable)}")  
+            except Exception: unpickleable.append(attr)
+        if unpickleable and self.verbose: print(f"\t⚠️ {obj} Excluded unpickleable fields: {', '.join(unpickleable)}")
+        return save_dict
 
+    def _should_overwrite(self, save_path, save_dict):
+        """
+        Decide whether it's safe to overwrite an existing file at save_path.
+
+        Rules:
+        - If existing file size > new serialized size → do NOT overwrite.
+        - If existing file size < new serialized size → overwrite.
+        - If equal → follow self.overwrite flag.
+        """
+        # File must exist to reach here
+        existing_size = save_path.stat().st_size
+        new_bytes = pickle.dumps(save_dict)
+        new_size = len(new_bytes)
+
+        if self.verbose: print(f"\tℹ️ Existing size: {existing_size}, new size: {new_size}")
+        # existing is larger → skip
+        if existing_size > new_size:
+            if self.verbose: print("\t⊘ Skip overwrite: existing file is larger")
+            return False, None  # no overwrite, no payload reuse
+
+        # new is larger → overwrite
+        if existing_size < new_size:
+            if self.verbose: print("\t↻ Overwriting: new file is larger")
+            return True, new_bytes  # overwrite with these bytes
+
+        # sizes equal → follow overwrite flag
+        if self.overwrite:
+            if self.verbose: print("\t↻ Overwriting: sizes equal, overwrite=True")
+            return True, new_bytes
+        else:
+            if self.verbose: print("\t⊘ Skip overwrite: sizes equal, overwrite=False")
+            return False, None
+
+    def save_obj(self, obj):
+        """
+        Save object state to config/data lake with safety checks:
+        - Never overwrite a larger existing file.
+        - Prefer overwriting when new version is larger.
+        """
+        save_dict = self._build_save_dict(obj)
         comp = obj.component
         mode = self.backup_mgr.mode
         component_path = self.backup_mgr.quantum_data_paths["obj"][comp]
         save_path = component_path[mode] / self.day_str / obj.file_name.replace("1.5", "1_5")
-        # ensure parent directory (NOT the file) exists
-        save_path.parent.mkdir(parents=True, exist_ok=True)
+
         try:
+            # # Fix corrupt directory-at-path case
+            # if save_path.exists() and save_path.is_dir():
+            #     print(f"\t⚠️ Corrupted directory found at {save_path}, removing...")
+            #     shutil.rmtree(save_path)
+            #     print("\t✓ Cleaned up")
 
-            if save_path.exists() and save_path.is_dir():
-                print(f"\t⚠️ Corrupted directory found (from previous failed save): {save_path}")
-                print(f"\t🗑️ Removing directory...")
-                shutil.rmtree(save_path)
-                print(f"\t✅ Cleaned up!")
+            # If file exists → apply safety logic
+            if save_path.exists():
+                do_overwrite, new_bytes = self._should_overwrite(save_path, save_dict)
+                if not do_overwrite: return str(save_path)
 
-            # Only save if overwrite=True OR file doesn't exist
-            if self.overwrite or not save_path.exists():
-                with open(save_path, 'wb') as f: pickle.dump(save_dict, f)
+                # overwrite with prepared bytes
+                with open(save_path, "wb") as f: f.write(new_bytes)
                 if self.verbose:
-                    print(f"\t✓ {obj} State saved to config backup")
+                    print(f"\t✓ {obj} State overwritten")
                     print(f"\t  → {save_path}")
-            elif self.verbose: print(f"\t⊘ {obj} Save skipped (exists + overwrite=False)")
-                    
+                return str(save_path)
+
+            # File does not exist → normal save
+            with open(save_path, "wb") as f: pickle.dump(save_dict, f)
+            if self.verbose:
+                print(f"\t✓ {obj} State saved")
+                print(f"\t  → {save_path}")
+
         except Exception as e:
             print(f"❌ {obj} Save failed: {e}")
             raise
-            
+
         return str(save_path)
+
     
     def _validate_path(self, obj, config_path):
         """
@@ -1146,6 +1178,13 @@ class ExperimentConfiguration:
         print("\t❌ All load attempts failed")
         return None, False
 
+    def can_resume(self, obj):
+        # Get path from registry
+        config_path = self.get_latest_state(obj.component, obj.file_name.replace("1.5", "1_5"))
+        if not config_path:
+            print(f"\t❌ Not found in registry or fallback locations")
+            return None
+        return config_path
 
     def resume_obj(self, obj, component="model_state"):
         """
@@ -1163,24 +1202,18 @@ class ExperimentConfiguration:
         Returns:
             bool: True if successfully resumed, False otherwise
         """
+        if obj.resumed: return obj.resumed
+
         print(f"\n\t🔄 Resume: {obj}")
-        
-        # Get path from registry
-        config_path = self.get_latest_state(obj.component, obj.file_name.replace("1.5", "1_5"))
-        if not config_path:
-            print(f"\t❌ Not found in registry or fallback locations")
-            return False
-        
+        has_path = self.can_resume(obj) 
         # Validate path
-        if not self._validate_path(obj, config_path):
-            return False
+        if not self.can_resume(obj) or not self._validate_path(obj, has_path): return False
         
-        state_path = Path(config_path)
+        state_path = Path(has_path)
         
         # Load and validate
         loaded_dict, eq_result = self._load_obj(obj, state_path)
-        if not loaded_dict:
-            return False
+        if not loaded_dict: return False
         
         # Update or delete
         if eq_result:
@@ -1191,6 +1224,7 @@ class ExperimentConfiguration:
                 obj.__dict__.update(loaded_dict)
                 obj.configs = configs
                 obj.file_name = old_file_name
+                obj.resumed = True
                 return True
             except Exception as e:
                 print(f"\t❌ Update failed: {e}")

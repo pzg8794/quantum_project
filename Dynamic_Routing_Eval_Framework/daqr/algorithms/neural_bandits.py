@@ -143,7 +143,8 @@ class EXPNeuralUCB(QuantumModel):
             )
             model.set_id(f"{model.id}_{i}")
             
-            try: model.resume()
+            try: 
+                if not self.configs.can_resume(self) and not self.resumed: model.resume()
             except Exception as e: print(f"[RESUME SKIPPED] {model.id}: {e}")
             self.neuralucb_list.append(model)
         

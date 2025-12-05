@@ -830,21 +830,19 @@ def fix_float_filenames(state_roots):
                 # Check for match
                 if pattern.search(f.name):
                     # Replace: \1 is digits, \2 is separator
-                    new_name = pattern.sub(r"\1\2", f.name)
+                    # new_name = pattern.sub(r"\1\2", f.name)
+                    new_name = re.sub(r'\.\d+', '', f.name)
+                    new_path = date_dir / new_name
                     
-                    if new_name != f.name:
-                        new_path = date_dir / new_name
-                        
-                        print(f"   Fixing: {f.name}")
-                        print(f"       ->  {new_name}")
-                        
-                        try:
-                            if new_path.exists():
-                                new_path.unlink() # Overwrite/dedupe
-                            f.rename(new_path)
-                            fixed_count += 1
-                        except Exception as e:
-                            print(f"      ❌ Failed: {e}")
+                    print(f"   Fixing: {f.name}")
+                    print(f"       ->  {new_name}")
+                    
+                    try:
+                        if new_path.exists(): new_path.unlink() # Overwrite/dedupe
+                        f.rename(new_path)
+                        fixed_count += 1
+                    except Exception as e:
+                        print(f"      ❌ Failed: {e}")
 
     print(f"[✓] Float artifacts fixed: {fixed_count}")
 
@@ -921,6 +919,76 @@ def fix_double_day_directories(state_roots):
     print(f"[✓] 'day_day_' directories fixed: {fixed_count}")
 
 
+def fix_double_tag_mess_robust():
+    print("🔧 STARTING ROBUST DOUBLE TAG REPAIR (REGEX MODE)...")
+    fixed = 0
+    
+    # 1. Regex for the BAD MIDDLE pattern (Float style: S1.5Tb)
+    # Matches: _S followed by digits.digits followed by T or Tb, then an underscore
+    # This marks the START of the garbage section.
+    bad_middle_pattern = re.compile(r"(_S\d+\.\d+T[b]?_)")
+    
+    # 2. Regex for the VALID SUFFIX at the absolute end
+    # Matches: Underscore, then S, digits_digits, T or Tb, optional digits, then .pkl
+    # We capture just the tag part (e.g. S1_5T)
+    # The '.*' before it is implicit in search, but we anchor to '$' to be sure it's the end.
+    valid_suffix_pattern = re.compile(r"_(S\d+_\d+T[b]?\d?)\.pkl$")
+
+    for root in ALL_STATE_ROOTS:
+        root = Path(root)
+        if not root.exists(): continue
+
+        for date_dir in root.iterdir():
+            if not date_dir.is_dir(): continue
+            
+            for f in date_dir.iterdir():
+                if not f.is_file() or not f.suffix == ".pkl": continue
+                
+                # A. Do we have the Bad Middle?
+                if bad_middle_pattern.search(f.name):
+                    
+                    # B. Do we have a Valid Suffix at the end?
+                    suffix_match = valid_suffix_pattern.search(f.name)
+                    if not suffix_match:
+                        # It has the bad middle, but doesn't end with the clean tag we expect.
+                        # Skip to avoid destroying unknown file formats.
+                        continue
+                    
+                    valid_suffix = suffix_match.group(1) # e.g. "S1_5T"
+                    
+                    # C. Split the filename at the Bad Middle
+                    # This gives us everything to the LEFT of the garbage.
+                    parts = bad_middle_pattern.split(f.name)
+                    clean_stem = parts[0] 
+                    
+                    # D. Reassemble
+                    # Stem + "_" + Valid Suffix + ".pkl"
+                    # Note: The stem typically doesn't end in _, and valid_suffix doesn't start with _.
+                    # We add the underscore separator explicitly.
+                    new_name = f"{clean_stem}_{valid_suffix}.pkl"
+                    
+                    # Safety: remove any accidental double underscores from the join
+                    new_name = new_name.replace("__", "_")
+                    
+                    if new_name == f.name:
+                        continue
+
+                    print(f"🔧 FIXING: {f.name}")
+                    print(f"   →     {new_name}")
+                    
+                    new_path = date_dir / new_name
+                    
+                    try:
+                        if new_path.exists():
+                            new_path.unlink() # Dedupe
+                        f.rename(new_path)
+                        fixed += 1
+                    except Exception as e:
+                        print(f"   ❌ ERROR: {e}")
+
+    print(f"\n🔧 DONE. Fixed {fixed} files.")
+
+
 # ============================================================
 # MASTER FUNCTION
 # ============================================================
@@ -929,15 +997,17 @@ def fix_double_day_directories(state_roots):
 def cleanup_and_consolidate():
     print("\n========== STARTING CLEANUP ==========")
 
+    # fix_double_tag_mess_robust()
+
     # STEP 0a — Fix Directory Names (day_day_)
-    fix_double_day_directories(ALL_STATE_ROOTS)
+    # fix_double_day_directories(ALL_STATE_ROOTS)
     
     # STEP 0 — Fix float filenames first (so other regexes work on clean ints)
     fix_float_filenames(ALL_STATE_ROOTS)
 
 
     # STEP 1 — rename model files to proper format
-    rename_model_files(ALL_STATE_ROOTS)
+    # rename_model_files(ALL_STATE_ROOTS)
 
 
     # # for emergency use only
@@ -949,7 +1019,7 @@ def cleanup_and_consolidate():
 
 
     # STEP 1 — rename Random allocator files
-    extract_and_rename_random_allocator_files(ALL_STATE_ROOTS)
+    # extract_and_rename_random_allocator_files(ALL_STATE_ROOTS)
 
 
     # STEP 2 — dedupe

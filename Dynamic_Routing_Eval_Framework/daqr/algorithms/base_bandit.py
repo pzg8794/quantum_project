@@ -63,8 +63,10 @@ class QuantumModel(ABC):
         super().__init__()
 
         # Directory structure setup
+        self.resumed = False
         self.id = str(self)
         self.configs = configs
+        self.is_complete = False
         self.alg_dir = os.path.dirname(os.path.abspath(__file__))
         self.overwrite = self.configs.overwrite
         
@@ -77,7 +79,7 @@ class QuantumModel(ABC):
 
         self.mode = self.configs.algorithm_configs[str(self)]['kwargs']['mode']
         self.beta = beta
-        print(self, " ", self.mode)
+        # print(self, " ", self.mode)
         # self.verbose = self.configs.verbose
         
         # EXP3 parameters (used in 'hybrid' and 'exp3' modes)
@@ -168,17 +170,17 @@ class QuantumModel(ABC):
                 return True
             
             # Debug output if no match
-            print(f"\n❌ Model comparison failed:")
-            print(f"  Class: {self.id} vs {other.get('id')}")
-            print(f"  Frames: {self.frame_number} vs {other.get('frame_number')}")
-            print(f"  Groups: {self.num_groups} vs {other.get('num_groups')}")
-            print(f"  Capacity: {self.capacity} vs {other.get('capacity')}")
-            # print(f"  Mode: {getattr(self, 'mode', None)} vs {other.get('mode')}")
-            print(f"  Allocator: {self.allocator_id} vs {other.get('allocator_id')}")
-            print(f"  Environment: {self.env_id} vs {other.get('env_id')}")
-            print(f"  Attack: {self.attack_id} vs {other.get('attack_id')}")
-            print(f"  Current attrs:\n{json.dumps(self.key_attrs, indent=2)}")
-            print(f"  Loaded attrs:\n{json.dumps(other_attrs, indent=2)}")
+            # print(f"\n❌ Model comparison failed:")
+            # print(f"  Class: {self.id} vs {other.get('id')}")
+            # print(f"  Frames: {self.frame_number} vs {other.get('frame_number')}")
+            # print(f"  Groups: {self.num_groups} vs {other.get('num_groups')}")
+            # print(f"  Capacity: {self.capacity} vs {other.get('capacity')}")
+            # # print(f"  Mode: {getattr(self, 'mode', None)} vs {other.get('mode')}")
+            # print(f"  Allocator: {self.allocator_id} vs {other.get('allocator_id')}")
+            # print(f"  Environment: {self.env_id} vs {other.get('env_id')}")
+            # print(f"  Attack: {self.attack_id} vs {other.get('attack_id')}")
+            # print(f"  Current attrs:\n{json.dumps(self.key_attrs, indent=2)}")
+            # print(f"  Loaded attrs:\n{json.dumps(other_attrs, indent=2)}")
             return False
 
         # --- model instance comparison ---
@@ -204,7 +206,9 @@ class QuantumModel(ABC):
 
     def resume(self):
         # This now always loads from the correct data lake (or backup if not found)
-        return self.configs.resume_obj(self, "model_state")  # or framework_state for runner
+        if not self.resumed:
+            if self.configs.resume_obj(self): self.resumed = True
+        return self.resumed
 
             
     def get_cleanup_wait_time(self, frames_count=1000, cooldown_base=3, cooldown_scale_factor=1, cooldown_max=15):
@@ -799,18 +803,18 @@ class NeuralUCB(RandomAlg):
                 return True
 
             # 🔍 Debug output if no match
-            print(f"\n❌ Model comparison failed:")
-            print(f"  Class: {self.id} vs {other.get('id')}")
-            print(f"  Frames: {self.frame_number} vs {other.get('frame_number')}")
-            print(f"  Groups: {self.num_groups} vs {other.get('num_groups')}")
-            print(f"  Capacity: {self.capacity} vs {other.get('capacity')}")
-            # print(f"  Mode: {getattr(self, 'mode', None)} vs {other.get('mode')}")
-            print(f"  Allocator: {self.allocator_id} vs {other.get('allocator_id')}")
+            # print(f"\n❌ Model comparison failed:")
+            # print(f"  Class: {self.id} vs {other.get('id')}")
+            # print(f"  Frames: {self.frame_number} vs {other.get('frame_number')}")
+            # print(f"  Groups: {self.num_groups} vs {other.get('num_groups')}")
+            # print(f"  Capacity: {self.capacity} vs {other.get('capacity')}")
+            # # print(f"  Mode: {getattr(self, 'mode', None)} vs {other.get('mode')}")
+            # print(f"  Allocator: {self.allocator_id} vs {other.get('allocator_id')}")
             if not skip_env_attack:
                 print(f"  Environment: {self.env_id} vs {other.get('env_id')}")
                 print(f"  Attack: {self.attack_id} vs {other.get('attack_id')}")
-            print(f"  Filtered Current attrs:\n{json.dumps(filtered_self_attrs, indent=2)}")
-            print(f"  Filtered Loaded attrs:\n{json.dumps(filtered_other_attrs, indent=2)}")
+            # print(f"  Filtered Current attrs:\n{json.dumps(filtered_self_attrs, indent=2)}")
+            # print(f"  Filtered Loaded attrs:\n{json.dumps(filtered_other_attrs, indent=2)}")
             return False
 
         # --- model instance comparison ---

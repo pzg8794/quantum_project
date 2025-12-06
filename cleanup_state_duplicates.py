@@ -1019,7 +1019,7 @@ def cleanup_and_consolidate():
 
 
     # STEP 1 — rename Random allocator files
-    # extract_and_rename_random_allocator_files(ALL_STATE_ROOTS)
+    extract_and_rename_random_allocator_files(ALL_STATE_ROOTS)
 
 
     # STEP 2 — dedupe

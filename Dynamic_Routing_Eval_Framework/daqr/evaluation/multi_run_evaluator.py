@@ -87,7 +87,7 @@ class MultiRunEvaluator:
         alloc_str           = "_".join(str(v) for v in qubit_cap)
         if "random" in str(self.configs.allocator).lower(): run_id_str += f"_({re.sub(r'^_', '', alloc_str)})"
         self.cap_id         = int(float(int(self.base_frames if self.is_base_t else self.frames_count)*self.configs.scale))
-        self.file_name      = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{int(self.base_frames)}_{int(self.frame_step)}_{run_id_str}_S{self.configs.scale}{'Tb' if self.is_base_t else 'T'}.pkl"
+        self.file_name      = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{int(self.base_frames)}_{int(self.frame_step)}_{run_id_str}_S{str(self.configs.scale).replace(".", "_")}{'Tb' if self.is_base_t else 'T'}.pkl"
         
         # NOW resume can work
         try:    self.resume()
@@ -342,6 +342,7 @@ class MultiRunEvaluator:
             _file_name = re.sub(pattern, "", file_name)
             if re.sub(pattern, "", self.file_name) == _file_name:
                 part_with_runs = re.sub(r"(_\(\d+_\d+_\d+_\d+\))?(_S\d*(_\d*)?T\w*)?\.pkl", "", file_name)
+                print(part_with_runs)
                 runs = int(part_with_runs.split("_")[-1])
                 sub_registry[runs] = file_name
 

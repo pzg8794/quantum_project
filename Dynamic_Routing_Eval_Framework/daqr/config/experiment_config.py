@@ -1062,12 +1062,9 @@ class ExperimentConfiguration:
             if self.verbose:
                 print(f"\t✓ {obj} State saved")
                 print(f"\t  → {save_path}")
-
-        except Exception as e:
-            print(f"❌ {obj} Save failed: {e}")
-            raise
-
-        return str(save_path)
+            return True
+        except Exception as e: print(f"❌ {obj} Save failed: {e}")
+        return False
 
     
     def _validate_path(self, obj, config_path):

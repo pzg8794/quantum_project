@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from daqr.config.experiment_config import ExperimentConfiguration
 from daqr.evaluation.experiment_runner import QuantumExperimentRunner
+
 import pathlib
 from pathlib import Path
 import pickle
@@ -56,6 +57,7 @@ class MultiRunEvaluator:
         self.cal_winner = True
         self.is_complete = False
         self.env_type = 'stochastic'
+        self.runner_qubit_caps = {}
         self.capacity = self.base_frames
         self.t_scale  = self.configs.scale
         self.is_base_t = self.configs.base_capacity
@@ -183,7 +185,7 @@ class MultiRunEvaluator:
             if 'frame_length' in other_attrs:   del other_attrs['frame_length']
             if 'frame_length' in self.key_attrs:   del self.key_attrs['frame_length']
             if "random" in str(self.configs.allocator).lower(): 
-                temp_qubit_capacities = other_attrs.get('qubit_capacities', None)
+                temp_qubit_capacities = other_attrs.get('qubit_capacities', None) or self.key_attrs['qubit_capacities']
                 if 'qubit_capacities' in other_attrs: del other_attrs['qubit_capacities']
                 if 'qubit_capacities' in self.key_attrs: del self.key_attrs['qubit_capacities']
             
@@ -239,86 +241,114 @@ class MultiRunEvaluator:
         return self.configs.save_obj(self)
 
 
+    def _filter_models_from_experiments(self, experiments_dict, target_runs):
+        """Filter experiments by runs and models - removes unwanted models from data."""
+        for scenario, experiments in experiments_dict.items():
+            for exp_id, exp_data in list(experiments.items()):
+                if re.search(r"\d+$", str(exp_id)) and int(exp_id) > target_runs:
+                    del experiments[exp_id]  # Remove experiment
+
+                elif 'results' in exp_data:
+                    # Remove models we DON'T want
+                    for model in list(exp_data['results'].keys()):
+                        if model not in self.models: del exp_data['results'][model]
+        return experiments_dict
+
     def _subset_reconstruct(self, obj):
+        """Reconstruct evaluator state from saved object, filtering by runs and models."""
         print("\n[Subset] Starting subset reconstruction...")
         target_runs = self.runs_id
         print(f"[Subset] target_runs: {target_runs}")
         print(f"[Subset] source obj type: {type(obj)}")
 
-        # Figure out how to get env_experiments / evaluation_results safely
+        # Extract source data
         if hasattr(obj, "env_experiments"):
             src_env_experiments = obj.env_experiments
-            src_eval_results   = getattr(obj, "evaluation_results", {})
-            print("[Subset] Using attributes from obj (obj.env_experiments, obj.evaluation_results)")
+            src_eval_results = getattr(obj, "evaluation_results", {})
+            print("[Subset] Using attributes from obj")
         elif isinstance(obj, dict):
             src_env_experiments = obj.get("env_experiments", {})
-            src_eval_results   = obj.get("evaluation_results", {})
-            print("[Subset] Using dict keys from obj['env_experiments'], obj['evaluation_results']")
+            src_eval_results = obj.get("evaluation_results", {})
+            print("[Subset] Using dict keys from obj")
         else:
-            print("[Subset ERROR] obj has neither attributes nor dict keys for env_experiments/evaluation_results")
+            print("[Subset ERROR] obj has neither attributes nor dict keys")
             return False
 
         try:
-            print(f"[Subset] src_env_experiments type: {type(src_env_experiments)}, len: {len(src_env_experiments) if hasattr(src_env_experiments, '__len__') else 'N/A'}")
-            print(f"[Subset] src_eval_results   type: {type(src_eval_results)}, len: {len(src_eval_results) if hasattr(src_eval_results, '__len__') else 'N/A'}")
+            print(f"[Subset] src_env_experiments: {len(src_env_experiments) if hasattr(src_env_experiments, '__len__') else 'N/A'} scenarios")
+            print(f"[Subset] src_eval_results: {len(src_eval_results) if hasattr(src_eval_results, '__len__') else 'N/A'} scenarios")
             
-            for scenario in src_env_experiments.keys():
-                self.env_experiments[scenario] = {
-                    k: v for k, v in src_env_experiments[scenario].items()
-                    if int(k) <= target_runs
-                }
+            # Filter both using same method
+            self.env_experiments = self._filter_models_from_experiments(src_env_experiments, target_runs)
+            self.evaluation_results = self._filter_models_from_experiments(src_eval_results, target_runs)
 
-                
-                if scenario not in src_eval_results: continue
-                self.evaluation_results[scenario] = {
-                    k: v for k, v in src_eval_results[scenario].items()
-                    if int(k) <= target_runs
-                }
-
-            print(f"[Subset] Reconstructed env_experiments keys: {list(self.env_experiments.keys())}")
-            print(f"[Subset] Reconstructed evaluation_results keys: {list(self.evaluation_results.keys())}")
+            print(f"[Subset] Reconstructed env_experiments: {list(self.env_experiments.keys())}")
+            print(f"[Subset] Reconstructed evaluation_results: {list(self.evaluation_results.keys())}")
+            print(f"[Subset] Filtered to models: {self.models}")
             print("[Subset] ✅ Subset reconstruction successful")
             return True
 
         except Exception as e:
             print(f"[Subset] ❌ Subset Reconstruction Failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
-
 
 
     def _resume_from_supersets(self, sub_registry):
         """
         Try to reconstruct this evaluator from any larger-horizon saved evaluator.
         Returns True if successful, False otherwise.
+        
+        MODIFIED: Iterates horizons sorted by FILE SIZE (largest first) instead of run number.
         """
         target_runs = self.runs_id
         print(f"[Resume-Supersets] target_runs={target_runs}, backups={sub_registry.keys()}")
-        # Iterate horizons from largest to smallest
-        for horizon in sorted(sub_registry.keys(), key=lambda x: int(x), reverse=True):
-
-            file_name = sub_registry[horizon]
-            
-            print(f"\n[Resume-Supersets] ----- Checking horizon={horizon} -----")
-            # Only supersets, skip exact match and insufficient horizons
-            if horizon == target_runs:
-                print(f"[Resume-Supersets] Skipping {horizon} (equal than target_runs)")
-                continue
         
-            if horizon not in sub_registry.keys(): continue
-            print(f"[Superset] Superset file: {file_name}")
-            print(f"[Superset] Trying horizon={horizon} for target_runs={target_runs}")
-
-            file_path = Path(self.configs.backup_mgr.backup_registry[self.component][file_name])
-            obj, loaded = self.configs._load_obj(self, file_path)
-
-            print(f"[Superset] _load_obj returned loaded={loaded}")
-            print(f"[Resume-Supersets] Horizon={horizon} loaded, attempting subset reconstruction...")
-            if self._subset_reconstruct(obj):
-                print(f"[Resume-Supersets] ✅ Successfully resumed from horizon={horizon}")
-                self.resumed = True
-                return self.resumed
+        # ✅ NEW: Build list of (horizon, file_size) and sort by size
+        horizon_sizes = []
+        for horizon, file_name in sub_registry.items():
+            try:
+                file_path = Path(self.configs.backup_mgr.backup_registry[self.component][file_name])
+                if file_path.exists():
+                    file_size = file_path.stat().st_size
+                    horizon_sizes.append((horizon, file_size))
+                    print(f"[Resume-Supersets] horizon={horizon}, size={file_size:,} bytes")
+            except Exception as e:
+                print(f"[Resume-Supersets] Could not get size for horizon={horizon}: {e}")
+        
+        # Sort by file size (largest first) instead of horizon number
+        sorted_horizons = [h for h, s in sorted(horizon_sizes, key=lambda x: x[1], reverse=True)]
+        print(f"[Resume-Supersets] Trying horizons in size order (largest first): {sorted_horizons}")
+        
+        # Iterate horizons from largest file to smallest file
+        for horizon in sorted_horizons:
+            try:
+                file_name = sub_registry[horizon]
+                
+                print(f"\n[Resume-Supersets] ----- Checking horizon={horizon} -----")
+                # Only supersets, skip exact match and insufficient horizons
+                if horizon == target_runs:
+                    print(f"[Resume-Supersets] Skipping {horizon} (equal than target_runs)")
+                    continue
             
-            print("[Resume-Supersets] ❌ No valid supersets found for resume")
+                if horizon not in sub_registry.keys(): continue
+                print(f"[Superset] Superset file: {file_name}")
+                print(f"[Superset] Trying horizon={horizon} for target_runs={target_runs}")
+
+                file_path = Path(self.configs.backup_mgr.backup_registry[self.component][file_name])
+                obj, loaded = self.configs._load_obj(self, file_path)
+
+                print(f"[Superset] _load_obj returned loaded={loaded}")
+                print(f"[Resume-Supersets] Horizon={horizon} loaded, attempting subset reconstruction...")
+                if self._subset_reconstruct(obj):
+                    print(f"[Resume-Supersets] ✅ Successfully resumed from horizon={horizon}")
+                    self.resumed = True
+                    return self.resumed
+            except Exception as e:
+                print(f"❌ Multi-run resume failed: {e}")
+            
+        print("[Resume-Supersets] ❌ No valid supersets found for resume")
         return False
 
 
@@ -337,9 +367,11 @@ class MultiRunEvaluator:
 
         for file_name in registry.keys():
             if "evaluator" not in file_name.lower(): continue
+            if self.configs.suffix and (not self.configs.suffix in file_name): continue
             
             # remove qubit allocation tail if present
             _file_name = re.sub(pattern, "", file_name)
+            if self.configs.suffix: _file_name = _file_name.replace(f"_{self.configs.suffix}", "")
             if re.sub(pattern, "", self.file_name) == _file_name:
                 part_with_runs = re.sub(r"(_\(\d+_\d+_\d+_\d+\))?(_S\d*(_\d*)?T\w*)?\.pkl", "", file_name)
                 print(part_with_runs)
@@ -354,9 +386,10 @@ class MultiRunEvaluator:
             if self.configs.resume_obj(self): 
                 self.resumed = True
                 return self.resumed
-            print("[Resume] exact failed → Looking for supersets")
-            sub_registry = self._get_superset_subregistry()
-            return self._resume_from_supersets(sub_registry)
+            if self.configs.use_last_backup:
+                print("[Resume] exact failed → Looking for supersets")
+                sub_registry = self._get_superset_subregistry()
+                return self._resume_from_supersets(sub_registry)
         return self.resumed
 
 
@@ -380,11 +413,11 @@ class MultiRunEvaluator:
 
             for i in range(0, self.configs.runs):
                 exp_id = i + 1
-                if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
-                    scaled_cap = self.capacity * self.configs.scale
-                    print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
-                    self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
-                    continue
+                # if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
+                    # scaled_cap = self.capacity * self.configs.scale
+                    # print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
+                    # self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
+                    # continue
                 self.run_experiment(exp_no=i, attack_category=attack_category)
 
             self.total_time = time.time() - self.start_time
@@ -413,7 +446,7 @@ class MultiRunEvaluator:
 
         stats = self.scenarios_stats[scenario]
         if stats:
-            description = self.configs.test_scenarios.get(scenario).title()
+            description = self.configs.test_scenarios.get(str(scenario)).title() 
             print(f"SCENARIO: \t{description.upper()}")
             print("-" * 40)
             
@@ -564,6 +597,7 @@ class MultiRunEvaluator:
         if scenario not in self.scenarios_stats:
             self.scenarios_stats[scenario] = {}
         
+        win_counts = {}
         model_totals = {}
         scenarios_stats = {}
         winner_efficients = {}
@@ -641,15 +675,17 @@ class MultiRunEvaluator:
             if model_name == baseline_model:  # Skip Oracle
                 continue
             winner_efficients[model_name] = model_totals[model_name]['avg_efficiency']
+            win_counts[model_name] = model_totals[model_name]['wins']
 
         oracle_avg_reward = total_oracle_reward / exps_no if total_oracle_reward > 0 else float('nan')
         efficiency_winner = max(winner_efficients, key=winner_efficients.get) if winner_efficients else "N/A"
         
         scenarios_stats[scenario] = {
+            'win_counts': win_counts,
             'total_experiments': exps_no,
-            'win_counts': winner_efficients,
             'all_model_metrics': model_totals,
             'overall_winner': efficiency_winner,
+            'winner_efficients':winner_efficients,
             'oracle_avg_reward': float(oracle_avg_reward),
             'avg_gap': model_totals[efficiency_winner]['avg_gap'] if efficiency_winner in model_totals else 0.0,
             'avg_reward': model_totals[efficiency_winner]['avg_reward'] if efficiency_winner in model_totals else 0.0,
@@ -677,8 +713,11 @@ class MultiRunEvaluator:
                 self.calculate_scenario_winner(comparison_results, scenario)
         
         self.evaluation_results.update({'scenarios_results':self.scenarios_stats})
+        # print(json.dumps(self.evaluation_results, indent=2, default=str))
+        # print(self.evaluation_results.keys())
         self.calculate_scenarios_performance()
         self.generate_key_insights()
+        self.save()
 
 
     def get_evaluation_results(self, scenario=None, exp_id=-1):
@@ -1068,14 +1107,24 @@ class MultiRunEvaluator:
             attack_intensity=self.configs.attack_intensity
         )
 
-        # Allocator (routing layer)
+        # ✅ Allocator (routing layer)
         route_stats = {}
         if hasattr(self.configs, "allocator") and self.configs.allocator is not None:
             qubit_cap = tuple(self.configs.allocator.allocate(
                 timestep=exp_no,
                 route_stats=route_stats
             ))
-        else: qubit_cap = (8, 10, 8, 9)
+        else: 
+            qubit_cap = (8, 10, 8, 9)
+        
+        # ✅ STORE qubit_cap at SCENARIO LEVEL - Don't overwrite!
+        if self.configs.attack_type not in self.runner_qubit_caps:
+            self.runner_qubit_caps[self.configs.attack_type] = {}
+        
+        # Store this experiment's qubit allocation
+        self.runner_qubit_caps[self.configs.attack_type][str(exp_id)] = str(qubit_cap)
+        
+        print(f"🔧 Allocated qubits for {self.configs.attack_type.upper()} Exp {exp_id}: {qubit_cap}")
 
         # Create runner
         runner = QuantumExperimentRunner(
@@ -1089,42 +1138,34 @@ class MultiRunEvaluator:
             attack_intensity=self.configs.attack_intensity,
         )
 
-        # Skip if already completed (resume-safe)
-        if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
-            print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
-            # experiment_results = runner.run_experiment(
-            #     frames_count=self.frames_count,
-            #     models=self.configs.models,
-            #     qubit_cap=qubit_cap
-            # )
-            # del runner
-            # self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
-            # NEEDS TO GO CALL A HELPER METHOD TO DISPLAY RESULTS
-            scaled_cap = self.capacity * self.configs.scale
-            self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
-            return self.env_experiments[self.configs.attack_type][exp_id]
-        else:
-            try:
+        try:
+            # Skip if already completed (resume-safe)
+            if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
+                print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
+                scaled_cap = self.capacity * self.configs.scale
+                self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
+                return self.env_experiments[self.configs.attack_type][exp_id]
+            else:
                 experiment_results = runner.run_experiment(
                     frames_count=self.frames_count,
                     models=self.configs.models,
                     qubit_cap=qubit_cap
                 )
-
                 experiment_results["exp_id"] = exp_id
                 experiment_results["attack_category"] = attack_category
                 self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
-                print(f"Experiment {exp_id} completed successfully.")
-            except Exception as e:
-                print(f"❌ Experiment {exp_id} failed: {e}")
-                raise
+                print(f"✓ Experiment {exp_id} completed successfully.")
+        except Exception as e:
+            print(f"❌ Experiment {exp_id} failed: {e}")
+            raise
 
-            finally:
-                del runner
-                gc.collect()
-                self.save()
+        finally:
+            del runner
+            gc.collect()
+            self.save()
 
         return self.env_experiments[self.configs.attack_type][exp_id]
+
     
     def run_threaded_experiment(self, exp_no, offset=100, models=None, attack_category="Stochastic", attack_rate=0.25, max_workers=2):
         self.update_configs(models=models, attack_rate=attack_rate)
@@ -1146,10 +1187,7 @@ class MultiRunEvaluator:
 
         route_stats = {}
         if hasattr(self.configs, 'allocator') and self.configs.allocator is not None:
-            qubit_cap = tuple(self.configs.allocator.allocate(
-                route_stats=route_stats,
-                timestep=exp_no
-            ))
+            qubit_cap = tuple(self.configs.allocator.allocate(route_stats=route_stats, timestep=exp_no))
         else: qubit_cap = (8, 10, 8, 9)
 
         runner = QuantumExperimentRunner(
@@ -1163,21 +1201,14 @@ class MultiRunEvaluator:
             attack_intensity=self.configs.attack_intensity,
         )
 
-        # Skip if already completed (resume-safe)
-        if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
-            print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
-            #  USE PARALLEL VERSION HERE
-            # experiment_results = runner.run_experiment_parallel(
-            #     frames_count=self.frames_count,
-            #     models=self.configs.models,
-            #     max_workers=max_workers,  # Models run in parallel within this experiment
-            #     qubit_cap=qubit_cap
-            # )
-            scaled_cap = self.capacity * self.configs.scale
-            self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
-            return self.env_experiments[self.configs.attack_type][exp_id]
-        else:
-            try:
+        try:
+            # Skip if already completed (resume-safe)
+            if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
+                print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
+                scaled_cap = self.capacity * self.configs.scale
+                self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
+                return self.env_experiments[self.configs.attack_type][exp_id]
+            else:
                 #  USE PARALLEL VERSION HERE
                 experiment_results = runner.run_experiment_parallel(
                     frames_count=self.frames_count,
@@ -1190,14 +1221,15 @@ class MultiRunEvaluator:
                 experiment_results['attack_category'] = attack_category
                 self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
                 # print(f"Experiment {exp_id} completed successfully")
-            except Exception as e:
-                print(f"Experiment {exp_id} failed: {e}")
-                raise
-            finally:
-                del runner
-                gc.collect()
-                self.save()
-
+        except Exception as e:
+            print(f"Experiment {exp_id} failed: {e}")
+            raise
+        finally:
+            print(exp_id, ": ", runner.key_attrs['qubit_capacities'])
+            self.runner_qubit_caps.update({self.configs.attack_type:{exp_id:runner.key_attrs['qubit_capacities']}})
+            del runner
+            gc.collect()
+            self.save()
         return self.env_experiments[self.configs.attack_type][exp_id]
 
 

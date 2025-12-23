@@ -94,36 +94,30 @@ class QuantumExperimentRunner:
 
     def __eq__(self, other):
         """Defines equality for evaluator or saved dict comparison."""
-        # --- dict comparison (used in resume) ---
         if isinstance(other, dict):
             other_attrs = other.get("key_attrs", {}).copy()
-            # -------------------------------------------------
-            # TEMP FIX: Infer models from saved runner state
-            # -------------------------------------------------
-            # saved_models = self._infer_saved_models(other)
-            # current_models = set(self.configs.models)
-            # if saved_models:
-            #     saved_set = set(saved_models)
-            #     if not current_models.issubset(saved_set):
-            #         print("\n❌ MODEL SET MISMATCH in Runner — forcing rerun")
-            #         print(f"   Current models: {sorted(current_models)}")
-            #         print(f"   Saved models:   {sorted(saved_set)}")
-            #         return False
-                # if not current_models.issubset(saved_set) and not saved_set.issubset(current_models):
-                #     print("\n❌ MODEL SET MISMATCH in Runner — forcing rerun")
-                #     print(f"   Current models: {sorted(current_models)}")
-                #     print(f"   Saved models:   {sorted(saved_set)}")
-                #     return False
-                # elif not current_models.issubset(saved_set) and saved_set.issubset(current_models): self.is_complete = False
-                # elif current_models.issubset(saved_set): self.is_complete = True
             
-            # else:   print("ℹ️ Could not infer saved models for Runner — skipping model check")
+            # Model check - set flag if models differ
+            needs_filtering = False
+            saved_models = self._infer_saved_models(other)
+            current_models = set(self.configs.models)
+            if saved_models:
+                saved_set = set(saved_models)
+                if not current_models.issubset(saved_set):
+                    print("\n❌ MODEL SET MISMATCH in Runner — forcing rerun")
+                    print(f"   Current models: {sorted(current_models)}")
+                    print(f"   Saved models:   {sorted(saved_set)}")
+                    return False
+                # If current is subset but not equal, we need to filter
+                if current_models != saved_set:
+                    needs_filtering = True
+                    print(f"ℹ️  Will filter saved models to: {sorted(current_models)}")
 
             # temp fix
             temp_qubit_capacities = None
             if 'runs' in other_attrs:   del other_attrs['runs']
             if "seed" in other_attrs:   del other_attrs["seed"]
-            if 'runs' in self.key_attrs:del self.key_attrs['runs']
+            if 'runs' in self.key_attrs: del self.key_attrs['runs']
             if "random" in str(self.configs.allocator).lower(): 
                 temp_qubit_capacities = other_attrs['qubit_capacities']
                 del other_attrs['qubit_capacities']
@@ -137,14 +131,16 @@ class QuantumExperimentRunner:
                 self.cap_id == other.get("cap_id") and
                 self.key_attrs == other_attrs
             ):
-                if temp_qubit_capacities: self.key_attrs['qubit_capacities'] = temp_qubit_capacities
-                # if "random" in str(self.configs.allocator).lower(): 
-                #     self.key_attrs.update(other.get("key_attrs", {}))
-                #     for attr, val in self.key_attrs.items():
-                #         if attr in self.configs._env_params.keys(): self.configs._env_params[attr] = val
-                #     # reset environment with random found capacity
-                #     qubit_cap = self.key_attrs['qubit_capacities']
-                #     self._build_environment_once(frames_count=self.frames_count, qubit_cap=qubit_cap)
+                if temp_qubit_capacities: 
+                    self.key_attrs['qubit_capacities'] = temp_qubit_capacities
+                
+                # Filter results if needed
+                if needs_filtering and 'results' in other:
+                    for model in list(other['results'].keys()):
+                        if model not in self.configs.models:
+                            del other['results'][model]
+                    print(f"✅ Filtered results to: {list(other['results'].keys())}")
+                
                 return True
             
             print(f"\n❌ Evaluator comparison failed:")
@@ -174,11 +170,108 @@ class QuantumExperimentRunner:
     def save(self):
         return self.configs.save_obj(self)
     
+    def _resume_from_registry_set(self, registry_set, allow_same_runs=False):
+        """
+        Attempt to resume from any compatible evaluator in registry_set.
+
+        Args:
+            registry_set (dict): Mapping from qubits_alloc → file_name.
+            allow_same_runs (bool): Whether to allow resume from same run count.
+
+        Returns:
+            bool: True if resumed successfully, False otherwise.
+            
+        MODIFIED: Iterates registry_set sorted by FILE SIZE (largest first).
+        """
+        print(f"\t[Resume-RegistrySet] candidates={registry_set.keys()}")
+        
+        # ✅ NEW: Build list of (qubits_alloc, file_size) and sort by size
+        alloc_sizes = []
+        for qubits_alloc, file_name in registry_set.items():
+            try:
+                file_path_str = self.configs.backup_mgr.backup_registry.get(self.component, {}).get(file_name, None)
+                if file_path_str:
+                    file_path = Path(file_path_str)
+                    if file_path.exists():
+                        file_size = file_path.stat().st_size
+                        alloc_sizes.append((qubits_alloc, file_size))
+                        print(f"\t[Resume-RegistrySet] qubits={qubits_alloc}, size={file_size:,} bytes")
+            except Exception as e:
+                print(f"\t[Resume-RegistrySet] Could not get size for {qubits_alloc}: {e}")
+        
+        # Sort by file size (largest first)
+        sorted_allocs = [alloc for alloc, size in sorted(alloc_sizes, key=lambda x: x[1], reverse=True)]
+        print(f"\t[Resume-RegistrySet] Trying allocations in size order (largest first): {sorted_allocs}")
+        
+        # Iterate allocations from largest file to smallest file
+        for qubits_alloc in sorted_allocs:
+            file_name = registry_set[qubits_alloc]
+            print(f"\n\t\t[Resume-RegistrySet] Trying file with qubits {qubits_alloc}: {file_name}")
+            try:
+                # Lookup full path from backup_registry
+                file_path = self.configs.backup_mgr.backup_registry.get(self.component, {}).get(file_name, None)
+                if not file_path:
+                    print(f"\t\t❌ Not found in registry or fallback locations")
+                    continue
+
+                file_path = Path(file_path)
+                obj, loaded = self.configs._load_obj(self, file_path)
+                if loaded:
+                    print(f"\t\t[Resume-RegistrySet] ✅ Successfully resumed from: {file_name}")
+                    self.resumed = True
+                    return True
+            except Exception as e: 
+                print(f"\t\t❌ {e}")
+        
+        print("\t[Resume-RegistrySet] ❌ No valid matches found in registry set.")
+        return False
+
+
+    def _get_relative_set_registry(self):
+        """
+        Builds a relative registry of files that match this runner's
+        core experiment config but differ only by qubit allocation.
+
+        Returns:
+            dict[str, str] → {qubits_alloc: file_name}
+        """
+        registry = self.configs.backup_mgr.backup_registry.get(self.component, {})
+        # pattern to strip trailing '_d+_d+_d+_d+' before the extension
+        pattern = r"_\(\d+_\d+_\d+_\d+\)|\s+"
+        sub_registry = {}
+
+        for file_name in registry.keys():
+            if "runner" not in file_name.lower() or not re.search(r"_\(\d+_\d+_\d+_\d+\)", file_name): continue
+            if self.configs.suffix and (not self.configs.suffix in file_name): continue
+            # print(file_name)
+            if file_name == self.file_name: continue
+            # print(file_name)
+            
+            # remove qubit allocation tail if present
+            _file_name = re.sub(pattern, "", file_name)
+            if self.configs.suffix: _file_name = _file_name.replace(f"_{self.configs.suffix}", "")
+            if re.sub(pattern, "", self.file_name) == _file_name:
+                # part_with_runs = re.sub(r"(_\(\d+_\d+_\d+_\d+\))?\.pkl", "", file_name)
+                match = re.search(r"\((\d+_\d+_\d+_\d+)\)\.pkl", file_name)
+                qubits_alloc = match.group(1) if match else None
+                if qubits_alloc:
+                    print(f"\t\tExtracted qubits_alloc: {qubits_alloc}")
+                    sub_registry[qubits_alloc] = file_name
+        return sub_registry
+
+
     def resume(self):
-        # This now always loads from the correct data lake (or backup if not found)
         if not self.resumed: 
-            if self.configs.resume_obj(self): self.resumed = True
-        return self.resumed 
+            if self.configs.resume_obj(self): 
+                self.resumed = True
+                return self.resumed
+            if self.configs.use_last_backup:
+                print("\t[Resume] exact failed → Looking for relative match")
+                sub_registry = self._get_relative_set_registry()
+                return self._resume_from_registry_set(sub_registry)
+        return self.resumed
+
+
     
     def remove_model(self, model_name):
         if model_name in self.algorithm_configs.keys():
@@ -187,7 +280,8 @@ class QuantumExperimentRunner:
 
     def display_experiment_conditions(self):
         "Display Experiment Conditions"
-        print(f"\n{str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Env:{str(self.environment)}, Attack:{str(self.environment.attack)}, Rate:{self.environment.attack_rate}, Frames:{self.environment.frame_length}, QubitAlloc={str(self.configs.allocator)}, SC:{self.capacity*self.configs.scale} (Scale={self.configs.scale} x Cap={self.capacity}), Seed: {self.experiment_seed}")
+        scaled_capacity = int(self.capacity*self.configs.scale)
+        print(f"\n{str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Env:{str(self.environment)}, Attack:{str(self.environment.attack)}, Rate:{self.environment.attack_rate}, Frames:{self.environment.frame_length}, QubitAlloc={str(self.configs.allocator)}, SC:{scaled_capacity} (Scale={self.configs.scale} x Cap={self.capacity}), Seed: {self.experiment_seed}")
 
     def _build_environment_once(self, frames_count: float, qubit_cap: tuple):
         """
@@ -230,16 +324,27 @@ class QuantumExperimentRunner:
             if t >= env_info['attack_pattern'].shape[0]:
                 print(f"\t⚠️ Frame {t} exceeds attack pattern size {env_info['attack_pattern'].shape[0]}")
                 break
-            path, action = model.take_action()
+            
+            # ✅ FIX: Handle both return types (tuple or int)
+            action_result = model.take_action()
+            
+            if isinstance(action_result, tuple) and len(action_result) == 2:
+                path, action = action_result  # Oracle returns (path, action)
+            else:
+                path = int(action_result)  # LinUCB returns just action
+                action = 0
+            
             base_reward = env_info['reward_functions'][path][action]
             attack_modifier = env_info['attack_pattern'][t][path]
             observed_reward = base_reward * attack_modifier
             model.update(path, action, observed_reward)
             total_reward += observed_reward
+        
         oracle_results = model.get_results()
         if oracle_results and 'final_reward' in oracle_results:
             total_reward = oracle_results['final_reward']
         return float(total_reward)
+
     
     def run_algorithm(self, alg_name: str, enable_progress=False, base_model="Oracle"):
         """
@@ -298,8 +403,7 @@ class QuantumExperimentRunner:
                     try:
                         result = None
                         if enable_progress: self.validate_quantum_model(model)
-                        if runner_type == 'step-wise':
-                            total_reward = float(self.run_step_wise_oracle(env_info, model, self.frames_count, alg_name))
+                        if runner_type == 'step-wise': total_reward = float(self.run_step_wise_oracle(env_info, model, self.frames_count, alg_name))
                         else: result = model.run(attack_list=env_info['attack_pattern'], verbose=enable_progress)
                         if result is None:
                             mr = model.get_results() if hasattr(model, 'get_results') else {}
@@ -318,7 +422,7 @@ class QuantumExperimentRunner:
                             'model_results': model.get_results(),
                             'retries': attempts
                         }
-                        # if model.state == 1: return results, model
+                        if model.resumed: break
                     except Exception as e: 
                         model = None
                         attempts += 1
@@ -536,7 +640,7 @@ class QuantumExperimentRunner:
         print(f"\n\t🔄 {str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Starting {alg_name:<20} in {'parallel' if is_parallel else 'sequence'}...")
 
         overwrite = self.configs.overwrite
-        if alg_name not in self.results:
+        if alg_name not in self.results or self.results[alg_name]["final_reward"] <= 0:
             # self.configs.overwrite = True
             # results, model = self.run_algorithm(alg_name)
             # model = None  # don't keep this reference
@@ -575,7 +679,7 @@ class QuantumExperimentRunner:
                 self.results[alg_name]['efficiency'] = efficiency
                 self.results[alg_name]['gap'] = gap
 
-                if failed_attempts['under_threshold'] >= 3:break
+                if failed_attempts['under_threshold'] >= 3 or (hasattr(temp_model, 'resumed') and temp_model.resumed): break
                 # if failed_attempts['under_threshold'] >= 3 or temp_model.state == 1:break
 
         # 🔐 Save best model after loop (not last model)

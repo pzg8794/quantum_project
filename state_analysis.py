@@ -325,6 +325,37 @@ def cleanup_across_dates_single(root):
     print(f"[✓] {root}: removed {removed} duplicates")
 
 
+def clean_qubit_allocation(qubit_alloc):
+    """
+    Clean qubit allocation from various messy formats to standard tuple string.
+    
+    Input formats:
+    - ('(', '1', '8', ',', ' ', '9', ',', ' ', '6', ',', ' ', '2', ')')
+    - Nested quote mess
+    - Normal tuple: (18, 9, 6, 2)
+    - String: "(18, 9, 6, 2)"
+    
+    Output: "(18, 9, 6, 2)" or original if already clean
+    """
+    if not qubit_alloc:
+        return ""
+    
+    # If it's already a clean tuple, convert to string
+    if isinstance(qubit_alloc, tuple) and all(isinstance(x, int) for x in qubit_alloc):
+        return str(qubit_alloc)
+    
+    # Convert to string if not already
+    alloc_str = str(qubit_alloc)
+    
+    # Extract only digits and commas
+    import re
+    digits = re.findall(r'\d+', alloc_str)
+    
+    if digits:
+        # Reconstruct as clean tuple string
+        return f"({', '.join(digits)})"
+    
+    return ""
 
 
 # ============================================================
@@ -1462,8 +1493,20 @@ def extract_data_from_state_file(state_file_path):
         capacity = float(state.get("capacity"))
         scaled_cap = capacity * t_scale
         cap_type = 'Tb' if bool(state.get("is_base_t")) else "T"
+
+        # Usage in your extraction:
+        qubit_alloc = state.get("key_attrs", {}).get("qubit_capacities", "")
+        qubit_alloc_clean = clean_qubit_allocation(qubit_alloc)
+        if not qubit_alloc_clean:
+            # print(json.dumps(state.get("key_attrs", {}), indent=2))
+            qubit_alloc_clean = clean_qubit_allocation(state.get("qubit_capacities", ""))
+            # print(qubit_alloc_clean)
+
         
         # Get experiment data
+        eval_scen_qubits_caps = get_val(state, "runner_qubit_caps", {})
+        if eval_scen_qubits_caps: print(json.dumps(eval_scen_qubits_caps, indent=2))
+        
         # env_experiments:  dict_keys(['markov', 'stochastic', 'adaptive', 'onlineadaptive', 'none'])
         env_experiments = get_val(state, 'env_experiments', {})
         # evaluation_results:  dict_keys(['stochastic', 'markov', 'adaptive', 'onlineadaptive', 'none', 'scenarios_results'])
@@ -1485,7 +1528,13 @@ def extract_data_from_state_file(state_file_path):
         for scenario_name, experiments in env_experiments.items():
             if not isinstance(experiments, dict): continue
             # scenario_res = evaluation_results.get(scenario_name, {})
+            cenario_qubit_caps = None
             scenerio_attrs = eval_scenrios_results.get(scenario_name, {})
+            scenario_qubits_caps = eval_scen_qubits_caps.get(scenario_name, {})
+            if scenario_qubits_caps: 
+                print(json.dumps(scenario_qubits_caps, indent=2))
+                cenario_qubit_caps = next(iter(scenario_qubits_caps.values()))
+                print(cenario_qubit_caps)
 
             # [1, 2, 3, 4, 5, 'avg_efficiency_stats']
             # print(f"scenarios_results for scenario {scenario_name}: ", scenario_res.keys())
@@ -1608,12 +1657,14 @@ def extract_data_from_state_file(state_file_path):
                 if not results:
                     continue
                 
+                exp_qubits_caps = scenario_qubits_caps.get(exp_id_str) or cenario_qubit_caps
+                if exp_qubits_caps: print(exp_qubits_caps)
                 # exp_data = env_experiments[scenario_name][exp_id_str]
                 
                 # Extract data for each model
                 for model_name, model_data in results.items():
-                    if model_name == 'Oracle':
-                        continue  # Skip oracle
+                    # if model_name == 'Oracle':
+                    #     continue  # Skip oracle
                     
                     # ['final_reward', 'avg_reward', 'algorithm', 'seed', 'frames_count', 'attack_type', 'model_results', 'retries', 'failed_attempts', 'efficiency', 'gap']
                     # print(model_data.keys())
@@ -1627,7 +1678,7 @@ def extract_data_from_state_file(state_file_path):
                         # === SOURCE & METADATA ===
                         'source_file': state.get("file_name"),          # Origin log file
                         'total_time': state.get("total_time"),          # Total execution time
-                        'qubit_caps': state.get("key_attrs").get("qubit_capacities"),  # Qubit allocation
+                        'qubit_caps': exp_qubits_caps or qubit_alloc_clean,  # Qubit allocation
                         
                         # === ENVIRONMENT CONFIG ===
                         'env_type': state.get("key_attrs").get("env_type"),  # Environment type
@@ -1764,7 +1815,7 @@ def convert_key_state_files_to_csv(root_dir, output="", keyword=r"(?=.*MultiRunE
 
 # Update main
 if __name__ == "__main__":
-    cleanup_and_consolidate()
+    # cleanup_and_consolidate()
     # generate_master_csv("Hybrid_Tests")
     # generate_master_csv("EXP3_Tests")
     # generate_master_csv("iCMABs_Tests")
@@ -1772,18 +1823,18 @@ if __name__ == "__main__":
     # print(files)
     # df = convert_state_files_to_csv(path, keyword="MultiRunEvaluator", ext=".pkl")
 
-    # key = "EXP3"
-    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key}.csv"
-    # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
+    key = "EXP3"
+    output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key}.csv"
+    convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
 
-    # key = "iCMABs"
-    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key.replace("i", "")}.csv"
-    # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
+    key = "iCMABs"
+    output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key.replace("i", "")}.csv"
+    convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
 
-    # key = "iCMABs2"
-    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key.replace("2", "")}.csv"
-    # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
+    key = "iCMABs2"
+    output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key.replace("2", "")}.csv"
+    convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
 
-    key = "Tb?"
+    key = r"(3|5)_(\(18_9_6_2\)_)?S\d+([._]\d+)?Tb?"
     output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_Hybrid.csv"
-    # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
+    convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")

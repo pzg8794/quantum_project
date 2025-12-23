@@ -309,7 +309,7 @@ class QuantumEnvironment:
     This class represents a "no attack" baseline scenario by default.
     """
     def __init__(self, attack, qubit_capacities=(8, 10, 8, 9), frame_length=4000, 
-                seed=None, entanglement_success_factor=3000, allocator=None):
+                seed=None, entanglement_success_factor=3000, allocator=None, external_contexts=None, external_rewards=None, external_topology=None):
         # Add allocator support
         self.attack = attack
         self.allocator = allocator
@@ -337,6 +337,16 @@ class QuantumEnvironment:
         self.contexts = self._generate_contexts()
         self.reward_list = self._calculate_path_rewards() # Route performance tracking for dynamic allocation
         self.route_stats = {i: {'pulls': 0, 'successes': 0, 'failures': 0} for i in range(self.num_paths)}
+
+        # ----- External testbed overrides -----
+        # Topology (optional)
+        self.topology = external_topology
+        self.contexts = external_contexts
+        self.reward_list = external_rewards
+        if external_contexts is None: self.contexts = self._generate_contexts()
+        if external_rewards is None: self.reward_list = self._calculate_path_rewards()
+
+
 
 
     def get_route_stats(self):

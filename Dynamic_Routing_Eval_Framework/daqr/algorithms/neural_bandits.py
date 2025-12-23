@@ -103,6 +103,9 @@ class EXPNeuralUCB(QuantumModel):
                 'iCPursuitNeuralUCB': {'stochastic': 0.712, 'adversarial': 0.689}
             }
         
+        # self.apply_testbed_configs()
+
+        
 
     def set_capacity(self, capacity):
         self.capacity = capacity
@@ -338,7 +341,7 @@ class EXPNeuralUCB(QuantumModel):
         if verbose is None: verbose = self.verbose
         
         # Try to resume from saved state
-        if self.overwrite or self.resume():
+        if self.overwrite or (not self.resumed and self.resume()):
             if verbose: print(f"\n\t✓ {self}: Resuming from saved state - skipping execution")
             return  True
         

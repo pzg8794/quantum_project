@@ -78,7 +78,7 @@ class iCMAB(CMAB):
     '''
     Initialize the iCMAB framework
     '''
-    def __init__(self, bandit, n_arms, n_experts, n_features, obs, epsilon=0.1, gamma=0.1, eta=1, learning_rate=0.1, kern=rbf_kernel):
+    def __init__(self, bandit, n_arms, n_features, obs, n_experts=4, epsilon=0.1, gamma=0.1, eta=1, learning_rate=0.1, kern=rbf_kernel, mode="cmab"):
         super().__init__(bandit, n_arms, n_experts, n_features, epsilon, gamma, eta, learning_rate, kern)
         
         self.n_arms = n_arms

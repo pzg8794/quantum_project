@@ -711,7 +711,7 @@ class QuantumEvaluatorVisualizer:
         efficiencies.sort(key=lambda x: x[1], reverse=True)
         models, effs = zip(*efficiencies)
         
-        colors = [self.model_colors.get(model, '#888888') for model in models]
+        colors = [self._get_or_generate_color(model) for model in models]
         bars = ax.bar(models, effs, color=colors, alpha=0.8, edgecolor='black', linewidth=1.5)
         
         ax.set_title('Oracle Efficiency Comparison\n(% of Oracle Performance)', fontweight='bold')
@@ -850,7 +850,20 @@ class QuantumEvaluatorVisualizer:
             ax.legend()
             ax.grid(True, alpha=0.3)
 
-
+    def _get_or_generate_color(self, model_name):
+        """Get existing color or auto-generate for new models."""
+        if model_name in self.model_colors:
+            return self.model_colors[model_name]
+        
+        # Generate consistent color from model name
+        import hashlib, colorsys
+        hash_val = int(hashlib.md5(model_name.encode()).hexdigest(), 16)
+        hue = (hash_val % 360) / 360.0
+        r, g, b = colorsys.hls_to_rgb(hue, 0.5, 0.6)
+        color = f'#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}'
+        self.model_colors[model_name] = color  # Cache it
+        return color
+    
     def _plot_gap_analysis(self, ax, data):
         """Plot oracle gap analysis."""
         gaps = []
@@ -862,7 +875,7 @@ class QuantumEvaluatorVisualizer:
                 model_names.append(model)
 
         if gaps and model_names:
-            colors = [self.model_colors.get(model, 'gray') for model in model_names]
+            colors = [self._get_or_generate_color(model) for model in model_names]
             ax.bar(model_names, gaps, color=colors, alpha=0.7)
             ax.set_ylabel('Oracle Gap (%)')
             ax.set_title('Oracle Gap Analysis\n(Lower = Better)')
@@ -1239,8 +1252,7 @@ class QuantumEvaluatorVisualizer:
         winner = data.get('winner', sorted_names[0])
         
         # Color winner green
-        colors = ['#2ecc71' if model == winner else self.model_colors.get(model, '#3498db') 
-                for model in sorted_names]
+        colors = [self._get_or_generate_color(model) for model in sorted_names]
         
         y_pos = np.arange(len(sorted_names))
         bars = ax.barh(y_pos, sorted_efficiencies, color=colors, alpha=0.8, 
@@ -1282,7 +1294,7 @@ class QuantumEvaluatorVisualizer:
             ax.set_axis_off()
             return
         
-        colors = [self.model_colors.get(model, '#888888') for model in models]
+        colors = [self._get_or_generate_color(model) for model in models]
         
         bars = ax.bar(models, efficiencies, color=colors, alpha=0.8, edgecolor='black', linewidth=1.5)
         ax.set_title('Oracle Efficiency Comparison\n(% of Oracle Performance)', fontweight='bold')
@@ -1322,7 +1334,7 @@ class QuantumEvaluatorVisualizer:
             model_data = results['results'][model]
             if reward_type in model_data:
                 values = model_data[reward_type]
-                color = self.model_colors.get(model, '#888888')
+                color = self._get_or_generate_color(model)
                 ax.plot(values, label=model, color=color, linewidth=2, alpha=0.8)
                 plot_count += 1
         
@@ -1389,7 +1401,7 @@ class QuantumEvaluatorVisualizer:
             ax.set_axis_off()
             return
         
-        colors = [self.model_colors.get(model, '#888888') for model in models]
+        colors = [self._get_or_generate_color(model) for model in models]
         
         bars = ax.bar(models, gaps, color=colors, alpha=0.8, 
                     edgecolor='black', linewidth=1.5)

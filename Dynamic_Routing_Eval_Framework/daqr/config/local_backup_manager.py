@@ -207,7 +207,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
         # 1. Try local cached registry
         # ------------------------------------------------------------
         file = self.registry_file_paths[self.mode].with_suffix('.json')
-        if not force and Path(file).exists():
+        if not force and Path(file).exists() and self.in_share_drive:
             try:
                 print("→ Attempting to load local registry cache...")
                 with open(file, "r") as f: self.backup_registry = json.load(f)

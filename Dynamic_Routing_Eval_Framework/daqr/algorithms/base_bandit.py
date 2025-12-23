@@ -59,7 +59,7 @@ class QuantumModel(ABC):
     Enhanced minimal interface that every model (policy/algorithm) in the quantum environment obeys.
     Keep methods generic so both 'step-wise' (Oracle) and 'batch' (EXPNeuralUCB) fit.
     """
-    def __init__(self, configs, X_n, reward_list, frame_number, attack_list=[], capacity=10000, mode='base', beta=0.2, gamma_factor=0.01, eta_factor=0.05, lamb=1):
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list=[], capacity=10000, mode='base', beta=0.2, gamma_factor=0.01, eta_factor=0.05, lamb=1, n_experts=4):
         super().__init__()
 
         # Directory structure setup
@@ -118,6 +118,34 @@ class QuantumModel(ABC):
         #     try:                    
         #         if self.resume(): self.state = 1
         #     except Exception as e:  print(f"⚠️ Resume failed: {e}")
+    
+    def apply_testbed_configs(self):
+        """
+        Applies testbed parameters safely:
+        - Only assign parameters this model already defines.
+        - Prevents unexpected attributes from breaking other models.
+        """
+        # Debug print to confirm testbed application
+        print(f"\n[TESTBED] Applying testbed params to {self}")
+        if not hasattr(self.configs, "get_testbed_config"):
+            return
+
+        params = self.configs.get_testbed_config()
+        current_params = self.configs.algorithm_configs.get(str(self), {})
+        if not params:
+            print(f"\n[TESTBED] Applying testbed params to {self}: NO PARAMS")
+            return
+
+        # Debug print to confirm testbed application
+        print(f"\n[TESTBED] Applying testbed params to {self}: {params}")
+
+        for key, value in params.items():
+            if hasattr(self, key):
+                print(f"[TESTBED]   • Setting {key} = {value}")   # Debug line
+                setattr(self, key, value)
+            else:
+                print(f"[TESTBED]   • Skipping {key} (model does not define it)")
+
 
     def set_id(self, id):
         self.id = id
@@ -562,25 +590,68 @@ class UCB(RandomAlg):
 
 # Linear Upper Confidence Bound (LinUCB) Algorithm
 class LinUCB(RandomAlg):
-    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, K, d, beta=1, lamb=1, **kwargs):
+    def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, K=4, d=2, beta=1, lamb=1, **kwargs):
         super().__init__(configs, X_n, reward_list, frame_number, attack_list, capacity, K, **kwargs)
+        
+        K = len(self.X_n)  # Number of paths = 4
+        d = max(self.X_n[i].shape[1] for i in range(K))  # Max feature dimension across all paths
+        
         self.sigma_inv = lamb * np.eye(d)
         self.b = np.zeros((d, 1))
         self.beta = beta
+        self.d = d
+        self.K = K
+        self.frame_counter = 0
 
-    def take_action(self, context):
-        theta = self.sigma_inv @ self.b
-        p = np.matmul(context[:, None, :], theta) + self.beta * np.sqrt(
-            np.matmul(np.matmul(context[:, None, :], self.sigma_inv), context[:, :, None]))
-        action = np.argmax(p)
+    def _build_context_batch(self):
+        """
+        Build a context matrix from X_n by sampling one allocation per path.
+        Returns shape (K, d) where K=4 paths
+        """
+        contexts = []
+        for path_id in range(self.K):
+            # Sample random allocation from this path
+            sample_idx = np.random.randint(0, len(self.X_n[path_id]))
+            ctx = self.X_n[path_id][sample_idx]  # shape (d_path,)
+            contexts.append(ctx)
+        
+        # Pad to consistent dimension
+        context = np.zeros((self.K, self.d))
+        for i, ctx in enumerate(contexts):
+            context[i, :len(ctx)] = ctx
+        
+        return context  # shape (K, d)
+
+    def take_action(self, context=None):
+        """Get context from X_n and select best action per path"""
+        context = self._build_context_batch()  # shape (K, d)
+        theta = self.sigma_inv @ self.b  # shape (d, 1)
+        
+        # UCB calculation: mu + beta * sqrt(uncertainty)
+        ucb_scores = np.matmul(context, theta) + self.beta * np.sqrt(
+            np.matmul(context @ self.sigma_inv, context.T).diagonal()[:, None]
+        )
+        
+        action = int(np.argmax(ucb_scores))  # Pick best path (0-3)
         return action
 
-    def update(self, context, action, reward):
-        self.sherman_morrison_update(context[action, :, None])
-        self.b += context[action, :, None] * reward
+    def update(self, context=None, action=0, reward=0):
+        """Update beliefs after observing reward"""
+        action = int(action)
+        context = self._build_context_batch()  # Get fresh context
+        selected_ctx = context[action]  # shape (d,)
+        
+        self.sherman_morrison_update(selected_ctx[:, None])
+        self.b += selected_ctx[:, None] * reward
+        self.frame_counter += 1
 
     def sherman_morrison_update(self, v):
-        self.sigma_inv -= (self.sigma_inv @ v @ v.T @ self.sigma_inv) / (1 + v.T @ self.sigma_inv @ v)
+        """Rank-1 update to inverse covariance"""
+        numerator = self.sigma_inv @ v @ v.T @ self.sigma_inv
+        denominator = 1 + v.T @ self.sigma_inv @ v
+        self.sigma_inv = self.sigma_inv - (numerator / denominator)
+
+
 
 class TS(RandomAlg):
     def __init__(self, configs, X_n, reward_list, frame_number, attack_list, capacity, K, **kwargs):

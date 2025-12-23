@@ -4,8 +4,8 @@ from daqr.core.network_environment        import AdversarialQuantumEnvironment, 
 from daqr.algorithms.predictive_bandits    import iCEXP4, iCEpochGreedy, iCEpsilonGreedy, iCKernelUCB, iCThompsonSampling
 from daqr.algorithms.predictive_bandits    import CEXP4, CEpochGreedy, CEpsilonGreedy, CKernelUCB, CThompsonSampling
 from daqr.algorithms.predictive_bandits    import Oracle, GNeuralUCB, EXPUCB, EXPNeuralUCB, LinUCB, CEXPNeuralUCB 
-from daqr.algorithms.predictive_bandits    import UCB, RandomAlg, TS, LinTS, LinUCB, iCPursuitNeuralUCB, NeuralTS
 from daqr.algorithms.predictive_bandits    import CPursuitNeuralUCB, CPursuit, iCPursuit, QuantumModel, NeuralUCB
+from daqr.algorithms.predictive_bandits    import UCB, RandomAlg, TS, LinTS, iCPursuitNeuralUCB, NeuralTS
 from daqr.core.qubit_allocator import *
 
 import  copy, os, re
@@ -21,20 +21,24 @@ class ExperimentConfiguration:
     """
     Configuration holder for quantum experiments.
     """
-    def __init__(self, runs=1, seed_offset=100, env_type="stochastic", attack_type="markov", attack_intensity=1.0, attack_rate=0.25, models=None, scenarios=None, allocator=None, base_seed=12345, scale=2, base_capacity=True, overwrite=False, resume=True, use_last_backup=True, verbose=False):
+    def __init__(self, runs=1, seed_offset=100, env_type="stochastic", attack_type="markov", suffix=None, attack_intensity=1.0, attack_rate=0.25, models=None, scenarios=None, allocator=None, base_seed=12345, scale=2, base_capacity=True, overwrite=False, resume=True, use_last_backup=True, verbose=False, testbed_id=None):
         
         self.allocator = allocator if allocator else QubitAllocator()  # Default to fixed
 
         # =============================================================================
         # MODEL NAME COLLECTIONS FOR TESTING
         # =============================================================================
-        self.verbose = verbose
+        self.suffix = suffix
         self.resumed = resume
+        self.verbose = verbose
         self.base_model = None
         self._env_params = None
         self.environment = None
         self.overwrite = overwrite
+        self.testbed_id = testbed_id
         self.seed_offset = seed_offset
+        if not self.suffix and self.testbed_id: self.suffix = ""
+        if self.testbed_id: self.suffix+="_"+f"{self.testbed_id}"
         self.dir = Path(os.path.dirname(os.path.abspath(__file__)))
         
         self.runs               = runs
@@ -189,37 +193,99 @@ class ExperimentConfiguration:
             'EXPNeuralUCB': {
                 'model_class': EXPNeuralUCB,     'seed_offset': seed_offset * 5, 'kwargs': {'mode': 'hybrid', 'gamma_factor': 0.01, 'eta_factor': 0.05, 'beta': 1.0},'runner_type': 'batch'},
             'CPursuitNeuralUCB': {
-                'model_class': CPursuitNeuralUCB,'seed_offset': seed_offset * 6, 'kwargs': {'mode': 'neural', 'learning_rate': 0.1, 'beta': 1.0}, 'runner_type': 'batch'},
+                'model_class': CPursuitNeuralUCB,'seed_offset': seed_offset * 6, 'kwargs': {'mode': 'neural', 'beta': 1.0}, 'runner_type': 'batch'},
             'iCPursuitNeuralUCB': {
-                'model_class':iCPursuitNeuralUCB,'seed_offset': seed_offset * 7, 'kwargs': {'mode': 'neural', 'learning_rate': 0.1, 'beta': 1.0, 'gamma_factor': 0.1,'eta_factor' : 0.005, 'obs': None}, 'runner_type': 'batch'},
+                'model_class':iCPursuitNeuralUCB,'seed_offset': seed_offset * 7, 'kwargs': {'mode': 'neural', 'beta': 1.0, 'gamma_factor': 0.1,'eta_factor' : 0.005, 'obs': None}, 'runner_type': 'batch'},
             'CEpsilonGreedy': {
-                'model_class': CEpsilonGreedy,   'seed_offset': seed_offset * 8, 'kwargs': {'mode': 'hybrid', 'epsilon': 0.1, 'n_experts': 4}, 'runner_type':  'step-wise'},
+                'model_class': CEpsilonGreedy,   'seed_offset': seed_offset * 8, 'kwargs': {'mode': 'hybrid'}, 'runner_type':  'step-wise'},
             'CEXP4': {
-                'model_class': CEXP4,            'seed_offset': seed_offset * 9, 'kwargs': {'mode': 'hybrid', 'gamma': 0.1, 'n_experts': 4}, 'runner_type':  'step-wise'},
+                'model_class': CEXP4,            'seed_offset': seed_offset * 9, 'kwargs': {'mode': 'hybrid'}, 'runner_type':  'step-wise'},
             'CPursuit': {
-                'model_class': CPursuit,         'seed_offset': seed_offset * 10,'kwargs': {'mode': 'hybrid', 'learning_rate': 0.1, 'n_experts': 4}, 'runner_type':  'step-wise'},
+                'model_class': CPursuit,         'seed_offset': seed_offset * 10,'kwargs': {'mode': 'hybrid'}, 'runner_type':  'step-wise'},
             'CEpochGreedy': {
-                'model_class': CEpochGreedy,     'seed_offset': seed_offset * 11,'kwargs': {'mode': 'hybrid', 'n_experts': 4}, 'runner_type': 'step-wise'},
+                'model_class': CEpochGreedy,     'seed_offset': seed_offset * 11,'kwargs': {'mode': 'hybrid'}, 'runner_type': 'step-wise'},
             'CThompsonSampling': {
-                'model_class': CThompsonSampling,'seed_offset': seed_offset * 12,'kwargs': {'mode': 'hybrid', 'n_experts': 4}, 'runner_type': 'step-wise'},
+                'model_class': CThompsonSampling,'seed_offset': seed_offset * 12,'kwargs': {'mode': 'hybrid'}, 'runner_type': 'step-wise'},
             'CKernelUCB': {
-                'model_class': CKernelUCB,       'seed_offset': seed_offset * 13,'kwargs': {'mode': 'hybrid',  'gamma': 0.1, 'eta': 1.0, 'n_experts': 4}, 'runner_type': 'step-wise'},
+                'model_class': CKernelUCB,       'seed_offset': seed_offset * 13,'kwargs': {'mode': 'hybrid'}, 'runner_type': 'step-wise'},
             'iCEpsilonGreedy': {
-                'model_class': iCEpsilonGreedy,  'seed_offset': seed_offset * 14,'kwargs': {'mode': 'hybrid',  'epsilon': 0.1, 'n_experts': 4}, 'runner_type':  'step-wise'},
+                'model_class': iCEpsilonGreedy,  'seed_offset': seed_offset * 14,'kwargs': {'mode': 'hybrid','n_experts': 4}, 'runner_type':  'step-wise'},
             'iCEXP4': {
-                'model_class': iCEXP4,           'seed_offset': seed_offset * 15,'kwargs': {'mode': 'hybrid', 'gamma': 0.1, 'n_experts': 4}, 'runner_type':  'step-wise'},
+                'model_class': iCEXP4,           'seed_offset': seed_offset * 15,'kwargs': {'mode': 'hybrid','n_experts': 4}, 'runner_type':  'step-wise'},
             'iCPursuit': {
-                'model_class': iCPursuit,        'seed_offset': seed_offset * 16,'kwargs': {'mode': 'hybrid', 'learning_rate': 0.1, 'n_experts': 4}, 'runner_type':  'step-wise'},
+                'model_class': iCPursuit,        'seed_offset': seed_offset * 16,'kwargs': {'mode': 'hybrid','n_experts': 4}, 'runner_type':  'step-wise'},
             'iCEpochGreedy': {
                 'model_class': iCEpochGreedy,    'seed_offset': seed_offset * 17,'kwargs': {'mode': 'hybrid','n_experts': 4}, 'runner_type': 'step-wise'},
             'iCThompsonSampling': {
-                'model_class':iCThompsonSampling,'seed_offset': seed_offset * 18,'kwargs': {'mode': 'hybrid', 'n_experts': 4}, 'runner_type': 'step-wise'},
+                'model_class':iCThompsonSampling,'seed_offset': seed_offset * 18,'kwargs': {'mode': 'hybrid','n_experts': 4}, 'runner_type': 'step-wise'},
             'iCKernelUCB': {
-                'model_class': iCKernelUCB,      'seed_offset': seed_offset * 19,'kwargs': {'mode': 'hybrid','gamma': 0.1, 'eta': 1.0, 'n_experts': 4}, 'runner_type':  'step-wise'},
+                'model_class': iCKernelUCB,      'seed_offset': seed_offset * 19,'kwargs': {'mode': 'hybrid','eta': 1.0}, 'runner_type':  'step-wise'},
             'LinUCB': {
-                'model_class': LinUCB,           'seed_offset': seed_offset * 20,'kwargs': {'mode': 'neural', 'alpha': 1.0, 'lambda_reg': 1.0, 'n_features': 6, 'quantum_state_dim': 6, 'entanglement_aware': True, 'prediction_window': 10, 'anomaly_threshold': 0.2}, 'runner_type': 'step-wise'},
+                'model_class': LinUCB,           'seed_offset': seed_offset * 20,'kwargs': {'mode': 'neural', 'K':4, 'd':2, 'beta': 1.0}, 'runner_type': 'step-wise'},
             'CEXPNeuralUCB': {
-                'model_class': CEXPNeuralUCB,    'seed_offset': seed_offset * 21,'kwargs': {'mode': 'neural', 'beta': 1.0, 'n_experts': 4}, 'runner_type': 'batch'}
+                'model_class': CEXPNeuralUCB,    'seed_offset': seed_offset * 21,'kwargs': {'mode': 'neural', 'beta': 1.0}, 'runner_type': 'batch'},
+        }
+
+        self.PAPER_CONFIGS = {
+            2: {
+                "name": "Paper2_UCB_2023",
+                "n_arms": 8,
+                "total_frames": 1400,
+                "noise_mode": "depolarizing",
+                # Model-only parameters (passed into Paper2UCBBandit)
+                "model_params": {
+                    "n_nodes": 15,
+                    "fidelity_threshold": 0.582,
+                    "synchronized_swapping": True
+                }
+            },
+
+            5: {
+                "name": "Paper5_Feedback_2025",
+                "n_arms": 10,
+                "total_frames": 2000,
+                "model_params": {
+                    "feedback_type": "combined"
+                }
+            },
+
+            7: {
+                "name": "Paper7_QBGP_2024",
+                "n_arms": 15,
+                "total_frames": 2000,
+                "model_params": {
+                    "k": 5,
+                    "n_qisps": 3,
+                    "network_scale": "large"
+                }
+            },
+
+            8: {
+                "name": "Paper8_DQN_2025",
+                "n_arms": 8,
+                "total_frames": 1500,
+                "model_params": {
+                    "learning_rate": 0.01
+                }
+            },
+
+            12: {
+                "name": "Paper12_QuARC_2024",
+                "n_arms": 10,
+                "total_frames": 2000,
+                "model_params": {
+                    "n_clusters": 3
+                }
+            },
+            99: {
+                "name": "TESTBED_TINY",
+                "n_arms": 2,
+                "base_frames": 10,
+                "model_params": {
+                    "K": 2,               # EXPNeuralUCB param
+                    "alpha": 0.8
+                }
+            }
         }
 
         self.use_last_backup = use_last_backup
@@ -229,91 +295,23 @@ class ExperimentConfiguration:
         self._build_backup_registry(force=self.overwrite)
         # print( self.backup_registry.keys())
 
-        
-        # self.runs_id      = self.runs
-        # self.allocator_id = str(self.allocator)
-        # self.env_id       = str(self.environment)
-        # self.attack_id    = self.attack_strategy
-        # self.cap_id       = (int(self.base_frames if self.configs.base_capacity else self.frames_count)*self.configs.scale)
-        # self.file_name = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{self.base_frames}_{int(self.frame_step)}_{self.runs_id}.pkl"
+    def get_testbed_config(self):
+        print(f"\n[TESTBED] Applying testbed params CONFIG")
+        if hasattr(self, "testbed_id") and self.testbed_id in self.PAPER_CONFIGS:
+            return self.PAPER_CONFIGS[self.testbed_id]
+        return None
 
     def set_log_name(self, base_frames, frame_step):
         scenarios_no        = len(self.test_scenarios)
-        has_stochastic_env  = "stochastic" in self.test_scenarios
-        has_adversarial_env = "Adversarial" in self.test_scenarios
+        # has_stochastic_env  = "stochastic" in self.test_scenarios
+        # has_adversarial_env = "Adversarial" in self.test_scenarios
         attack_id           = f"{scenarios_no}_attacks" if scenarios_no > 0 else self.attack_type
-        env_id              = "all_envs" if (has_stochastic_env and has_adversarial_env) else self.environment 
-        self.log_name       = f"quantum_exps-{self.allocator}_alloc-{'all_envs'}-{attack_id}-{base_frames}_{int(frame_step)}-{self.runs}_runs-S{self.scale}{'Tb' if self.base_capacity else 'T'}"
+        allocator_or_exp    = str(self.allocator) if not self.suffix else f"{self.allocator}({self.suffix})"
+        # env_id              = "all_envs" if (has_stochastic_env and has_adversarial_env) else self.environment 
+        self.log_name       = f"quantum_exps-{allocator_or_exp}_alloc-{'all_envs'}-{attack_id}-{base_frames}_{int(frame_step)}-{self.runs}_runs-S{self.scale}{'Tb' if self.base_capacity else 'T'}"
         print(self.log_name)
         return True
 
-    # def _get_random_runtime_qubits(self, old_eval_file_name=None, file_qubits=None):
-    #     """
-    #     Scans the registry for a matching Random allocator file with the same 
-    #     run parameters (Base, Step, Runs) and picks a valid qubit allocation tuple.
-    #     """
-    #     print("\n\t⚡ Random allocator detected → scanning registry for qubit allocation")
-
-    #     # If we've already found it once, reuse it to ensure consistency within this session
-    #     if self.random_runtime_qubits or not old_eval_file_name: return f"_{self.random_runtime_qubits}"
-
-    #     candidates = []
-    #     pattern = re.compile(r"\(\d+_\d+_\d+_\d+\)")
-    #     try:
-    #         # 1. Parse parameters from the CURRENT filename (old_eval_file_name) we are trying to match
-    #         # Expecting format like: MultiRunEvaluator_800-allocRandom_env_stochastic-4000_200_10.pkl
-    #         core = old_eval_file_name.replace(".pkl", "")
-    #         _, rest = core.split("_", 1)
-    #         parts = rest.split("-")
-            
-    #         # parts[2] should contain "4000_200_10" or similar
-    #         last_params = parts[2]
-            
-    #         # Extract Base, Step, Runs
-    #         target_match = re.search(r"(\d+)_(\d+)_(\d+)", last_params)
-    #         if not target_match:
-    #             print(f"\t  ⚠️ Could not parse params from {old_eval_file_name}. Aborting random match.")
-    #             return ""
-            
-    #         target_base, target_step, target_runs = target_match.groups()
-    #         print(f"\t  🎯 Looking for Random evaluators with: Base={target_base}, Step={target_step}, Runs={target_runs}")
-
-    #     except Exception as e:
-    #         print(f"\t  ⚠️ Error parsing target filename: {e}")
-    #         return ""
-
-    #     # 2. Scan registry for candidates
-    #     for comp, file_map in self.backup_registry.items():
-    #         # Skip model states, we only care about Evaluator files for the allocation source
-    #         if comp == "model_state": continue
-            
-    #         for fname, path in file_map.items():
-    #             # Must be a MultiRunEvaluator file
-    #             found_evaluator = "MultiRunEvaluator" in fname
-    #             if not found_evaluator: continue
-
-    #             # Must be a Random allocator file
-    #             parts = fname.split("-")
-    #             if len(parts) < 2 or ("Random" not in parts[1] and "random" not in parts[1].lower()): continue
-
-    #             # Must contain a valid qubit tuple (x_x_x_x)
-    #             match = pattern.search(fname)
-    #             if not match: continue
-                
-    #             # Must match the numeric parameters (Base_Step_Runs)
-    #             # We construct the signature to look for
-    #             param_sig = f"{target_base}_{target_step}_{target_runs}"
-    #             if param_sig in fname: candidates.append(match.group(0))
-    #                 # print(f"\t  ✅ Candidate found: {match.group(0)}")
-
-    #     # 3. Select a candidate
-    #     if candidates:
-    #         self.random_runtime_qubits = random.choice(candidates)
-    #         print(f"\t  🎲 Selected random allocation from {len(candidates)} candidates: {self.random_runtime_qubits}")
-    #         return f"_{self.random_runtime_qubits}"
-    #     else:
-    #         print("\t  ❌ No matching Random evaluators found in registry.")
-    #         return f"_{file_qubits}"
 
     def generate_expected_keys(self, evaluator_filename: str):
         """
@@ -496,23 +494,120 @@ class ExperimentConfiguration:
         if len(self.backup_registry) != 0: self._build_backup_registry(force=False)
         return results
     
+    # def _get_random_runtime_qubits(self, filename=None, file_qubits=None, component_type="MultiRunEvaluator"):
+    #     """
+    #     Scans the registry for a matching Random file (Evaluator or Runner) with the same
+    #     run parameters (stem) and picks a valid qubit allocation tuple.
+    #     """
+    #     # If this is an Evaluator and we already have a global choice, stick to it to ensure consistency.
+    #     if self.random_runtime_qubits and component_type == "MultiRunEvaluator": return f"_{self.random_runtime_qubits}"
+    #     if not filename: return f"_{self.random_runtime_qubits}" if self.random_runtime_qubits else ""
+    #     print(f"\n\t⚡ Random {component_type} detected → scanning registry for substitute")
+
+    #     candidates = []
+    #     eval_suffix = f"_{self.st}" if "evaluator" in component_type.lower() else ""
+    #     pattern = re.compile(fr"\(\d+_\d+_\d+_\d+\){eval_suffix}")
+
+    #     try:
+    #         # 1. Generate 'Search Stem' by stripping the qubit tuple from the filename
+    #         #    This stem (e.g., "MultiRunEvaluator_...-4000_200_10") represents the unique run config.
+    #         if file_qubits: search_stem = filename.replace(f"_{file_qubits}", "").replace(file_qubits, "")
+    #         else:
+    #             match = pattern.search(filename)
+    #             if match: search_stem = filename.replace(f"_{match.group(0)}", "").replace(match.group(0), "")
+    #             else: search_stem = filename
+            
+    #         search_stem = search_stem.replace(".pkl", "")
+    #         # print(f"\t  🎯 Search stem: {search_stem}")
+
+    #     except Exception as e:
+    #         print(f"\t  ⚠️ Error parsing filename {filename}: {e}")
+    #         return ""
+
+    #     # 2. Scan registry for candidates matching the stem
+    #     registry_section = "framework_state" # Evaluators and Runners are both here
+        
+    #     if registry_section in self.backup_registry:
+    #         for fname, path in self.backup_registry[registry_section].items():
+    #             # Must match the component type (Evaluator vs Runner)
+    #             if component_type not in fname: continue
+                
+    #             # Must be Random allocator
+    #             if "Random" not in fname and "random" not in fname.lower(): continue
+                
+    #             # Must contain a valid qubit tuple
+    #             match = pattern.search(fname)
+    #             if not match: continue
+                
+    #             # Create candidate stem to compare
+    #             candidate_qubits = match.group(0)
+    #             candidate_stem = fname.replace(f"_{candidate_qubits}", "").replace(candidate_qubits, "").replace(".pkl", "")
+                
+    #             # Fuzzy match: check if stems are effectively identical
+    #             if search_stem == candidate_stem: candidates.append(candidate_qubits)
+
+    #     # 3. Select a candidate
+    #     if candidates:
+    #         selected = random.choice(candidates)
+    #         print(f"\t  🎲 Selected random substitute from {len(candidates)} candidates: {selected}")
+    #         # If this was the Evaluator, lock it in globally for this session
+    #         if component_type == "MultiRunEvaluator": self.random_runtime_qubits = selected
+    #         return f"_{selected}"
+    #     else:
+    #         print(f"\t  ❌ No matching {component_type} found in registry.")
+    #         # Fallback: return the original one (if it existed) or empty
+    #         return f"_{file_qubits}{eval_suffix}" if file_qubits else ""
+
+    # def _resolve_random_filename(self, item_v):
+    #     """
+    #     If using Random Allocator, reconstruct the filename to match a valid 
+    #     random file from the registry (handling missing Runners or Evaluators).
+    #     """
+    #     if not self.is_random_alloc:
+    #         return item_v
+            
+    #     # Determine component type
+    #     if "MultiRunEvaluator" in item_v: comp_type = "MultiRunEvaluator"
+    #     elif "QuantumExperimentRunner" in item_v: comp_type = "QuantumExperimentRunner"
+    #     else: return item_v # Models don't need this logic yet
+            
+    #     # Extract existing qubits from item_v if present
+        
+    #     eval_suffix = f"_{self.st}" if "evaluator" in comp_type.lower() else ""
+    #     pattern = re.compile(fr"\(\d+_\d+_\d+_\d+\){eval_suffix}")
+    #     match = pattern.search(item_v)
+    #     file_qubits = match.group(0) if match else None
+        
+    #     # Get a valid tuple (either existing global, or new random substitute)
+    #     resolved_suffix = self._get_random_runtime_qubits(item_v, file_qubits, comp_type)
+        
+    #     # Construct new filename
+    #     if not resolved_suffix: return item_v # Failed to resolve, try original
+
+    #     if file_qubits: new_item_v = item_v.replace(f"_{file_qubits}", resolved_suffix)
+    #     else: new_item_v = item_v.replace(".pkl", f"{resolved_suffix}.pkl")
+             
+    #     # Cleanup potential double underscores
+    #     return re.sub(r"__", "_", new_item_v)
+
     def _get_random_runtime_qubits(self, filename=None, file_qubits=None, component_type="MultiRunEvaluator"):
         """
         Scans the registry for a matching Random file (Evaluator or Runner) with the same
-        run parameters (stem) and picks a valid qubit allocation tuple.
+        run parameters (stem) and picks the LARGEST valid file by size.
+        
+        MODIFIED: Sorts candidates by file size (largest first) instead of random choice.
         """
         # If this is an Evaluator and we already have a global choice, stick to it to ensure consistency.
         if self.random_runtime_qubits and component_type == "MultiRunEvaluator": return f"_{self.random_runtime_qubits}"
         if not filename: return f"_{self.random_runtime_qubits}" if self.random_runtime_qubits else ""
         print(f"\n\t⚡ Random {component_type} detected → scanning registry for substitute")
 
-        candidates = []
+        candidates = {}  # ✅ CHANGED: dict to store qubit_alloc → file_name
         eval_suffix = f"_{self.st}" if "evaluator" in component_type.lower() else ""
         pattern = re.compile(fr"\(\d+_\d+_\d+_\d+\){eval_suffix}")
 
         try:
             # 1. Generate 'Search Stem' by stripping the qubit tuple from the filename
-            #    This stem (e.g., "MultiRunEvaluator_...-4000_200_10") represents the unique run config.
             if file_qubits: search_stem = filename.replace(f"_{file_qubits}", "").replace(file_qubits, "")
             else:
                 match = pattern.search(filename)
@@ -520,14 +615,13 @@ class ExperimentConfiguration:
                 else: search_stem = filename
             
             search_stem = search_stem.replace(".pkl", "")
-            # print(f"\t  🎯 Search stem: {search_stem}")
 
         except Exception as e:
             print(f"\t  ⚠️ Error parsing filename {filename}: {e}")
             return ""
 
         # 2. Scan registry for candidates matching the stem
-        registry_section = "framework_state" # Evaluators and Runners are both here
+        registry_section = "framework_state"
         
         if registry_section in self.backup_registry:
             for fname, path in self.backup_registry[registry_section].items():
@@ -546,12 +640,38 @@ class ExperimentConfiguration:
                 candidate_stem = fname.replace(f"_{candidate_qubits}", "").replace(candidate_qubits, "").replace(".pkl", "")
                 
                 # Fuzzy match: check if stems are effectively identical
-                if search_stem == candidate_stem: candidates.append(candidate_qubits)
+                if search_stem == candidate_stem: 
+                    candidates[candidate_qubits] = fname  # ✅ Store as dict
 
-        # 3. Select a candidate
+        # 3. Select a candidate - sort by file size (largest first)
         if candidates:
-            selected = random.choice(candidates)
-            print(f"\t  🎲 Selected random substitute from {len(candidates)} candidates: {selected}")
+            print(f"\t  🔍 Found {len(candidates)} matching candidates")
+            
+            # ✅ NEW: Build list of (qubits, file_size) and sort by size
+            candidate_sizes = []
+            for qubits, fname in candidates.items():
+                try:
+                    file_path_str = self.backup_registry[registry_section].get(fname)
+                    if file_path_str:
+                        file_path = Path(file_path_str)
+                        if file_path.exists():
+                            file_size = file_path.stat().st_size
+                            candidate_sizes.append((qubits, file_size, fname))
+                            print(f"\t    - {qubits}: {file_size:,} bytes")
+                except Exception as e:
+                    print(f"\t    - {qubits}: Could not get size - {e}")
+            
+            if candidate_sizes:
+                # Sort by size (largest first) and pick the biggest
+                candidate_sizes.sort(key=lambda x: x[1], reverse=True)
+                selected = candidate_sizes[0][0]  # Get qubit allocation from largest
+                print(f"\t  ✅ Selected LARGEST: {selected} ({candidate_sizes[0][1]:,} bytes)")
+            else:
+                # Fallback to random if size check fails for all
+                print(f"\t  ⚠️ Size check failed for all candidates, using random fallback")
+                selected = random.choice(list(candidates.keys()))
+                print(f"\t  🎲 Random fallback: {selected}")
+            
             # If this was the Evaluator, lock it in globally for this session
             if component_type == "MultiRunEvaluator": self.random_runtime_qubits = selected
             return f"_{selected}"
@@ -559,6 +679,7 @@ class ExperimentConfiguration:
             print(f"\t  ❌ No matching {component_type} found in registry.")
             # Fallback: return the original one (if it existed) or empty
             return f"_{file_qubits}{eval_suffix}" if file_qubits else ""
+
 
     def _resolve_random_filename(self, item_v):
         """
@@ -574,7 +695,6 @@ class ExperimentConfiguration:
         else: return item_v # Models don't need this logic yet
             
         # Extract existing qubits from item_v if present
-        
         eval_suffix = f"_{self.st}" if "evaluator" in comp_type.lower() else ""
         pattern = re.compile(fr"\(\d+_\d+_\d+_\d+\){eval_suffix}")
         match = pattern.search(item_v)
@@ -588,15 +708,17 @@ class ExperimentConfiguration:
 
         if file_qubits: new_item_v = item_v.replace(f"_{file_qubits}", resolved_suffix)
         else: new_item_v = item_v.replace(".pkl", f"{resolved_suffix}.pkl")
-             
+            
         # Cleanup potential double underscores
         return re.sub(r"__", "_", new_item_v)
+
 
     def get_latest_state(self, item_k, item_v):
         """
         Retrieves the latest available file path for a given item.
         Reconstructs paths to work in current environment (Drive or local).
         """
+        if not self.use_last_backup: return None
         
         # 1) Generate expected keys if needed (for MultiRunEvaluator)
         if len(self.expected_keys) == 0 and "multirunevaluator" in item_v.lower():
@@ -647,7 +769,6 @@ class ExperimentConfiguration:
 
         # 4) Try Filesystem Direct Search (Current Mode)
         search_path = component_paths[self.backup_mgr.mode] / self.day_str / item_v
-        # print(f"\tChecking FS: {search_path}")
         
         if search_path.exists():
             print(f"\t✓ Found via filesystem: {search_path}")
@@ -666,6 +787,7 @@ class ExperimentConfiguration:
         # 6) Not Found
         print(f"\t❌ Not found anywhere: {item_k}/{item_v}")
         return None
+
 
 
 
@@ -1035,8 +1157,10 @@ class ExperimentConfiguration:
         save_dict = self._build_save_dict(obj)
         comp = obj.component
         mode = self.backup_mgr.mode
+        file_name = obj.file_name.replace("1.5", "1_5")
+        if self.suffix: file_name = file_name.replace(".pkl", f"_{self.suffix}.pkl")
         component_path = self.backup_mgr.quantum_data_paths["obj"][comp]
-        save_path = component_path[mode] / self.day_str / obj.file_name.replace("1.5", "1_5")
+        save_path = component_path[mode] / self.day_str / file_name
 
         try:
             # # Fix corrupt directory-at-path case
@@ -1044,26 +1168,29 @@ class ExperimentConfiguration:
             #     print(f"\t⚠️ Corrupted directory found at {save_path}, removing...")
             #     shutil.rmtree(save_path)
             #     print("\t✓ Cleaned up")
-
+            # ✅ CREATE DIRECTORY IF IT DOESN'T EXIST
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            
             # If file exists → apply safety logic
             if save_path.exists():
                 do_overwrite, new_bytes = self._should_overwrite(save_path, save_dict)
-                if not do_overwrite: return str(save_path)
-
-                # overwrite with prepared bytes
+                
+                # ✅ CHECK IF WE SHOULD ACTUALLY OVERWRITE
+                if not do_overwrite:
+                    if self.verbose:
+                        print(f"\t⊘ {obj} Skipping save (existing file is larger)")
+                    return str(save_path)  # Return existing path, don't write
+                
+                # Only write if do_overwrite is True
                 with open(save_path, "wb") as f: f.write(new_bytes)
                 if self.verbose:
                     print(f"\t✓ {obj} State overwritten")
                     print(f"\t  → {save_path}")
                 return str(save_path)
-
-            # File does not exist → normal save
-            with open(save_path, "wb") as f: pickle.dump(save_dict, f)
-            if self.verbose:
-                print(f"\t✓ {obj} State saved")
-                print(f"\t  → {save_path}")
-            return True
-        except Exception as e: print(f"❌ {obj} Save failed: {e}")
+        except Exception as e: 
+            # print(save_path)
+            print(save_dict)
+            print(f"❌ {obj} Save failed: {e}")
         return False
 
     
@@ -1114,10 +1241,10 @@ class ExperimentConfiguration:
         try:
             with open(state_path, "rb") as f:
                 loaded_dict = pickle.load(f)
-            print("\t✓ Pickle loaded (standard pickle)")
+            # print("\t✓ Pickle loaded (standard pickle)")
             if loaded_dict is not None:
                 eq_result = (obj == loaded_dict)
-                print(f"\t   Equality check: {eq_result}")
+                # print(f"\t   Equality check: {eq_result}")
             return loaded_dict, eq_result
         except Exception as e:
             print(f"\t⚠️  Standard pickle failed: {e}")
@@ -1154,18 +1281,18 @@ class ExperimentConfiguration:
                 try:
                     return super().find_class(module, name)
                 except Exception:
-                    print(f"\t   → Replacing missing: {module}.{name}")
+                    # print(f"\t   → Replacing missing: {module}.{name}")
                     return Dummy
 
         try:
             with open(state_path, "rb") as f:
                 loaded_dict = SafeUnpickler(f).load()
 
-            print(f"\t✓ Pickle loaded (SafeUnpickler recovered import errors)")
+            # print(f"\t✓ Pickle loaded (SafeUnpickler recovered import errors)")
 
             if loaded_dict is not None:
                 eq_result = (obj == loaded_dict)
-                print(f"\t   Equality check: {eq_result}")
+                # print(f"\t   Equality check: {eq_result}")
 
             return loaded_dict, eq_result
 
@@ -1177,7 +1304,10 @@ class ExperimentConfiguration:
 
     def can_resume(self, obj):
         # Get path from registry
-        config_path = self.get_latest_state(obj.component, obj.file_name.replace("1.5", "1_5"))
+        if not self.use_last_backup: return None
+        file_name = obj.file_name.replace("1.5", "1_5")
+        if self.suffix: file_name = file_name.replace(".pkl", f"_{self.suffix}.pkl")
+        config_path = self.get_latest_state(obj.component, file_name)
         if not config_path:
             print(f"\t❌ Not found in registry or fallback locations")
             return None
@@ -1199,6 +1329,7 @@ class ExperimentConfiguration:
         Returns:
             bool: True if successfully resumed, False otherwise
         """
+        if not self.use_last_backup: return None
         if obj.resumed: return obj.resumed
 
         print(f"\n\t🔄 Resume: {obj}")
@@ -1214,7 +1345,7 @@ class ExperimentConfiguration:
         
         # Update or delete
         if eq_result:
-            print(f"\t✅ Resuming state")
+            # print(f"\t✅ Resuming state")
             try:
                 configs = obj.configs
                 old_file_name = obj.file_name

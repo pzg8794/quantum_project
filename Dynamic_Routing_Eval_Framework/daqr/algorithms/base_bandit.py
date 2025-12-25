@@ -460,7 +460,7 @@ class Oracle(QuantumModel):
             # Nested defensive check
             for path in range(len(self.reward_list)):
                 # Validate path exists in attack_list[frame]
-                if path < len(self.attack_list[frame]) and self.attack_list[frame][path] > 0:
+                if path < min(len(self.attack_list[frame]), len(self.reward_list)) and self.attack_list[frame][path] > 0:
                     path_rewards = self.reward_list[path]
                     best_path_action = np.argmax(path_rewards)
                     path_reward = path_rewards[best_path_action] * self.attack_list[frame][path]

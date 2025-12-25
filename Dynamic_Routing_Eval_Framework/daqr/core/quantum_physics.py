@@ -161,3 +161,126 @@ class Paper2RewardFunction(RewardFunction):
             return 4 * fidelity
         else:
             return 5 * fidelity
+
+class FusionNoiseModel:
+    """
+    N-fusion noise model for QuARC-style routing
+    
+    In fusion-based protocols, n qubits undergo n-fusion with success prob q^n.
+    This differs from swapping where 2-qubit operations have success prob q.
+    """
+    
+    def __init__(self, topology, paths, fusion_prob=0.9, entanglement_prob=0.6):
+        """
+        Args:
+            topology: NetworkX graph
+            paths: List of paths (list of node sequences)
+            fusion_prob: q (fusion success probability)
+            entanglement_prob: p (link generation success probability)
+        """
+        self.topology = topology
+        self.paths = paths
+        self.q = fusion_prob
+        self.p_avg = entanglement_prob
+        
+        # Compute per-edge entanglement probs from average
+        self._compute_edge_probs()
+        
+    def _compute_edge_probs(self):
+        """Compute per-edge entanglement generation probabilities"""
+        self.edge_probs = {}
+        
+        for u, v in self.topology.edges():
+            # Edge-dependent p based on distance
+            dist = self.topology[u][v].get('distance', 1.0)
+            # Exponential decay: p = p_avg * exp(-alpha * distance)
+            alpha = 0.16  # QuARC paper default
+            p_edge = self.p_avg * np.exp(-alpha * dist)
+            self.edge_probs[(u, v)] = p_edge
+            self.edge_probs[(v, u)] = p_edge  # Symmetric
+            
+    def get_error_rates(self, path_idx):
+        """
+        Get error rates for a path (for compatibility with your framework)
+        
+        Returns dict with 'error_rates' key containing per-hop error probs
+        """
+        if path_idx >= len(self.paths):
+            raise IndexError(f"Path index {path_idx} out of range")
+        
+        path = self.paths[path_idx]
+        error_rates = []
+        
+        for i in range(len(path) - 1):
+            u, v = path[i], path[i+1]
+            p_link = self.edge_probs.get((u, v), self.p_avg)
+            # Error rate = 1 - success rate
+            error_rates.append(1 - p_link)
+        
+        return {'error_rates': error_rates}
+    
+    def get_fusion_success_prob(self, n_qubits):
+        """Get success probability for n-qubit fusion"""
+        return self.q ** n_qubits
+
+
+class FusionFidelityCalculator:
+    """
+    Fidelity calculator for fusion-based entanglement distribution
+    
+    Unlike cascaded fidelity (multiplicative), fusion-based protocols
+    maintain fidelity through GHZ states and single-qubit corrections.
+    """
+    
+    def compute_path_fidelity(self, error_rates, context, fusion_prob=0.9):
+        """
+        Compute end-to-end fidelity for fusion-based routing
+        
+        Args:
+            error_rates: Per-hop error rates (from noise model)
+            context: Path context (hop count, etc.)
+            fusion_prob: q value
+            
+        Returns:
+            fidelity (0-1)
+        """
+        # For fusion protocols, fidelity depends on:
+        # 1. Link generation success across path
+        # 2. Fusion success at intermediate nodes
+        
+        num_hops = len(error_rates['error_rates'])
+        
+        # Probability all links succeed
+        p_links = np.prod([1 - err for err in error_rates['error_rates']])
+        
+        # Probability all fusions succeed (n-1 fusions for n hops)
+        p_fusions = fusion_prob ** (num_hops - 1)
+        
+        # Combined success probability as fidelity proxy
+        fidelity = p_links * p_fusions
+        
+        return fidelity
+
+
+class QuARCRewardFunction:
+    """
+    Reward function for QuARC-style fusion routing
+    
+    Rewards based on successful entanglement distribution, not fidelity.
+    QuARC optimizes throughput (requests/timeslot) over fidelity.
+    """
+    
+    def compute_reward(self, success, aggregate_throughput=1):
+        """
+        Args:
+            success: Boolean, whether entanglement succeeded
+            aggregate_throughput: Number of parallel entanglements (if any)
+            
+        Returns:
+            reward (float)
+        """
+        if success:
+            # Reward = 1 for success, can scale by aggregate throughput
+            return float(aggregate_throughput)
+        else:
+            return 0.0

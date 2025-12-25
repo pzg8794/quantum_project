@@ -1,13 +1,15 @@
-from daqr.core.network_environment        import NoAttack, RandomAttack, MarkovAttack, AdaptiveAttack, OnlineAdaptiveAttack
-from daqr.core.network_environment        import AdversarialQuantumEnvironment, StochasticQuantumEnvironment, QuantumEnvironment
-
+from daqr.core.attack_strategy             import NoAttack, RandomAttack, MarkovAttack, AdaptiveAttack, OnlineAdaptiveAttack
+from daqr.core.network_environment         import AdversarialQuantumEnvironment, StochasticQuantumEnvironment, QuantumEnvironment
 from daqr.algorithms.predictive_bandits    import iCEXP4, iCEpochGreedy, iCEpsilonGreedy, iCKernelUCB, iCThompsonSampling
 from daqr.algorithms.predictive_bandits    import CEXP4, CEpochGreedy, CEpsilonGreedy, CKernelUCB, CThompsonSampling
 from daqr.algorithms.predictive_bandits    import Oracle, GNeuralUCB, EXPUCB, EXPNeuralUCB, LinUCB, CEXPNeuralUCB 
 from daqr.algorithms.predictive_bandits    import CPursuitNeuralUCB, CPursuit, iCPursuit, QuantumModel, NeuralUCB
 from daqr.algorithms.predictive_bandits    import UCB, RandomAlg, TS, LinTS, iCPursuitNeuralUCB, NeuralTS
-from daqr.core.qubit_allocator import *
+from daqr.core.qubit_allocator             import *
 
+import networkx as nx
+import numpy as np
+import itertools
 import  copy, os, re
 import  pathlib
 import  pickle
@@ -21,7 +23,7 @@ class ExperimentConfiguration:
     """
     Configuration holder for quantum experiments.
     """
-    def __init__(self, runs=1, seed_offset=100, env_type="stochastic", attack_type="markov", suffix=None, attack_intensity=1.0, attack_rate=0.25, models=None, scenarios=None, allocator=None, base_seed=12345, scale=2, base_capacity=True, overwrite=False, resume=True, use_last_backup=True, verbose=False, testbed_id=None):
+    def __init__(self, runs=1, physics_params=None, seed_offset=100, env_type="stochastic", attack_type="n/a", suffix=None, attack_intensity=1.0, attack_rate=0.25, models=None, scenarios=None, allocator=None, base_seed=12345, scale=2, base_capacity=True, overwrite=False, resume=True, use_last_backup=True, verbose=False, testbed_id=None):
         
         self.allocator = allocator if allocator else QubitAllocator()  # Default to fixed
 
@@ -37,6 +39,7 @@ class ExperimentConfiguration:
         self.overwrite = overwrite
         self.testbed_id = testbed_id
         self.seed_offset = seed_offset
+        self.physics_params = physics_params
         if not self.suffix and self.testbed_id: self.suffix = ""
         if self.testbed_id: self.suffix+="_"+f"{self.testbed_id}"
         self.dir = Path(os.path.dirname(os.path.abspath(__file__)))
@@ -250,13 +253,13 @@ class ExperimentConfiguration:
             },
 
             7: {
-                "name": "Paper7_QBGP_2024",
-                "n_arms": 15,
-                "total_frames": 2000,
-                "model_params": {
+                "name": "Paper7QBGP2024",
+                "narms": 15,
+                "totalframes": 2000,
+                "modelparams": {
                     "k": 5,
                     "n_qisps": 3,
-                    "network_scale": "large"
+                    "networkscale": "large"
                 }
             },
 
@@ -285,6 +288,39 @@ class ExperimentConfiguration:
                     "K": 2,               # EXPNeuralUCB param
                     "alpha": 0.8
                 }
+            },
+            'paper12_quarc': {
+                # Paper: Wang et al. "Efficient Routing on Quantum Networks using 
+                #        Adaptive Clustering" (ICNP 2024)
+                
+                # Topology
+                'topology_type': 'waxman',
+                'n_nodes': 100,              # Network size (vary: 100-800)
+                'avg_degree': 6,             # Ed (average degree)
+                'waxman_alpha': 0.4,         # Link probability scaling
+                'waxman_beta': 0.2,          # Distance decay factor
+                
+                # Physical parameters
+                'entanglement_prob': 0.6,    # Ep (average p)
+                'fusion_prob': 0.9,          # q (fusion success)
+                'qubits_per_node': 12,       # Memory capacity (varies by node degree)
+                'channel_width': 3,          # Links per edge
+                
+                # Simulation parameters
+                'total_timeslots': 7000,     # T
+                'num_sd_pairs': 10,          # nsd (concurrent requests)
+                'epoch_length': 500,         # Reconfiguration interval
+                'request_cutoff': 10**9,     # Timeout (effectively infinite)
+                
+                # QuARC-specific
+                'enable_clustering': True,   # Adaptive clustering
+                'split_constant': 4,         # k (Girvan-Newman)
+                'threshold_type': '2d_grid', # or 'topology_specific'
+                'enable_secondary_fusions': True,
+                
+                # Framework mapping
+                'num_paths': 8,              # For bandit comparison (not used by QuARC)
+                'use_fusion_rewards': True,  # Use QuARCRewardFunction
             }
         }
 
@@ -311,7 +347,6 @@ class ExperimentConfiguration:
         self.log_name       = f"quantum_exps-{allocator_or_exp}_alloc-{'all_envs'}-{attack_id}-{base_frames}_{int(frame_step)}-{self.runs}_runs-S{self.scale}{'Tb' if self.base_capacity else 'T'}"
         print(self.log_name)
         return True
-
 
     def generate_expected_keys(self, evaluator_filename: str):
         """
@@ -493,102 +528,126 @@ class ExperimentConfiguration:
         print("\nEXPECTED KEY GENERATION COMPLETE\n")
         if len(self.backup_registry) != 0: self._build_backup_registry(force=False)
         return results
+
+    def generate_paper7_paths(
+        topology: nx.Graph, 
+        k: int, 
+        n_qisps: int, 
+        seed: int
+    ) -> list[list[int]]:
+        """
+        Generate k-shortest paths between n_qisps ISP nodes in the topology.
+        Returns list of paths, each path is a list of node IDs.
+        """
+        rng = np.random.default_rng(seed)
+        nodes = list(topology.nodes())
+        
+        # Randomly select n_qisps nodes as ISP endpoints
+        if len(nodes) < n_qisps:
+            raise ValueError(f"Topology has {len(nodes)} nodes, need {n_qisps} for ISPs")
+        
+        isp_nodes = rng.choice(nodes, size=n_qisps, replace=False)
+        
+        all_paths = []
+        for src, dst in itertools.combinations(isp_nodes, 2):
+            try:
+                # Generate k shortest paths between src and dst
+                path_generator = nx.shortest_simple_paths(topology, src, dst, weight="distance")
+                paths = list(itertools.islice(path_generator, k))
+                all_paths.extend(paths)
+            except nx.NetworkXNoPath:
+                # Skip if no path exists between these nodes
+                continue
+        
+        return all_paths
+
+    def generate_paper7_contexts(
+        paths: list[list[int]], 
+        topology: nx.Graph
+    ) -> list[list[np.ndarray]]:
+        """
+        Generate context vectors for each path in Paper7 format.
+        Context includes: hop count, average node degree, path length.
+        """
+        contexts = []
+        for path in paths:
+            hop_count = len(path) - 1
+            
+            # Calculate average node degree along path
+            degrees = [topology.degree(node) for node in path]
+            avg_degree = sum(degrees) / len(degrees) if degrees else 0
+            
+            # Calculate total path length (sum of edge distances)
+            path_length = 0.0
+            for i in range(len(path) - 1):
+                edge_data = topology.get_edge_data(path[i], path[i + 1])
+                path_length += edge_data.get("distance", 1.0)
+            
+            # Create context vector [hop_count, avg_degree, path_length]
+            context_vector = np.array([hop_count, avg_degree, path_length])
+            contexts.append([context_vector])
+        
+        return contexts
+
     
-    # def _get_random_runtime_qubits(self, filename=None, file_qubits=None, component_type="MultiRunEvaluator"):
-    #     """
-    #     Scans the registry for a matching Random file (Evaluator or Runner) with the same
-    #     run parameters (stem) and picks a valid qubit allocation tuple.
-    #     """
-    #     # If this is an Evaluator and we already have a global choice, stick to it to ensure consistency.
-    #     if self.random_runtime_qubits and component_type == "MultiRunEvaluator": return f"_{self.random_runtime_qubits}"
-    #     if not filename: return f"_{self.random_runtime_qubits}" if self.random_runtime_qubits else ""
-    #     print(f"\n\t⚡ Random {component_type} detected → scanning registry for substitute")
-
-    #     candidates = []
-    #     eval_suffix = f"_{self.st}" if "evaluator" in component_type.lower() else ""
-    #     pattern = re.compile(fr"\(\d+_\d+_\d+_\d+\){eval_suffix}")
-
-    #     try:
-    #         # 1. Generate 'Search Stem' by stripping the qubit tuple from the filename
-    #         #    This stem (e.g., "MultiRunEvaluator_...-4000_200_10") represents the unique run config.
-    #         if file_qubits: search_stem = filename.replace(f"_{file_qubits}", "").replace(file_qubits, "")
-    #         else:
-    #             match = pattern.search(filename)
-    #             if match: search_stem = filename.replace(f"_{match.group(0)}", "").replace(match.group(0), "")
-    #             else: search_stem = filename
-            
-    #         search_stem = search_stem.replace(".pkl", "")
-    #         # print(f"\t  🎯 Search stem: {search_stem}")
-
-    #     except Exception as e:
-    #         print(f"\t  ⚠️ Error parsing filename {filename}: {e}")
-    #         return ""
-
-    #     # 2. Scan registry for candidates matching the stem
-    #     registry_section = "framework_state" # Evaluators and Runners are both here
+    def set_paper7_environment(self, frames_no: int, seed: int, qubit_cap: tuple):
+        """
+        Configure environment specifically for Paper7 QBGP experiments.
+        """
+        from daqr.core.physics_factory import get_physics_params
         
-    #     if registry_section in self.backup_registry:
-    #         for fname, path in self.backup_registry[registry_section].items():
-    #             # Must match the component type (Evaluator vs Runner)
-    #             if component_type not in fname: continue
-                
-    #             # Must be Random allocator
-    #             if "Random" not in fname and "random" not in fname.lower(): continue
-                
-    #             # Must contain a valid qubit tuple
-    #             match = pattern.search(fname)
-    #             if not match: continue
-                
-    #             # Create candidate stem to compare
-    #             candidate_qubits = match.group(0)
-    #             candidate_stem = fname.replace(f"_{candidate_qubits}", "").replace(candidate_qubits, "").replace(".pkl", "")
-                
-    #             # Fuzzy match: check if stems are effectively identical
-    #             if search_stem == candidate_stem: candidates.append(candidate_qubits)
+        # Get Paper7 physics parameters
+        physics_kwargs = get_physics_params(
+            physics_model="paper7",
+            current_frames=frames_no,
+            base_seed=seed,
+            topology_path="topology_data/as20000101.txt",
+            topology_max_nodes=None,  # Use config default
+            topology_largest_cc_only=True,
+            topology_relabel_to_int=True,
+        )
+        
+        # Set environment with Paper7 topology and contexts
+        self.setenvironment(
+            qubitcap=qubit_cap,
+            frames_no=frames_no,
+            seed=seed,
+            attack_intensity=self.attackintensity,
+            env_type="stochastic",
+            attack_type=self.attacktype,
+        )
+        
+        # Override with Paper7-specific parameters
+        self.envparams.update(physics_kwargs)
+        
+        # Build the environment
+        self.environment = self.get_environment()
 
-    #     # 3. Select a candidate
-    #     if candidates:
-    #         selected = random.choice(candidates)
-    #         print(f"\t  🎲 Selected random substitute from {len(candidates)} candidates: {selected}")
-    #         # If this was the Evaluator, lock it in globally for this session
-    #         if component_type == "MultiRunEvaluator": self.random_runtime_qubits = selected
-    #         return f"_{selected}"
-    #     else:
-    #         print(f"\t  ❌ No matching {component_type} found in registry.")
-    #         # Fallback: return the original one (if it existed) or empty
-    #         return f"_{file_qubits}{eval_suffix}" if file_qubits else ""
-
-    # def _resolve_random_filename(self, item_v):
+    # def generate_paper7_paths(topology: nx.Graph, k: int = 5):
     #     """
-    #     If using Random Allocator, reconstruct the filename to match a valid 
-    #     random file from the registry (handling missing Runners or Evaluators).
+    #     Generate k-shortest paths for Paper7 QBGP experiments.
+    #     For each source-dest pair in n_qisps ISPs, find k paths.
     #     """
-    #     if not self.is_random_alloc:
-    #         return item_v
-            
-    #     # Determine component type
-    #     if "MultiRunEvaluator" in item_v: comp_type = "MultiRunEvaluator"
-    #     elif "QuantumExperimentRunner" in item_v: comp_type = "QuantumExperimentRunner"
-    #     else: return item_v # Models don't need this logic yet
-            
-    #     # Extract existing qubits from item_v if present
+    #     import itertools
         
-    #     eval_suffix = f"_{self.st}" if "evaluator" in comp_type.lower() else ""
-    #     pattern = re.compile(fr"\(\d+_\d+_\d+_\d+\){eval_suffix}")
-    #     match = pattern.search(item_v)
-    #     file_qubits = match.group(0) if match else None
+    #     # Get n_qisps random nodes as ISP endpoints
+    #     nodes = list(topology.nodes())
+    #     n_qisps = 3  # from config
+    #     rng = np.random.default_rng(seed)
+    #     isp_nodes = rng.choice(nodes, size=n_qisps, replace=False)
         
-    #     # Get a valid tuple (either existing global, or new random substitute)
-    #     resolved_suffix = self._get_random_runtime_qubits(item_v, file_qubits, comp_type)
+    #     all_paths = []
+    #     for src, dst in itertools.combinations(isp_nodes, 2):
+    #         try:
+    #             paths_gen = nx.shortest_simple_paths(
+    #                 topology, src, dst, weight="distance"
+    #             )
+    #             paths = list(itertools.islice(paths_gen, k))
+    #             all_paths.extend(paths)
+    #         except nx.NetworkXNoPath:
+    #             continue
         
-    #     # Construct new filename
-    #     if not resolved_suffix: return item_v # Failed to resolve, try original
-
-    #     if file_qubits: new_item_v = item_v.replace(f"_{file_qubits}", resolved_suffix)
-    #     else: new_item_v = item_v.replace(".pkl", f"{resolved_suffix}.pkl")
-             
-    #     # Cleanup potential double underscores
-    #     return re.sub(r"__", "_", new_item_v)
+    #     return all_paths
 
     def _get_random_runtime_qubits(self, filename=None, file_qubits=None, component_type="MultiRunEvaluator"):
         """
@@ -928,9 +987,34 @@ class ExperimentConfiguration:
         """Return the list of model names to be used in experiments"""
         return self.models
 
-    def set_environment(self, qubit_cap, frames_no, seed, attack_intensity, env_type='stochastic', attack_type= 'stochastic'):
+    def set_environment_object(self, environment):
+        """
+        Directly set a pre-built environment object.
+        
+        Args:
+            environment: Fully constructed QuantumEnvironment (or subclass)
+        
+        This bypasses all internal environment building logic and uses the
+        provided environment directly. Perfect for custom physics/topology.
+        """
+        if "QuantumEnvironment" not in str(environment.__class__.__name__):
+            raise ValueError(f"Expected QuantumEnvironment subclass, got {type(environment)}")
+        
+        self.environment = environment
+        print(f"✓ Set custom environment: {environment.__class__.__name__}")
+        print(f"  Physics: {getattr(environment, 'noise_model', 'default')}")
+        print(f"  Attack: {getattr(environment, 'attack', 'none').__class__.__name__}")
+
+    def set_environment(self, qubit_cap, frames_no, seed, attack_intensity, 
+                    env_type='stochastic', attack_type='stochastic',
+                    noise_model=None,              # ✅ NEW
+                    fidelity_calculator=None,      # ✅ NEW
+                    external_topology=None,        # ✅ NEW
+                    external_contexts=None,        # ✅ NEW
+                    external_rewards=None):        # ✅ NEW
         """
         Stores the core parameters needed to build any environment.
+        Now supports custom physics via quantum objects.
         """
         self._env_params = {
             'attack': None,
@@ -939,7 +1023,13 @@ class ExperimentConfiguration:
             'seed': int(seed),
             'allocator': self.allocator,
             'env_type': env_type,
-            'actk_type': attack_type
+            'actk_type': attack_type,
+            # ✅ NEW: Quantum physics objects
+            'noise_model': noise_model,
+            'fidelity_calculator': fidelity_calculator,
+            'external_topology': external_topology,
+            'external_contexts': external_contexts,
+            'external_rewards': external_rewards
         }
 
         env_params = copy.deepcopy(self._env_params)
@@ -988,12 +1078,23 @@ class ExperimentConfiguration:
         else:
             return {name: self.algorithm_configs[name] for name in model_names if name in self.algorithm_configs}
 
+
     def set_attack_strategy(self, attack_type: str, **kwargs):
         """
-        Configures the attack strategy based on a scenario name. This method
-        instantiates the correct AttackStrategy object.
-        """
+        Configures the attack strategy based on a scenario name.
+        Supports Paper #2 path-dependent attacks.
+        """        
         self.attack_type = attack_type.lower()
+        # Paper #2 path-dependent stochastic attack
+        if attack_type.lower() == 'paper2_stochastic' and kwargs.get('paths'):
+            paths = kwargs['paths']
+            attack_intensity = kwargs.get('attack_intensity', self.attack_intensity)
+            attack_rates = [attack_intensity + (len(p)-2) * 0.05 for p in paths]
+            self.attack_strategy = RandomAttack(per_path_rates=attack_rates)
+            print(f"✓ Paper #2 path-dependent attack: rates={attack_rates}")
+            return
+        
+        # Your existing mapping
         self.attack_mapping = {
             'none': NoAttack(),
             'random': RandomAttack(attack_rate=kwargs.get('attack_rate', self.attack_rate) * self.attack_intensity),
@@ -1003,6 +1104,8 @@ class ExperimentConfiguration:
             'onlineadaptive': OnlineAdaptiveAttack(attack_rate=self.attack_intensity)
         }
         self.attack_strategy = self.attack_mapping.get(self.attack_type, NoAttack())
+        # self.attack_type = str(self.attack_strategy)
+
 
     def get_attack_strategy(self, attack_type=None):
         """Return the configured attack strategy or default to MarkovAttack"""

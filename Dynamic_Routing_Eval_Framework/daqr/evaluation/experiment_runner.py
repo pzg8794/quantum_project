@@ -42,6 +42,7 @@ class QuantumExperimentRunner:
         self.frames_count = frames_count
         self.component    = "framework_state"
         self.enable_progress = enable_progress
+        self.physics_params = self.configs.physics_params
         self.algorithm_configs = self.configs.get_models_configs()
         self.capacity = capacity if capacity else self.frames_count
         
@@ -305,7 +306,8 @@ class QuantumExperimentRunner:
             frames_no=self.frames_count,
             seed=self.experiment_seed,
             attack_intensity=self.configs.attack_intensity,
-            attack_type=self.configs.attack_type
+            attack_type=self.configs.attack_type,
+            **self.physics_params              # ✅ Injects Paper #2 physics!
         )
 
         # Build and store the environment
@@ -370,7 +372,7 @@ class QuantumExperimentRunner:
 
         if alg_name in self.results.keys(): 
             # if self.configs.overwrite: 
-            print(f"\t{alg_name} already processed")
+            # print(f"\t{alg_name} already processed")
             # if alg_name == base_model:
                 # model = model_class(
                 #     configs=self.configs,

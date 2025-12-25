@@ -46,6 +46,7 @@ class MultiRunEvaluator:
         self.component    = "framework_state"
         self.enable_progress = enable_progress
         self.models = models or self.configs.models
+        self.physics_params = self.configs.physics_params
         
         # self.runner = None
         self.run_state = 0        # 0: not run, 1: completed, -1: failed
@@ -121,7 +122,8 @@ class MultiRunEvaluator:
             frames_no=self.frames_count,
             seed=env_seed,
             attack_intensity=self.configs.attack_intensity,
-            attack_type=self.configs.attack_type
+            attack_type=self.configs.attack_type,
+            **self.physics_params              # ✅ Injects Paper #2 physics!
         )
         self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
 
@@ -928,7 +930,9 @@ class MultiRunEvaluator:
         """
         try:
             cleanup_items = []
-            if cooldown_seconds > 0: time.sleep(cooldown_seconds)
+            try: 
+                if cooldown_seconds > 0: time.sleep(cooldown_seconds) 
+            except: pass
             
             # 1. Deep clean env_experiments (nested dictionaries with results)
             if hasattr(self, 'env_experiments'):
@@ -990,7 +994,9 @@ class MultiRunEvaluator:
             
             # Mandatory cooldown
             cleanup_items.append(f"cooldown:{cooldown_seconds}s")
-            if cooldown_seconds > 0: time.sleep(cooldown_seconds)
+            try: 
+                if cooldown_seconds > 0: time.sleep(cooldown_seconds) 
+            except: pass
             if verbose:
                 print(f"✓ MultiRunEvaluator cleaned: \t{', '.join(cleanup_items)}")
         except Exception as e:
@@ -1153,6 +1159,8 @@ class MultiRunEvaluator:
                 )
                 experiment_results["exp_id"] = exp_id
                 experiment_results["attack_category"] = attack_category
+                if self.configs.attack_type not in self.env_experiments.keys():
+                     self.env_experiments[self.configs.attack_type] = {}
                 self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
                 print(f"✓ Experiment {exp_id} completed successfully.")
         except Exception as e:
@@ -1219,6 +1227,8 @@ class MultiRunEvaluator:
                 
                 experiment_results['exp_id'] = exp_id
                 experiment_results['attack_category'] = attack_category
+                if self.configs.attack_type not in self.env_experiments.keys():
+                     self.env_experiments[self.configs.attack_type] = {}
                 self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
                 # print(f"Experiment {exp_id} completed successfully")
         except Exception as e:

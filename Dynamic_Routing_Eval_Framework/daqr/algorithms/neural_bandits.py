@@ -132,8 +132,12 @@ class EXPNeuralUCB(QuantumModel):
 
         # Loop through each path and initialize a NeuralUCB instance with current (baseline) dimension logic
         for i, path_context in enumerate(self.X_n):
+            # model = NeuralUCB(
+            #     2 if i < 2 else 3,             # 2D for first 2 paths, 3D for others
+            input_dim = len(path_context[0])  # ← ACTUAL CONTEXT DIMENSION
+            # print(f"Path {i}: context shape {input_dim}")  # DEBUG PRINT
             model = NeuralUCB(
-                2 if i < 2 else 3,             # 2D for first 2 paths, 3D for others
+                input_dim,  # ← FIX: Use real dimension
                 len(path_context),             # Current baseline logic
                 self.beta,
                 lamb=1,
@@ -229,10 +233,10 @@ class EXPNeuralUCB(QuantumModel):
             oracle_model = self.configs.base_model
             print(f"\t✓ {base_model} model loaded from configs: {oracle_model}")
 
-        # Method 2: Try to resume from saved state
+        # Method 2: Try to resume from saved state (with better error reporting)
         if oracle_model is None:
             try:
-                self.configs.overwrite = True  # Ensure consistent resume behavior
+                self.configs.overwrite = True
                 oracle_model = Oracle(
                     configs=self.configs,
                     X_n=self.X_n,
@@ -241,14 +245,16 @@ class EXPNeuralUCB(QuantumModel):
                     attack_list=self.attack_list,
                     capacity=self.capacity
                 )
+                # FIX: Keep instance even if resume fails (it's still valid)
                 if oracle_model.resume(): 
                     print(f"\t✓ {base_model} model resumed from saved state.")
-                    # pass
-                else: oracle_model = None
+                # else: oracle_model stays valid - optimal_actions already computed!
                 self.configs.overwrite = self.overwrite
+                
             except Exception as e:
-                if self.verbose: print(f"⚠️  Could not resume {base_model} model: {e}")
-                oracle_model = None
+                print(f"\t⚠️ Oracle creation failed (non-fatal): {e}")
+                print(f"\t   attack_list[0] shape: {len(self.attack_list[0])}, paths: {len(self.reward_list)}")
+                oracle_model = None  # Graceful fallback preserved
 
         # Extract first optimal decision from Oracle model
         if oracle_model and len(oracle_model.optimal_actions) > 0:

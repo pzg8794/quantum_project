@@ -1,301 +1,35 @@
 from __future__ import annotations
+"""
+Quantum network environment for entanglement routing.
+Attack strategies moved to attack_strategies.py for better organization.
+"""
+import numpy as np
+import networkx as nx
+
+# Import attack strategies from separate module
+from daqr.core.attack_strategy import (
+    AttackStrategy,
+    NoAttack,
+    RandomAttack,
+    MarkovAttack,
+    AdaptiveAttack,
+    OnlineAdaptiveAttack,
+    create_attack_strategy
+)
+
+# Import quantum physics objects (if refactored)
+try:
+    from daqr.core.quantum_physics import (
+        DefaultNoiseModel,
+        DefaultFidelityCalculator
+    )
+    QUANTUM_PHYSICS_AVAILABLE = True
+except ImportError:
+    QUANTUM_PHYSICS_AVAILABLE = False
+
 import numpy as np, gc, copy
-from typing import Dict, Optional, List
 from abc import ABC, abstractmethod
-
-# ---------------------------------------------------------------------
-# Strategy base
-# ---------------------------------------------------------------------
-class AttackStrategy(ABC):
-    """Contract: produce an (T x P) attack mask; 1 = no-attack, 0 = attack."""
-    def __init__(self, attack_rate: float = 0.25):
-        self.attack_rate = float(attack_rate)
-
-    @abstractmethod
-    def generate(self,
-                 rng: np.random.Generator,
-                 frame_length: int,
-                 num_paths: int,
-                 selection_trace: list[int] | None = None) -> np.ndarray:
-        """
-        Offline (batch) attack generation.
-
-        Args:
-            rng: np.random.Generator
-            frame_length: T
-            num_paths: P
-            selection_trace: optional list of chosen paths length T;
-                             if provided, the attack adapts to *actual* usage.
-        Returns:
-            (T x P) np.ndarray[int] with 1=no-attack, 0=attack
-        """
-
-    def __repr__(self):
-        return self.__class__.__name__.replace("Attack", "")
-
-class NoAttack(AttackStrategy):
-    def __init__(self, attack_rate: float = 0.0):
-        super().__init__(attack_rate)
-
-    def generate(self, rng, frame_length, num_paths, selection_trace=None):
-        return np.ones((frame_length, num_paths), dtype=int)
-
-class RandomAttack(AttackStrategy):
-    def __init__(self, attack_rate: float = 0.25):
-        super().__init__(attack_rate)
-
-    def generate(self, rng, frame_length, num_paths, selection_trace=None):
-        mask = rng.random((frame_length, num_paths)) >= self.attack_rate
-        return mask.astype(int)
-
-class MarkovAttack(AttackStrategy):
-    def __init__(self, transition=None, init=None, k_attacks: int = 1, attack_rate: float = 1.0):
-        super().__init__(attack_rate)
-        self.transition = transition  # (P x P) row-stochastic
-        self.init = init              # (P,) distribution
-        self.k_attacks = int(k_attacks)
-
-    def _default_T(self, P):
-        if P == 4:
-            T = np.array([
-                [0.35, 0.15, 0.35, 0.15],
-                [0.30, 0.20, 0.30, 0.20],
-                [0.35, 0.15, 0.35, 0.15],
-                [0.30, 0.20, 0.30, 0.20],
-            ], dtype=float)
-        else:
-            T = np.full((P, P), 1.0 / P, dtype=float)
-        return T / T.sum(axis=1, keepdims=True)
-
-    def generate(self, rng, frame_length, num_paths, selection_trace=None):
-        T = self._default_T(num_paths) if self.transition is None else self.transition
-        T = T / T.sum(axis=1, keepdims=True)
-        pi0 = np.full(num_paths, 1.0 / num_paths) if self.init is None else self.init
-        pi0 = pi0 / pi0.sum()
-
-        out = np.ones((frame_length, num_paths), dtype=int)
-        state = rng.choice(num_paths, p=pi0)
-        k = max(0, min(self.k_attacks, num_paths))
-
-        for t in range(frame_length):
-            if k > 0 and (rng.random() <= self.attack_rate):
-                probs = T[state].copy()
-                idxs = (rng.choice(num_paths, size=k, replace=False, p=probs / probs.sum())
-                        if k < num_paths else np.arange(num_paths))
-                out[t, idxs] = 0
-            state = rng.choice(num_paths, p=T[state])
-        return out
-    
-    def cleanup(self, verbose=False):
-        """
-        Clean up attack strategy resources.
-        Safe for all subclasses - only deletes if attributes exist.
-        """
-        cleanup_items = []
-        
-        # Clear any cached data
-        for attr in ['_cached_mask', 'history', 'state', 'counts', 
-                     'transition', 'init', 'arima_models']:
-            if hasattr(self, attr):
-                delattr(self, attr)
-                cleanup_items.append(attr)
-        
-        # Force garbage collection
-        collected = gc.collect()
-        
-        if verbose and cleanup_items:
-            print(f"✓ {self.__class__.__name__} cleaned: {', '.join(cleanup_items)}, GC:{collected}")
-
-
-
-# ---------------------------------------------------------------------
-# AdaptiveAttack (offline-first; single target per frame)
-# ---------------------------------------------------------------------
-class AdaptiveAttack(AttackStrategy):
-    """
-    Adaptive attacker driven by *observed usage* (selection_trace).
-    Attacks the most-used path in the recent memory_window (single target).
-
-    If selection_trace is not provided, it synthesizes a sticky usage process
-    (for smoke tests). For real evaluation, pass the true selection_trace.
-    """
-
-    def __init__(self, memory_window: int = 50, attack_rate: float = 1.0, sticky_p: float = 0.7):
-        super().__init__(attack_rate)
-        self.attack_rate = float(np.clip(attack_rate, 0.0, 1.0))
-        self.sticky_p = float(np.clip(sticky_p, 0.0, 1.0))
-        self.memory_window = int(max(1, memory_window))
-
-    def generate(
-        self,
-        rng: np.random.Generator,
-        frame_length: int,
-        num_paths: int,
-        selection_trace: list[int] | None = None,
-    ) -> np.ndarray:
-        """
-        Build a (T x P) attack mask (1 = no-attack, 0 = attack) driven by recent usage.
-        Falls back to a sticky synthetic usage process when no selection_trace is provided.
-        """
-        attack = np.ones((frame_length, num_paths), dtype=int)
-
-        # Prepare a usage sequence to "observe"
-        if not selection_trace:  # handles None or []
-            trace: list[int] = []
-            prev = int(rng.integers(num_paths))
-            for _ in range(frame_length):
-                choice = prev if rng.random() < self.sticky_p else int(rng.integers(num_paths))
-                trace.append(choice)
-                prev = choice
-        else:
-            trace = list(selection_trace[:frame_length])
-            if len(trace) < frame_length:
-                # pad safely (repeat the last choice) to match frame_length
-                trace += [int(trace[-1])] * (frame_length - len(trace))
-
-        # Frame-by-frame attacks
-        for t in range(frame_length):
-            # skip this frame with probability (1 - attack_rate)
-            if rng.random() > self.attack_rate:
-                continue
-
-            # recent history (exclude current index)
-            start = max(0, t - self.memory_window)
-            recent = trace[start:t]
-
-            if len(recent) == 0:
-                target = int(trace[t])  # best guess: current pick
-            else:
-                counts = np.bincount(recent, minlength=num_paths)
-                target = int(np.argmax(counts))
-
-            attack[t, target] = 0
-
-        return attack
-
-# ---------------------------------------------------------------------
-# OnlineAdaptiveAttack (inherits AdaptiveAttack; online + richer control)
-# ---------------------------------------------------------------------
-class OnlineAdaptiveAttack(AdaptiveAttack):
-    """
-    Online variant:
-      - same offline `generate(...)` API as parent (batch),
-      - plus online hooks:
-          * reset(num_paths)
-          * observe(selected_path)
-          * attack_mask(rng, num_paths) -> (P,) mask for the current frame
-      - supports multi-target (k), exponential decay, and softmax selection.
-
-    Use this for realistic closed-loop experiments where the attacker reacts
-    to the algorithm's *actual* selections as they happen.
-    """
-
-    def __init__(self,
-                 memory_window: int = 50,
-                 attack_rate: float = 1.0,
-                 sticky_p: float = 0.7,
-                 k: int = 1,
-                 decay: float | None = None,
-                 temperature: float | None = None):
-        super().__init__(memory_window=memory_window, attack_rate=attack_rate, sticky_p=sticky_p)
-        self.k = int(max(1, k))              # up to k attacked paths per frame
-        self.decay = decay                   # e.g., 0.97 for exponential forgetting
-        self.temperature = temperature       # softmax temp; None => greedy
-        self._history: list[int] = []
-        self._counts: np.ndarray | None = None
-        self._num_paths: int | None = None
-
-    # ---- Online hooks ------------------------------------------------
-    def reset(self, num_paths: int):
-        self._num_paths = int(num_paths)
-        self._history = []
-        self._counts = np.zeros(self._num_paths, dtype=float)
-
-    def observe(self, selected_path: int):
-        """Record the algorithm's chosen path; updates rolling window and decayed counts."""
-        sp = int(selected_path)
-        self._history.append(sp)
-        if self._counts is not None:
-            if self.decay is not None:
-                self._counts *= float(self.decay)
-            self._counts[sp] += 1.0
-
-        # Trim rolling memory if it grows too large (optional safety)
-        if len(self._history) > max(4 * self.memory_window, 10000):
-            self._history = self._history[-2 * self.memory_window:]
-
-    def attack_mask(self, rng: np.random.Generator, num_paths: int | None = None) -> np.ndarray:
-        """
-        Produce a (P,) mask for the current frame. Call once per time step.
-        Returns 1=no-attack, 0=attack. May attack up to k paths.
-        """
-        P = self._num_paths if (self._num_paths is not None) else int(num_paths)
-        assert P is not None, "Call reset(num_paths) before using attack_mask()"
-        mask = np.ones(P, dtype=int)
-
-        if rng.random() > self.attack_rate:
-            return mask  # skip this frame
-
-        # Scoring: prefer decayed counts if available, else windowed frequency
-        if self._counts is not None and self._counts.sum() > 0:
-            scores = self._counts.copy()
-        else:
-            recent = self._history[-self.memory_window:] if self._history else []
-            scores = np.bincount(recent, minlength=P).astype(float)
-
-        if self.temperature is not None and self.temperature > 0:
-            # Softmax sampling without replacement (top-k)
-            logits = scores / float(self.temperature)
-            logits -= logits.max()  # numerical stability
-            probs = np.exp(logits)
-            total = probs.sum()
-            probs = probs / total if total > 0 else np.ones(P) / P
-            k = min(self.k, P)
-            targets = list(rng.choice(P, size=k, replace=False, p=probs))
-        else:
-            # Greedy top-k
-            k = min(self.k, P)
-            targets = list(np.argsort(-scores)[:k])
-
-        for t in targets:
-            mask[int(t)] = 0
-        return mask
-
-    # ---- Offline (batch) - consistent with parent -------------------
-    def generate(self,
-                 rng: np.random.Generator,
-                 frame_length: int,
-                 num_paths: int,
-                 selection_trace: list[int] | None = None) -> np.ndarray:
-        """
-        Simulate the same online policy to build a (T x P) mask matrix.
-        If `selection_trace` is provided, adapts to the true usage;
-        otherwise synthesizes a sticky usage as a fallback.
-        """
-        self.reset(num_paths)
-        attack = np.ones((frame_length, num_paths), dtype=int)
-
-        # Prepare a usage sequence to "observe"
-        if not selection_trace:  # handles None or []
-            # Fallback sticky usage (smoke tests only)
-            trace = []
-            prev = int(rng.integers(num_paths))
-            for _ in range(frame_length):
-                choice = prev if rng.random() < self.sticky_p else int(rng.integers(num_paths))
-                trace.append(choice)
-                prev = choice
-        else:
-            trace = list(selection_trace[:frame_length])
-            if len(trace) < frame_length:
-                trace += [trace[-1]] * (frame_length - len(trace))
-
-        # Roll forward as if online
-        for t in range(frame_length):
-            mask_t = self.attack_mask(rng, num_paths)
-            attack[t] = mask_t
-            self.observe(trace[t])
-
-        return attack
+from typing import Dict, Optional, List
 
 
 # =============================================================================
@@ -308,12 +42,43 @@ class QuantumEnvironment:
     Handles network topology, contexts (qubit allocations), and reward calculations.
     This class represents a "no attack" baseline scenario by default.
     """
-    def __init__(self, attack, qubit_capacities=(8, 10, 8, 9), frame_length=4000, 
-                seed=None, entanglement_success_factor=3000, allocator=None, external_contexts=None, external_rewards=None, external_topology=None):
+    def __init__(self, attack, qubit_capacities=(8, 10, 8, 9), 
+                allocator=None,
+                noise_model=None,              # NEW
+                fidelity_calculator=None,      # NEW
+                external_contexts=None, 
+                external_rewards=None,
+                external_topology=None,
+                frame_length=1400,
+                entanglement_success_factor=100,
+                horizon_length=2000,
+                num_paths=4,
+                num_total_qubits=35,
+                seed=42):
+
+        # Store quantum objects
+        self.noise_model = noise_model
+        self.fidelity_calculator = fidelity_calculator
+
         # Add allocator support
         self.attack = attack
         self.allocator = allocator
         self.attack_rate = attack.attack_rate
+        
+        # Existing setup
+        self.num_paths = num_paths
+        self.frame_length = frame_length
+        self.horizon_length = horizon_length
+        self.rng = np.random.default_rng(seed)
+        self.qubit_capacities = qubit_capacities
+        self.num_total_qubits = num_total_qubits
+        self.entanglement_success_factor = entanglement_success_factor
+        
+        # Topology
+        self.topology = external_topology
+        # Contexts
+        if external_contexts is not None:   self.contexts = external_contexts
+        else:                               self.contexts = self._generate_contexts()
 
         # Use allocator for initial allocation if provided
         if self.allocator:
@@ -326,25 +91,23 @@ class QuantumEnvironment:
             self.qubit_capacities = tuple(qubit_capacities)
             print(f"📌 Static Allocation: {self.qubit_capacities}")
 
-        self.num_paths = len(self.qubit_capacities)
         self.frame_length = int(frame_length)
         self.rng = np.random.default_rng(seed)
-        
+        self.num_paths = len(self.qubit_capacities)
         # This new parameter restores the correct reward calculation.
         self.entanglement_success_factor = entanglement_success_factor
-
-        # Contexts & rewards (precomputed reward tables)
-        self.contexts = self._generate_contexts()
-        self.reward_list = self._calculate_path_rewards() # Route performance tracking for dynamic allocation
         self.route_stats = {i: {'pulls': 0, 'successes': 0, 'failures': 0} for i in range(self.num_paths)}
 
-        # ----- External testbed overrides -----
-        # Topology (optional)
-        self.topology = external_topology
-        self.contexts = external_contexts
-        self.reward_list = external_rewards
-        if external_contexts is None: self.contexts = self._generate_contexts()
-        if external_rewards is None: self.reward_list = self._calculate_path_rewards()
+        # DISPATCHER: Rewards calculation
+        if external_rewards is not None:
+            # Path 1: User-provided
+            self.reward_list = external_rewards
+        elif self.noise_model is not None and self.fidelity_calculator is not None:
+            # Path 2: Quantum objects (NEW)
+            self.reward_list = self._calculate_path_rewards_from_physics()
+        else:
+            # Path 3: Hardcoded (EXISTING)
+            self.reward_list = self._calculate_path_rewards()
 
 
 
@@ -439,6 +202,37 @@ class QuantumEnvironment:
         
         return [r1, r2, r3, r4]
 
+    def _calculate_path_rewards_from_physics(self):
+        """
+        NEW: Calculate rewards using pluggable quantum physics objects.
+        """
+        if self.noise_model is None or self.fidelity_calculator is None:
+            raise ValueError("Both noise_model and fidelity_calculator must be provided")
+        
+        rewards = []
+        
+        for path_idx in range(self.num_paths):
+            path_rewards = []
+            
+            # Safety: ensure context exists for this path
+            if path_idx >= len(self.contexts) or not self.contexts[path_idx]:
+                print(f"⚠️ Warning: No contexts for path {path_idx}, using dummy")
+                path_rewards = [0.5] * 10  # or skip, or raise error
+            else:
+                # Get error rates from quantum noise model
+                error_rates = self.noise_model.get_error_rates(path_idx)
+                
+                # Compute fidelity for each context
+                for context in self.contexts[path_idx]:
+                    fidelity = self.fidelity_calculator.compute_path_fidelity(
+                        error_rates=error_rates,
+                        context=context,
+                        success_factor=self.entanglement_success_factor
+                    )
+                    path_rewards.append(fidelity)
+            rewards.append(path_rewards)
+        return rewards
+
     def generate_attack_pattern(self) -> np.ndarray:
         """Default behavior for the base environment is no attacks."""
         return np.ones((self.frame_length, self.num_paths), dtype=np.int8)
@@ -504,13 +298,14 @@ class QuantumEnvironment:
         """Clean up large memory objects to prevent leaks."""
         attrs_to_clean = ['contexts', 'reward_list', 'rng']
         cleaned = []
-        for attr in attrs_to_clean:
-            if hasattr(self, attr):
-                delattr(self, attr)
-                cleaned.append(attr)
-        if verbose:
-            print(f"Cleaned up in {self.__class__.__name__}: {', '.join(cleaned)}")
-        gc.collect()
+        try:
+            for attr in attrs_to_clean:
+                if hasattr(self, attr):
+                    delattr(self, attr)
+                    cleaned.append(attr)
+            if verbose: print(f"Cleaned up in {self.__class__.__name__}: {', '.join(cleaned)}")
+            gc.collect()
+        except: pass
 
     def __del__(self):
         """Ensure cleanup is called when the object is destroyed."""
@@ -519,6 +314,65 @@ class QuantumEnvironment:
     def __repr__(self):
         env = self.__class__.__name__.replace("QuantumEnvironment", "")
         return env if env else "Baseline (None)"
+
+    def set_fusion_routing(self, fusion_prob=0.9, enable_secondary_fusions=True):
+        """
+        Configure environment for fusion-based routing (QuARC-style)
+        
+        Args:
+            fusion_prob: q (fusion success probability)
+            enable_secondary_fusions: Whether to attempt multiple fusion rounds
+        """
+        self.fusion_mode = True
+        self.fusion_prob = fusion_prob
+        self.enable_secondary_fusions = enable_secondary_fusions
+        
+        print(f"Fusion routing enabled: q={fusion_prob}, "
+            f"secondary_fusions={enable_secondary_fusions}")
+
+    def simulate_fusion_routing(self, path, qubits_allocated):
+        """
+        Simulate fusion-based entanglement distribution along a path
+        
+        This is analogous to your existing path simulation but uses fusion
+        instead of swapping.
+        
+        Args:
+            path: List of node indices
+            qubits_allocated: Number of qubits assigned to this path
+            
+        Returns:
+            success (bool), aggregate_throughput (int)
+        """
+        if not hasattr(self, 'fusion_mode') or not self.fusion_mode:
+            raise RuntimeError("Fusion routing not enabled. Call set_fusion_routing() first")
+        
+        # Step 1: Simulate link generation
+        successful_links = []
+        for i in range(len(path) - 1):
+            u, v = path[i], path[i+1]
+            p_link = self.noise_model.edge_probs.get((u, v), self.noise_model.p_avg)
+            
+            # Attempt link generation
+            if np.random.rand() < p_link:
+                successful_links.append((u, v))
+        
+        # Step 2: Check if there's a connected path of successful links
+        # (simplified - in real QuARC, this involves complex fusion logic)
+        if len(successful_links) == len(path) - 1:
+            # All links succeeded, now attempt fusions
+            num_fusions = len(path) - 2  # Internal nodes perform fusions
+            
+            # Each fusion succeeds with prob q
+            all_fusions_succeed = np.random.rand() < (self.fusion_prob ** num_fusions)
+            
+            if all_fusions_succeed:
+                # Success! Could be multiple parallel entanglements
+                aggregate = 1  # Simplified - QuARC can generate multiple
+                return True, aggregate
+        
+        return False, 0
+
 
 
 # =============================================================================
@@ -532,13 +386,11 @@ class StochasticQuantumEnvironment(QuantumEnvironment):
     It inherits all properties from QuantumEnvironment and overrides the
     attack generation logic.
     """
-    def __init__(self, attack,
-                 qubit_capacities=(8, 10, 8, 9),
-                 frame_length=4000,
-                seed: int | None = None,
-                allocator=None):  
+    def __init__(self, attack, qubit_capacities=(8, 10, 8, 9), frame_length=4000, 
+                    seed: int | None = None, allocator=None, **kwargs):  
         
-        super().__init__(attack, qubit_capacities=qubit_capacities, frame_length=frame_length, seed=seed, allocator=allocator)
+        super().__init__(attack, qubit_capacities=qubit_capacities, 
+                            frame_length=frame_length, seed=seed, allocator=allocator, **kwargs)
 
         # Generate the stochastic attack mask once upon initialization
         self._attack_mask = self.attack.generate(self.rng, self.frame_length, self.num_paths)
@@ -598,8 +450,9 @@ class AdversarialQuantumEnvironment(QuantumEnvironment):
                  qubit_capacities=(8, 10, 8, 9),
                  frame_length=4000,
                  attack: AttackStrategy | None = None,
-                 seed: int | None = None, allocator=None):
-        super().__init__(attack, qubit_capacities=qubit_capacities, frame_length=frame_length, seed=seed, allocator=allocator)
+                 seed: int | None = None, allocator=None, **kwargs):
+        super().__init__(attack, qubit_capacities=qubit_capacities, frame_length=frame_length, 
+                seed=seed, allocator=allocator, **kwargs)
         self.attack: AttackStrategy = self.attack or NoAttack()
 
         # Generate the attack pattern once using the provided strategy

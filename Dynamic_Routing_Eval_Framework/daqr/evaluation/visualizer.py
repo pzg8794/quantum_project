@@ -640,52 +640,6 @@ class QuantumEvaluatorVisualizer:
             'peak_frames': peak_frames
         }
 
-
-    # def _plot_model_performance_ranking(self, ax, data, scenario='Stochastic'):
-    #     """Plot comprehensive model performance ranking using PRE-COMPUTED efficiency."""
-    #     if 'results' not in data or 'oracle_reward' not in data:
-    #         ax.text(0.5, 0.5, 'No ranking data available',
-    #                 ha='center', va='center', transform=ax.transAxes)
-    #         ax.set_axis_off()
-    #         return
-        
-    #     model_efficiencies = []
-    #     model_names = []
-        
-    #     for model, result in data['results'].items():
-    #         if model.lower() != 'oracle':
-    #             # Use PRE-COMPUTED efficiency
-    #             efficiency = result.get('efficiency', 0)
-    #             model_efficiencies.append(efficiency)
-    #             model_names.append(model)
-        
-    #     if not model_names:
-    #         ax.text(0.5, 0.5, 'No models to rank',
-    #                 ha='center', va='center', transform=ax.transAxes)
-    #         ax.set_axis_off()
-    #         return
-        
-    #     # Sort by efficiency
-    #     sorted_data = sorted(zip(model_names, model_efficiencies), key=lambda x: x[1], reverse=True)
-    #     sorted_names, sorted_efficiencies = zip(*sorted_data)
-        
-    #     colors = [self.model_colors.get(model, 'gray') for model in sorted_names]
-    #     bars = ax.bar(range(len(sorted_names)), sorted_efficiencies, color=colors, alpha=0.8)
-        
-    #     ax.set_xlabel('Models (Ranked by Performance)', fontweight='bold')
-    #     ax.set_ylabel('Oracle Efficiency (%)', fontweight='bold')
-    #     ax.set_title(f'Model Performance Ranking\n{scenario.title()} Environment', fontweight='bold')
-    #     ax.set_xticks(range(len(sorted_names)))
-    #     ax.set_xticklabels(sorted_names, rotation=45, ha='right')
-    #     ax.grid(True, alpha=0.3, axis='y')
-        
-    #     # Add efficiency labels
-    #     for bar, efficiency in zip(bars, sorted_efficiencies):
-    #         height = bar.get_height()
-    #         ax.text(bar.get_x() + bar.get_width()/2., height + 1,
-    #             f'{efficiency:.1f}%', ha='center', va='bottom', fontweight='bold')
-
-
     def _plot_oracle_efficiency(self, ax, results):
         """Plot Oracle efficiency using PRE-COMPUTED efficiency."""
         if 'results' not in results or 'oracle_reward' not in results:
@@ -1477,15 +1431,12 @@ class QuantumEvaluatorVisualizer:
         ax.legend(fontsize=10, loc='best')
         ax.grid(axis='y', alpha=0.3, linestyle='--')
 
-
-
     def _plot_single_environment_analysis(self, ax, results):
         """Plot single environment analysis when no adversarial data."""
         ax.text(0.5, 0.5, 'Stochastic Environment Analysis\n\nFocused Evaluation Complete\nAdversarial Data Not Available', 
                 ha='center', va='center', transform=ax.transAxes, fontsize=12, 
                 bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
         ax.set_title('Single Environment Analysis', fontweight='bold')
-
 
     def _plot_research_summary(self, ax, stoch_results, adv_results):
         """Plot research summary using pre-computed data."""
@@ -1525,7 +1476,6 @@ class QuantumEvaluatorVisualizer:
                         edgecolor='black', linewidth=2))
         ax.set_title('Research Summary', fontweight='bold', fontsize=12)
         ax.axis('off')
-
 
     def _create_basic_comparison_plot(self):
         """Create basic comparison plot when no data available."""
@@ -1580,6 +1530,51 @@ class QuantumEvaluatorVisualizer:
         if cooldown_seconds > 0: time.sleep(cooldown_seconds)
         if verbose: print(f"✓ QuantumEvaluatorVisualizer cleaned: {', '.join(cleanup_items)}")
 
+    def plot_model_similarity(self, model1='GNeuralUCB', model2='iCPursuitNeuralUCB'):
+        """Plot trajectory divergence between similar models."""
+        stoch_data = self.get_viz_data('stochastic_data')
+        if not stoch_data or 'averaged' not in stoch_data: return
+        
+        results = stoch_data['averaged']['results']
+        if model1 not in results or model2 not in results: return
+        
+        data1, data2 = results[model1], results[model2]
+        # Access raw trajectories if available via evaluator
+        raw1 = self._extract_raw_trajectory(model1)
+        raw2 = self._extract_raw_trajectory(model2)
+        
+        fig, axes = plt.subplots(2, 1, figsize=(10, 8))
+        axes[0].plot(raw1['rewardlist'], label=model1, alpha=0.8)
+        axes[0].plot(raw2['rewardlist'], label=model2, alpha=0.8)
+        axes[0].set_title('Reward Trajectories (100 frames too short?)')
+        axes[0].legend()
+        
+        diff = abs(data1['final_reward'] - data2['final_reward'])
+        axes[1].bar(['Efficiency Diff %', 'Gap Diff %'], 
+                    [abs(data1['efficiency'] - data2['efficiency']),
+                    abs(data1['gap'] - data2['gap'])])
+        axes[1].text(0, 0.5, f'Final Reward Diff: {diff:.3f}', transform=axes[1].transAxes)
+        plt.savefig('model_similarity.png')
+        plt.show()
+
+    def plot_frame_scaling(self, models=['GNeuralUCB', 'iCPursuitNeuralUCB'], frames=[100, 500, 1000]):
+        """Test divergence at baseline scales."""
+        scaling_data = {}
+        for frame in frames:
+            # Re-run evaluator.get_evaluation_results with custom frames
+            evaluator.set_frame_budget(frame)
+            results = evaluator.get_evaluation_results('stochastic')
+            for model in models:
+                if model in results:
+                    scaling_data.setdefault(model, []).append(results[model]['final_reward'])
+        
+        df = pd.DataFrame(scaling_data, index=frames)
+        df.plot(kind='line', marker='o')
+        plt.title('Performance Divergence vs Frame Count')
+        plt.ylabel('Final Reward')
+        plt.savefig('frame_scaling.png')
+        plt.show()
+        print(df)
 
     def __del__(self):
         """Destructor to ensure cleanup on deletion."""

@@ -7,7 +7,7 @@ import  re
 import  pickle
 import  torch
 import  gc, time
-import  threading  
+import  threading, json  
 import  numpy as np, copy
 import  multiprocessing as mp
 
@@ -116,9 +116,14 @@ class QuantumExperimentRunner:
 
             # temp fix
             temp_qubit_capacities = None
-            if 'runs' in other_attrs:   del other_attrs['runs']
-            if "seed" in other_attrs:   del other_attrs["seed"]
-            if 'runs' in self.key_attrs: del self.key_attrs['runs']
+            non_dflt_checks = ["runs", "actk_type", "noise_model", "fidelity_calculator", "external_topology", "external_contexts", "external_rewards"]
+
+            if "seed" in other_attrs:                       del other_attrs["seed"]
+            for check in non_dflt_checks:
+                if check in other_attrs:                    del other_attrs[check]
+                if check in self.key_attrs:                 del self.key_attrs[check]
+            # if 'runs' in other_attrs:   del other_attrs['runs']
+            # if 'runs' in self.key_attrs: del self.key_attrs['runs']
             if "random" in str(self.configs.allocator).lower(): 
                 temp_qubit_capacities = other_attrs['qubit_capacities']
                 del other_attrs['qubit_capacities']
@@ -144,7 +149,7 @@ class QuantumExperimentRunner:
                 
                 return True
             
-            print(f"\n❌ Evaluator comparison failed:")
+            print(f"\n❌ {str(self).upper()} comparison failed:")
             print(f"  ID: {self.id} vs {other.get('id')}")
             print(f"  Allocator: {self.allocator_id} vs {other.get('allocator_id')}")
             print(f"  Environment: {self.env_id} vs {other.get('env_id')}")
@@ -282,7 +287,8 @@ class QuantumExperimentRunner:
     def display_experiment_conditions(self):
         "Display Experiment Conditions"
         scaled_capacity = int(self.capacity*self.configs.scale)
-        print(f"\n{str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Env:{str(self.environment)}, Attack:{str(self.environment.attack)}, Rate:{self.environment.attack_rate}, Frames:{self.environment.frame_length}, QubitAlloc={str(self.configs.allocator)}, SC:{scaled_capacity} (Scale={self.configs.scale} x Cap={self.capacity}), Seed: {self.experiment_seed}")
+        if self.environment:
+            print(f"\n{str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Env:{str(self.environment)}, Attack:{str(self.environment.attack)}, Rate:{self.environment.attack_rate}, Frames:{self.environment.frame_length}, QubitAlloc={str(self.configs.allocator)}, SC:{scaled_capacity} (Scale={self.configs.scale} x Cap={self.capacity}), Seed: {self.experiment_seed}")
 
     def _build_environment_once(self, frames_count: float, qubit_cap: tuple):
         """
@@ -361,6 +367,12 @@ class QuantumExperimentRunner:
         seed_offset = config['seed_offset']
         runner_type = config['runner_type']
         model_kwargs = config['kwargs']
+
+        # 🆕 NEW: Add transition parameters to model_kwargs
+        transition_trigger = getattr(self.configs, 'transition_trigger', False)
+        if transition_trigger and  'trigger_state_transition' in env_info:
+            model_kwargs['transition_trigger'] = env_info['trigger_state_transition']
+            model_kwargs['transition_interval'] = getattr(self.configs, 'paper2_transition_interval', 50)
 
         algorithm_seed = self.experiment_seed + seed_offset
         torch.manual_seed(algorithm_seed)
@@ -488,8 +500,9 @@ class QuantumExperimentRunner:
             except ImportError:
                 pass
             
-            collected = gc.collect()
-            cleanup_items.append(f"GC:{collected} objects")
+            if gc:
+                collected = gc.collect()
+                cleanup_items.append(f"GC:{collected} objects")
             cleanup_items.append(f"cooldown:{cooldown_seconds}s")
             if cooldown_seconds > 0: time.sleep(cooldown_seconds)
             if verbose:
@@ -692,7 +705,7 @@ class QuantumExperimentRunner:
                 # print(f"\tBest model for {alg_name} saved.")
             except Exception as e: print(f"⚠️ Could not save best model: {e}")
             del model
-            gc.collect()
+            if gc: gc.collect()
         self.configs.overwrite = overwrite
 
         # Determine if this is the new winner
@@ -721,7 +734,7 @@ class QuantumExperimentRunner:
             # Save and cleanup
             model.save()
             del model
-            gc.collect()
+            if gc: gc.collect()
         self.configs.overwrite = overwrite
         return oracle_reward
     

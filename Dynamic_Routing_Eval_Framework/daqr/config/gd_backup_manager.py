@@ -115,6 +115,8 @@ class GoogleDriveBackupManager:
             return None
         
         data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.DRIVE_FOLDER_ID)
+        if not data_lake_id: return None
+
         query = f"name='{name}' and '{data_lake_id}' in parents"
 
         response = self.drive.files().list(
@@ -377,44 +379,48 @@ class GoogleDriveBackupManager:
 
     def _ensure_drive_folder(self, folder_name, parent_id):
         """Find or create a folder under a given parent (or Drive root)."""
-        if not self.remote_available or not self.drive: return None
+        if not self.remote_available or not self.drive or not parent_id: return None
 
-        is_drive_root = (parent_id == self.DRIVE_FOLDER_ID)
+        try:
+            is_drive_root = (parent_id == self.DRIVE_FOLDER_ID)
 
-        if is_drive_root:
-            parent_clause = "trashed = false"
-        elif parent_id == "root":
-            parent_clause = "'root' in parents"
-        else:
-            parent_clause = f"'{parent_id}' in parents"
+            if is_drive_root:
+                parent_clause = "trashed = false"
+            elif parent_id == "root":
+                parent_clause = "'root' in parents"
+            else:
+                parent_clause = f"'{parent_id}' in parents"
 
-        query = (
-            f"name='{folder_name}' and {parent_clause} "
-            f"and mimeType='application/vnd.google-apps.folder'"
-        )
+            query = (
+                f"name='{folder_name}' and {parent_clause} "
+                f"and mimeType='application/vnd.google-apps.folder'"
+            )
 
-        response = self.drive.files().list(
-            q=query,
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
+            response = self.drive.files().list(
+                q=query,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True
+            ).execute()
 
-        files = response.get("files", [])
-        if files:
-            return files[0]["id"]
+            files = response.get("files", [])
+            if files:
+                return files[0]["id"]
 
-        metadata = {
-            "name": folder_name,
-            "mimeType": "application/vnd.google-apps.folder",
-            "parents": None if is_drive_root else [parent_id]
-        }
+            metadata = {
+                "name": folder_name,
+                "mimeType": "application/vnd.google-apps.folder",
+                "parents": None if is_drive_root else [parent_id]
+            }
 
-        folder = self.drive.files().create(
-            body=metadata,
-            supportsAllDrives=True
-        ).execute()
+            folder = self.drive.files().create(
+                body=metadata,
+                supportsAllDrives=True
+            ).execute()
 
-        return folder["id"]
+            return folder["id"]
+        except Exception as e:  print(f"            {e}")
+
+        return None
 
 
     def _retry_drive(self, func, max_retries=5):
@@ -438,7 +444,7 @@ class GoogleDriveBackupManager:
         """Upload a file into Google Drive, supporting both quantum_data_lake and quantum_logs."""
         if not self.remote_available or not self.drive: return False
         if self.in_share_drive: return False
-
+        
         # ---------------------------------------------------------------
         # 1. Root folder (quantum_data_lake or quantum_logs)
         # ---------------------------------------------------------------
@@ -453,6 +459,7 @@ class GoogleDriveBackupManager:
             # day_folder_name     =   self.normalize_day_prefix(date_str)
             parent_folder_id    =   self._ensure_drive_folder(str(date_str), comp_folder_id)
         else: parent_folder_id  =   root_id
+        if not parent_folder_id: return False
 
         # ---------------------------------------------------------------
         # 4. Check if file already exists
@@ -517,6 +524,7 @@ class GoogleDriveBackupManager:
         # 3. Resolve date folder
         # ---------------------------------------------------------------
         day_folder_id = self._ensure_drive_folder(date_str, comp_folder_id)
+        if not day_folder_id: return None
         
         # ---------------------------------------------------------------
         # 4. Drive search query
@@ -660,15 +668,17 @@ class GoogleDriveBackupManager:
                     files_overwritten += 1
                 except Exception as e:  print(f"            ℹ️ New file, will upload.")
 
-                print(f"            📤 Uploading...")
-                self._upload_file_to_drive(
-                    component=component,
-                    date_str=str(path_obj.parent.name),
-                    local_path=local_path,
-                    filename=filename
-                )
-                files_uploaded += 1
-                print(f"            ✓ Uploaded: {filename}")
+                try:
+                    print(f"            📤 Uploading...")
+                    self._upload_file_to_drive(
+                        component=component,
+                        date_str=str(path_obj.parent.name),
+                        local_path=local_path,
+                        filename=filename
+                    )
+                    files_uploaded += 1
+                    print(f"            ✓ Uploaded: {filename}")
+                except Exception as e:  print(f"            Failed Uploading")
 
             # Component-level summary
             print(
@@ -706,6 +716,7 @@ class GoogleDriveBackupManager:
         # Drive API for non-shared-drive environments
         data_lake_id= self._ensure_drive_folder("quantum_data_lake", self.DRIVE_FOLDER_ID)
         comp_id     = self._ensure_drive_folder(component, data_lake_id)
+        if not comp_id: return None
         
         # List all day_* folders
         day_folders = self.drive.files().list(

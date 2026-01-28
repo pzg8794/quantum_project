@@ -19,7 +19,7 @@ class MultiRunEvaluator:
     """
     def __init__(self, configs=None, base_frames=4000, frame_step=2000, base_seed=12345, 
                  runs=None, attack_type=None, models=None, scenarios=None,
-                 attack_intensity=None, enable_progress=False):
+                 attack_intensity=None, enable_progress=False, has_all=True):
         """
         Initialize the multi-run evaluator.
         Args:
@@ -83,12 +83,12 @@ class MultiRunEvaluator:
         # Set filename AFTER configs are ready
         self.runs_id        = getattr(self.configs, "runs", "1")
         self.allocator_id   = str(getattr(self.configs, "allocator", "alloc"))
-        self.env_id         = str(getattr(self.configs, "environment", "env"))
-        self.attack_id      = str(getattr(self.configs, "attack_strategy", "None"))
+        self.env_id         = str(getattr(self.configs, "environment", "env")) if not has_all else "All"
+        self.attack_id      = str(getattr(self.configs, "attack_strategy", "None")) if not has_all else "All"
 
         run_id_str          = str(self.runs_id)
         alloc_str           = "_".join(str(v) for v in qubit_cap)
-        if "random" in str(self.configs.allocator).lower(): run_id_str += f"_({re.sub(r'^_', '', alloc_str)})"
+        # if "random" in str(self.configs.allocator).lower(): run_id_str += f"_({re.sub(r'^_', '', alloc_str)})"
         self.cap_id         = int(float(int(self.base_frames if self.is_base_t else self.frames_count)*self.configs.scale))
         self.file_name      = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id}_{self.attack_id}-{int(self.base_frames)}_{int(self.frame_step)}_{run_id_str}_S{str(self.configs.scale).replace(".", "_")}{'Tb' if self.is_base_t else 'T'}.pkl"
         
@@ -105,27 +105,32 @@ class MultiRunEvaluator:
         Build ONE shared environment for the whole experiment (all models),
         with a seed that is independent of the model being run.
         """
-        if frames_count: self.frames_count =frames_count
-        # Seed independent of model to keep environment identical across algorithms
-        env_seed = self.configs.base_seed + (hash(f"{self.configs.attack_type}_{self.frames_count}") % 10000)
+        try:
+            if frames_count: self.frames_count = frames_count
+            # Seed independent of model to keep environment identical across algorithms
+            # env_seed = self.configs.base_seed + (hash(f"{self.configs.attack_type}_{self.frames_count}") % 10000)
+            base_seed = int(getattr(self.configs, "base_seed", 0))
+            env_seed = base_seed + (hash(f"{self.configs.attack_type}_{self.frames_count}") % 10000)
 
-        # Configure attack scenario if not already configured by MultiRun
-        self.configs.set_attack_strategy(
-            attack_type=self.configs.attack_type,
-            attack_rate=self.configs.attack_rate,
-            attack_intensity=self.configs.attack_intensity
-        )
 
-        # Configure environment core parameters
-        self.configs.set_environment(
-            qubit_cap=qubit_cap,
-            frames_no=self.frames_count,
-            seed=env_seed,
-            attack_intensity=self.configs.attack_intensity,
-            attack_type=self.configs.attack_type,
-            **self.physics_params              # ✅ Injects Paper #2 physics!
-        )
-        self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
+            # Configure attack scenario if not already configured by MultiRun
+            self.configs.set_attack_strategy(
+                attack_type=self.configs.attack_type,
+                attack_rate=self.configs.attack_rate,
+                attack_intensity=self.configs.attack_intensity
+            )
+
+            # Configure environment core parameters
+            self.configs.set_environment(
+                qubit_cap=qubit_cap,
+                frames_no=self.frames_count,
+                seed=env_seed,
+                attack_intensity=self.configs.attack_intensity,
+                attack_type=self.configs.attack_type,
+                **self.physics_params              # ✅ Injects Paper #2 physics!
+            )
+            self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
+        except Exception as e: print(f"\tError Building Environment:\n\t{e}")
 
     def _infer_models_from_state(self, state: dict):
         """
@@ -158,69 +163,110 @@ class MultiRunEvaluator:
         # If we can't infer anything, return None and skip model check
         return None
 
+    def safe_json(self, obj):
+        # If it's not a dict, stringify safely
+        if not isinstance(obj, dict):
+            if callable(obj):
+                return f"<function {obj.__name__}>"
+            return str(obj)
+
+        def serialize(val):
+            if callable(val):
+                return f"<method {val.__name__}>"
+            try:
+                json.dumps(val)
+                return val
+            except TypeError:
+                return str(val)
+
+        return {k: serialize(v) for k, v in obj.items()}
+
     def __eq__(self, other):
         """Defines equality for evaluator or saved dict comparison."""
         # --- dict comparison (used in resume) ---
+        copied_attrs= copy.deepcopy(self.key_attrs)
+        other_attrs = other.get("key_attrs", {}).copy()
         if isinstance(other, dict):
             print("EQUAL METHOD")
-            other_attrs     = other.get("key_attrs", {}).copy()
-            # -------------------------------------------------
-            # TEMP SAFETY CHECK: ensure model sets are compatible
-            # -------------------------------------------------
-            saved_models            = self._infer_models_from_state(other)
-            if saved_models:
-                current_set         = set(self.models or [])
-                saved_set           = set(saved_models)
-                # This prevents: using a 3-model run as if it were a 5-model run.
-                if not current_set.issubset(saved_set):
-                    print("\n❌ MODEL SET MISMATCH — forcing rerun")
-                    print(f"   Current models: {sorted(current_set)}")
-                    print(f"   Saved models:   {sorted(saved_set)}")
-                    return False
-            else:   print("ℹ️ Could not infer models from saved state — skipping model check")
 
-            # temp fix
-            temp_qubit_capacities = None
-            if 'runs' in other_attrs:   del other_attrs['runs']
-            if "seed" in other_attrs:   del other_attrs["seed"]
-            if 'runs' in self.key_attrs:del self.key_attrs['runs']
-            if 'frame_length' in other_attrs:   del other_attrs['frame_length']
-            if 'frame_length' in self.key_attrs:   del self.key_attrs['frame_length']
-            if "random" in str(self.configs.allocator).lower(): 
-                temp_qubit_capacities = other_attrs.get('qubit_capacities', None) or self.key_attrs['qubit_capacities']
-                if 'qubit_capacities' in other_attrs: del other_attrs['qubit_capacities']
-                if 'qubit_capacities' in self.key_attrs: del self.key_attrs['qubit_capacities']
+            try:
+                # -------------------------------------------------
+                # TEMP SAFETY CHECK: ensure model sets are compatible
+                # -------------------------------------------------
+                saved_models            = self._infer_models_from_state(other)
+                if saved_models:
+                    current_set         = set(self.models or [])
+                    saved_set           = set(saved_models)
+                    # This prevents: using a 3-model run as if it were a 5-model run.
+                    if not current_set.issubset(saved_set):
+                        print("\n❌ MODEL SET MISMATCH — forcing rerun")
+                        print(f"   Current models: {sorted(current_set)}")
+                        print(f"   Saved models:   {sorted(saved_set)}")
+                        return False
+                else:   print("ℹ️ Could not infer models from saved state — skipping model check")
+            except Exception as e: print(f"ERROR 1: {e}")
+
+            try:
+                temp_qubit_capacities = None
+                non_dflt_attrs = ["qubit_capacities", "frame_length", "actk_type", "noise_model", "fidelity_calculator", "external_topology", "external_contexts", "external_rewards", "runs"]
+ 
+                # if "random" in str(self.configs.allocator).lower(): 
+                #     try:
+                #         temp_qubit_capacities = other_attrs.get('qubit_capacities', None) or copied_attrs['qubit_capacities']
+                #         if 'qubit_capacities' in copied_attrs:  del copied_attrs['qubit_capacities']
+                #         if 'qubit_capacities' in other_attrs:   del other_attrs['qubit_capacities']
+                #     except: pass
+
+                if "seed" in other_attrs:                   del other_attrs["seed"]
+
+                for check in non_dflt_attrs:
+                    try:
+                        if check in other_attrs:            del other_attrs[check]
+                        if check in copied_attrs:           del copied_attrs[check]
+                    except: pass
+                # if 'runs' in other_attrs:                 del other_attrs['runs']
+                # if 'runs' in copied_attrs:                del copied_attrs['runs']
+                # if 'frame_length' in other_attrs:         del other_attrs['frame_length']
+                # if 'frame_length' in copied_attrs:        del copied_attrs['frame_length']
+            except Exception as e: print(f"ERROR 2: {e}")
+
+            try:
+                if (
+                    # self.capacity == other.get("capacity") and
+                    self.frame_step == other.get("frame_step") and 
+                    self.base_frames == other.get("base_frames") and
+                    self.allocator_id == other.get("allocator_id") and 
+                    str(self.runs_id) <= str(other.get("runs_id")) and
+                    # self.attack_id == other.get("attack_id") and 
+                    # self.env_id == other.get("env_id") and
+                    self.cap_id == other.get("cap_id") and
+                    copied_attrs == other_attrs
+                ):
+                    if temp_qubit_capacities: 
+                        copied_attrs.update(other.get("key_attrs", {}))
+                        copied_attrs.update({'qubit_capacities':temp_qubit_capacities})
+                        for attr, val in copied_attrs.items():
+                            if attr in self.configs._env_params.keys(): self.configs._env_params[attr] = val
+                        # reset environment with random found capacity
+                        try: self._build_environment_once(frames_count=self.frames_count, qubit_cap=temp_qubit_capacities)
+                        except: pass
+                        self.key_attrs.update(copied_attrs)
+                    return True
+            except Exception as e: print(f"ERROR 3: {e}")
             
-            if (
-                # self.capacity == other.get("capacity") and
-                self.frame_step == other.get("frame_step") and
-                self.base_frames == other.get("base_frames") and
-                self.allocator_id == other.get("allocator_id") and
-                self.env_id == other.get("env_id") and
-                int(self.runs_id) <= int(other.get("runs_id")) and
-                self.attack_id == other.get("attack_id") and
-                self.cap_id == other.get("cap_id") and
-                self.key_attrs == other_attrs
-            ):
-                if temp_qubit_capacities: 
-                    self.key_attrs.update(other.get("key_attrs", {}))
-                    self.key_attrs.update({'qubit_capacities':temp_qubit_capacities})
-                    for attr, val in self.key_attrs.items():
-                        if attr in self.configs._env_params.keys(): self.configs._env_params[attr] = val
-                    # reset environment with random found capacity
-                    self._build_environment_once(frames_count=self.frames_count, qubit_cap=temp_qubit_capacities)
-                return True
-            
-            print(f"\n❌ Evaluator comparison failed:")
-            print(f"  Frame step: {self.frame_step} vs {other.get('frame_step')}")
-            print(f"  Base frames: {self.base_frames} vs {other.get('base_frames')}")
-            print(f"  Allocator: {self.allocator_id} vs {other.get('allocator_id')}")
-            print(f"  Environment: {self.env_id} vs {other.get('env_id')}")
-            print(f"  Runs: {self.runs_id} vs {other.get('runs_id')}")
-            print(f"  Attack: {self.attack_id} vs {other.get('attack_id')}")
-            print(f"  Capacity: {self.cap_id} vs {other.get('cap_id')}")
-            print(f"  Current attrs:\n{json.dumps(self.key_attrs, indent=2)}")
-            print(f"  Loaded attrs:\n{json.dumps(other_attrs, indent=2)}")
+            try:
+                print(f"\n❌ {str(self).upper()} comparison failed:")
+                print(f"  Frame step: {self.frame_step} vs {other.get('frame_step')}")
+                print(f"  Base frames: {self.base_frames} vs {other.get('base_frames')}")
+                print(f"  Allocator: {self.allocator_id} vs {other.get('allocator_id')}")
+                # print(f"  Environment: {self.env_id} vs {other.get('env_id')}")
+                print(f"  Runs: {self.runs_id} vs {other.get('runs_id')}")
+                # print(f"  Attack: {self.attack_id} vs {other.get('attack_id')}")
+                print(f"  Capacity: {self.cap_id} vs {other.get('cap_id')}")
+                print(f"  Current attrs:\n{json.dumps(copied_attrs, indent=2)}")
+                print(f"  Loaded attrs:\n{json.dumps(other_attrs, indent=2)}")
+            except: pass
+
             return False
 
         # --- evaluator comparison ---
@@ -231,11 +277,11 @@ class MultiRunEvaluator:
             self.frame_step == getattr(other, "frame_step", None) and
             self.base_frames == getattr(other, "base_frames", None) and
             self.allocator_id == getattr(other, "allocator_id", None) and
-            self.env_id == getattr(other, "env_id", None) and
             int(self.runs_id) <= int(getattr(other, "runs_id", -1)) and
             self.attack_id == getattr(other, "attack_id", None) and
+            self.env_id == getattr(other, "env_id", None) and
             self.cap_id == getattr(other, "cap_id", None) and
-            self.key_attrs == getattr(other, "key_attrs", None)
+            copied_attrs == getattr(other, "key_attrs", None)
         )
     
     def save(self):
@@ -769,21 +815,33 @@ class MultiRunEvaluator:
 
         return {}
 
-
     def run_scenario_model_evaluation(self, runs=None, models=None, attack_type=None, threaded=False):
         """
         Wrapper to run comprehensive evaluation for a single scenario.
         """
+        # ✅ KEEP: Update configs
         self.update_configs(runs, models, attack_type)
 
-        print(f"\n\n\nTESTING ENVIRONMENT SCENARIO: {self.configs.test_scenarios[self.configs.attack_type].upper()}")
+        # ✅ FIX: Get scenario name safely (handles both dict and string)
+        scenario_value = self.configs.test_scenarios.get(self.configs.attack_type)
+        
+        if isinstance(scenario_value, dict):
+            scenario_name = self.configs.attack_type.upper()
+        elif isinstance(scenario_value, str):
+            scenario_name = scenario_value.upper()
+        else:
+            scenario_name = str(self.configs.attack_type).upper()
+        
+        print(f"\n\n\nTESTING ENVIRONMENT SCENARIO: {scenario_name}")
         print("="*50)
+        
+        # ✅ KEEP: The actual execution logic (CRITICAL!)
         if threaded: 
             print("\tRUNNING EXPERIMENTS IN PARALLEL")
-            # return self.run_threaded_experiments()
             return self.run_experiments_parallel()
         else: 
-            return self.run_experiments()
+            return self.run_experiments()  # ✅ THIS WAS MISSING - CRITICAL!
+
 
     def generate_key_insights(self):
         """
@@ -862,7 +920,15 @@ class MultiRunEvaluator:
         self.update_configs(runs, models, attack_type, scenarios)
 
         print(f"Models to Test:             \t{', '.join(self.configs.models)}")
-        print(f"Test Scenarios:             \t{', '.join(self.configs.test_scenarios.values())}")
+
+        # ✅ NEW:
+        if isinstance(list(self.configs.test_scenarios.values())[0], dict):
+            # test_scenarios values are dicts - use keys instead
+            scenarios_str = ', '.join(self.configs.test_scenarios.keys())
+        else:
+            # test_scenarios values are strings - use values
+            scenarios_str = ', '.join(self.configs.test_scenarios.values())
+
         print(f"Experiments per Scenario:   \t{self.configs.runs}")
         print("="*70)
 
@@ -989,8 +1055,9 @@ class MultiRunEvaluator:
                 pass
             
             # 8. Force garbage collection
-            collected = gc.collect()
-            cleanup_items.append(f"GC:{collected} objects")
+            if gc:
+                collected = gc.collect()
+                cleanup_items.append(f"GC:{collected} objects")
             
             # Mandatory cooldown
             cleanup_items.append(f"cooldown:{cooldown_seconds}s")
@@ -1148,8 +1215,7 @@ class MultiRunEvaluator:
             # Skip if already completed (resume-safe)
             if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
                 print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
-                scaled_cap = self.capacity * self.configs.scale
-                self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
+                self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], self.capacity * self.configs.scale)
                 return self.env_experiments[self.configs.attack_type][exp_id]
             else:
                 experiment_results = runner.run_experiment(
@@ -1169,7 +1235,7 @@ class MultiRunEvaluator:
 
         finally:
             del runner
-            gc.collect()
+            if gc: gc.collect()
             self.save()
 
         return self.env_experiments[self.configs.attack_type][exp_id]
@@ -1238,7 +1304,7 @@ class MultiRunEvaluator:
             print(exp_id, ": ", runner.key_attrs['qubit_capacities'])
             self.runner_qubit_caps.update({self.configs.attack_type:{exp_id:runner.key_attrs['qubit_capacities']}})
             del runner
-            gc.collect()
+            if gc: gc.collect()
             self.save()
         return self.env_experiments[self.configs.attack_type][exp_id]
 

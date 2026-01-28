@@ -23,7 +23,7 @@ class ExperimentConfiguration:
     """
     Configuration holder for quantum experiments.
     """
-    def __init__(self, runs=1, physics_params=None, seed_offset=100, env_type="stochastic", attack_type="n/a", suffix=None, attack_intensity=1.0, attack_rate=0.25, models=None, scenarios=None, allocator=None, base_seed=12345, scale=2, base_capacity=True, overwrite=False, resume=True, use_last_backup=True, verbose=False, testbed_id=None):
+    def __init__(self, runs=1, physics_params={}, seed_offset=100, env_type="stochastic", attack_type="n/a", suffix=None, attack_intensity=1.0, attack_rate=0.25, models=None, scenarios=None, allocator=None, base_seed=12345, scale=2, base_capacity=True, overwrite=False, resume=True, use_last_backup=True, verbose=False, testbed_id=None, testbed_config={}):
         
         self.allocator = allocator if allocator else QubitAllocator()  # Default to fixed
 
@@ -39,6 +39,7 @@ class ExperimentConfiguration:
         self.overwrite = overwrite
         self.testbed_id = testbed_id
         self.seed_offset = seed_offset
+        self.testbed_config = testbed_config
         self.physics_params = physics_params
         if not self.suffix and self.testbed_id: self.suffix = ""
         if self.testbed_id: self.suffix+="_"+f"{self.testbed_id}"
@@ -60,7 +61,7 @@ class ExperimentConfiguration:
         
         self.st = ""
         self.log_name = ""
-        self.random_runtime_qubits = ""
+        self.random_runtime_qubits = (18, 9, 6, 2)
         self.is_random_alloc    =   False
         self.eval_file_name = ""
 
@@ -386,35 +387,36 @@ class ExperimentConfiguration:
         # Detect Random Allocator
         self.is_random_alloc = True if "random" in alloc_env_attack[0].lower() else False
         pattern = re.compile(r"\(\d+_\d+_\d+_\d+\)(_S\d*(_\d*)?T\w*)?|(_S\d*(_\d*)?T\w*)")
-        last_params = parts[2]
+        last_params = parts[-1]
         
         # Initial ST extraction (suffix)
         if "_" in last_params: self.st = last_params.split("_")[-1]
         else: self.st = ""
 
-        if self.is_random_alloc: 
-            match = pattern.search(parts[2])
-            if match:  file_qubits = match.group(0)
-            # Remove the qubit tuple from parameters string for parsing
-            if file_qubits:
-                last_params = last_params.replace(f"_{file_qubits}", '').strip()
-                # Clean up ST to remove any tuple remnants
-                self.st = re.sub(r'_?\(.*\)_?', "", file_qubits)
+        # if not self.is_random_alloc: 
+            # match = pattern.search(parts[2])
+            # if match:  file_qubits = match.group(0)
+            # # Remove the qubit tuple from parameters string for parsing
+            # if file_qubits:
+            #     last_params = last_params.replace(f"_{file_qubits}", '').strip()
+            #     # Clean up ST to remove any tuple remnants
+            #     self.st = re.sub(r'_?\(.*\)_?', "", file_qubits)
             
-            # If we found qubits in the filename, set them as the runtime qubits
-            if file_qubits: self.random_runtime_qubits = file_qubits
-                # Normalize formatting if needed, usually it keeps parens in filename
-        else:
-            match = pattern.search(parts[2])
-            if match: file_qubits = match.group(0)
+            # # If we found qubits in the filename, set them as the runtime qubits
+            # if file_qubits: self.random_runtime_qubits = file_qubits
+            #     # Normalize formatting if needed, usually it keeps parens in filename
+        # else:
+            # match = pattern.search(parts[2])
+            # if match: file_qubits = match.group(0)
             
-            if file_qubits:
-                last_params = last_params.replace(f"{file_qubits}", '').strip()
-                self.st = re.sub(r'_?\(.*\)_?', "", file_qubits)
+            # if file_qubits:
+            #     last_params = last_params.replace(f"{file_qubits}", '').strip()
+            #     self.st = re.sub(r'_?\(.*\)_?', "", file_qubits)
 
         allocator_id, env_id, attack_id = alloc_env_attack
         
-        try: base_frames, frame_step, runs_id = map(int, last_params.split("_"))
+        try: 
+            base_frames, frame_step, runs_id = map(int, last_params.split("_")[:3])
         except ValueError as e:
             print(f"  ❌ Error parsing parameters '{last_params}': {e}")
             return {}, {}
@@ -429,13 +431,12 @@ class ExperimentConfiguration:
         print(f"  • runs_id:       {runs_id}")
         # print(f"  • Qubit Caps:    {file_qubits or 'N/A'}")
         
-        runtime_qubits = file_qubits
-
-        # If Random and no qubits in filename, try to find them in registry
-        if self.is_random_alloc and not runtime_qubits:
-            # Pass the ORIGINAL full filename to the helper
-            runtime_qubits = self._get_random_runtime_qubits(evaluator_filename, file_qubits)
-            if not runtime_qubits: print("  ⚠️ No qubit allocation found for Random allocator. The system may fail if files are not found.")
+        runtime_qubits = ""
+        # # If Random and no qubits in filename, try to find them in registry
+        # if self.is_random_alloc and not runtime_qubits:
+        #     # Pass the ORIGINAL full filename to the helper
+        #     runtime_qubits = self._get_random_runtime_qubits(evaluator_filename, file_qubits)
+        #     if not runtime_qubits: print("  ⚠️ No qubit allocation found for Random allocator. The system may fail if files are not found.")
         
         attack_mapping = {
             'none': NoAttack(),
@@ -765,8 +766,9 @@ class ExperimentConfiguration:
         # Construct new filename
         if not resolved_suffix: return item_v # Failed to resolve, try original
 
-        if file_qubits: new_item_v = item_v.replace(f"_{file_qubits}", resolved_suffix)
-        else: new_item_v = item_v.replace(".pkl", f"{resolved_suffix}.pkl")
+        # if file_qubits: 
+        new_item_v = item_v.replace(f"_{file_qubits}", resolved_suffix)
+        # else: new_item_v = item_v.replace(".pkl", f"{resolved_suffix}.pkl")
             
         # Cleanup potential double underscores
         return re.sub(r"__", "_", new_item_v)
@@ -1006,7 +1008,7 @@ class ExperimentConfiguration:
         print(f"  Attack: {getattr(environment, 'attack', 'none').__class__.__name__}")
 
     def set_environment(self, qubit_cap, frames_no, seed, attack_intensity, 
-                    env_type='stochastic', attack_type='stochastic',
+                    env_type='stochastic', attack_type='stochastic', metadata = {},
                     noise_model=None,              # ✅ NEW
                     fidelity_calculator=None,      # ✅ NEW
                     external_topology=None,        # ✅ NEW
@@ -1016,46 +1018,49 @@ class ExperimentConfiguration:
         Stores the core parameters needed to build any environment.
         Now supports custom physics via quantum objects.
         """
-        self._env_params = {
-            'attack': None,
-            'qubit_capacities': tuple(qubit_cap),
-            'frame_length': int(frames_no),
-            'seed': int(seed),
-            'allocator': self.allocator,
-            'env_type': env_type,
-            'actk_type': attack_type,
-            # ✅ NEW: Quantum physics objects
-            'noise_model': noise_model,
-            'fidelity_calculator': fidelity_calculator,
-            'external_topology': external_topology,
-            'external_contexts': external_contexts,
-            'external_rewards': external_rewards
-        }
+        try:
+            self.attack_type = attack_type  # ✅ This was missing
+            self._env_params = {
+                'attack': None,
+                'qubit_capacities': tuple(qubit_cap),
+                'frame_length': int(frames_no),
+                'seed': int(seed),
+                'allocator': self.allocator,
+                'env_type': env_type,
+                'actk_type': attack_type,
+                # ✅ NEW: Quantum physics objects
+                'noise_model': noise_model,
+                'entanglement_success_factor': self.testbed_config.get('entanglement_success_factor', 100),
+                'fidelity_calculator': fidelity_calculator,
+                'external_topology': external_topology,
+                'external_contexts': external_contexts,
+                'external_rewards': external_rewards
+            }
 
-        env_params = copy.deepcopy(self._env_params)
-        del env_params['env_type']
-        del env_params['actk_type']
-        params = env_params.copy()
+            env_params = copy.deepcopy(self._env_params)
+            del env_params['env_type']
+            del env_params['actk_type']
+            params = env_params.copy()
 
-        if self.attack_strategy is None:
-            self.set_attack_strategy(
-                attack_type=attack_type,
-                attack_intensity=attack_intensity,
-            )
+            if self.attack_strategy is None:
+                self.set_attack_strategy(attack_type=attack_type, attack_intensity=attack_intensity)
 
-        # Determine which environment to create based on the strategy object type
-        params['attack'] = self.attack_strategy
-        if isinstance(self.attack_strategy, NoAttack):
-            # Baseline scenario -> QuantumEnvironment
-            self.environment = QuantumEnvironment(**params)
-        
-        elif isinstance(self.attack_strategy, RandomAttack):
-            # Stochastic scenario -> StochasticQuantumEnvironment
-            self.environment =  StochasticQuantumEnvironment(**params)
-        
-        else:
-            # All other strategies (Markov, Adaptive, etc.) -> AdversarialQuantumEnvironment
-            self.environment = AdversarialQuantumEnvironment(**params)
+            # Determine which environment to create based on the strategy object type
+            params['attack'] = self.attack_strategy
+            try:
+                if isinstance(self.attack_strategy, NoAttack):
+                    # Baseline scenario -> QuantumEnvironment
+                    self.environment = QuantumEnvironment(**params)
+                
+                elif isinstance(self.attack_strategy, RandomAttack):
+                    # Stochastic scenario -> StochasticQuantumEnvironment
+                    self.environment =  StochasticQuantumEnvironment(**params)
+                
+                else:
+                    # All other strategies (Markov, Adaptive, etc.) -> AdversarialQuantumEnvironment
+                    self.environment = AdversarialQuantumEnvironment(**params)
+            except Exception as e: print(f"\t Error Creating Environment for {self.attack_strategy}\n\t\t{e}")
+        except Exception as e: print(f"\t Error Setting Environment for {self.attack_strategy}\n\t\t{e}")
     
 
     def get_environment(self):
@@ -1084,36 +1089,40 @@ class ExperimentConfiguration:
         Configures the attack strategy based on a scenario name.
         Supports Paper #2 path-dependent attacks.
         """        
-        self.attack_type = attack_type.lower()
-        # Paper #2 path-dependent stochastic attack
-        if attack_type.lower() == 'paper2_stochastic' and kwargs.get('paths'):
-            paths = kwargs['paths']
-            attack_intensity = kwargs.get('attack_intensity', self.attack_intensity)
-            attack_rates = [attack_intensity + (len(p)-2) * 0.05 for p in paths]
-            self.attack_strategy = RandomAttack(per_path_rates=attack_rates)
-            print(f"✓ Paper #2 path-dependent attack: rates={attack_rates}")
-            return
-        
-        # Your existing mapping
-        self.attack_mapping = {
-            'none': NoAttack(),
-            'random': RandomAttack(attack_rate=kwargs.get('attack_rate', self.attack_rate) * self.attack_intensity),
-            'stochastic': RandomAttack(attack_rate=kwargs.get('attack_rate', self.attack_rate) * self.attack_intensity),
-            'markov': MarkovAttack(attack_rate=self.attack_intensity),
-            'adaptive': AdaptiveAttack(attack_rate=self.attack_intensity),
-            'onlineadaptive': OnlineAdaptiveAttack(attack_rate=self.attack_intensity)
-        }
-        self.attack_strategy = self.attack_mapping.get(self.attack_type, NoAttack())
-        # self.attack_type = str(self.attack_strategy)
+        try:
+            self.attack_type = attack_type.lower()
+            # Paper #2 path-dependent stochastic attack
+            if attack_type.lower() == 'paper2_stochastic' and kwargs.get('paths'):
+                paths = kwargs['paths']
+                attack_intensity = kwargs.get('attack_intensity', self.attack_intensity)
+                attack_rates = [attack_intensity + (len(p)-2) * 0.05 for p in paths]
+                self.attack_strategy = RandomAttack(per_path_rates=attack_rates)
+                print(f"✓ Paper #2 path-dependent attack: rates={attack_rates}")
+                return
+            
+            # Your existing mapping
+            self.attack_mapping = {
+                'none': NoAttack(),
+                'random': RandomAttack(attack_rate=kwargs.get('attack_rate', self.attack_rate) * self.attack_intensity),
+                'stochastic': RandomAttack(attack_rate=kwargs.get('attack_rate', self.attack_rate) * self.attack_intensity),
+                'markov': MarkovAttack(attack_rate=self.attack_intensity),
+                'adaptive': AdaptiveAttack(attack_rate=self.attack_intensity),
+                'onlineadaptive': OnlineAdaptiveAttack(attack_rate=self.attack_intensity)
+            }
+            self.attack_strategy = self.attack_mapping.get(self.attack_type, NoAttack())
+            # self.attack_type = str(self.attack_strategy)
+        except Exception as e: print(f"\t Error Setting Attack Strategy {e}")
 
 
     def get_attack_strategy(self, attack_type=None):
         """Return the configured attack strategy or default to MarkovAttack"""
-        if attack_type and attack_type.lower() not in self.attack_mapping:
-            print(f"⚠️  WARNING: Unknown attack_type='{self.attack_type}', defaulting to 'markov'")
-            return MarkovAttack(attack_rate=self.attack_intensity)
-        elif attack_type:
-            return self.attack_mapping[attack_type.lower()]
+        try:
+            if attack_type and attack_type.lower() not in self.attack_mapping:
+                print(f"⚠️  WARNING: Unknown attack_type='{self.attack_type}', defaulting to 'markov'")
+                return MarkovAttack(attack_rate=self.attack_intensity)
+            elif attack_type:
+                return self.attack_mapping[attack_type.lower()]
+        except Exception as e: print(f"\t Error Getting Attack Strategy {e}")
 
     def create_model_registry(self):
         """Create a registry of available quantum models with metadata"""
@@ -1268,17 +1277,16 @@ class ExperimentConfiguration:
         try:
             # # Fix corrupt directory-at-path case
             # if save_path.exists() and save_path.is_dir():
-            #     print(f"\t⚠️ Corrupted directory found at {save_path}, removing...")
+            #     print(f"\t Corrupted directory found at {save_path}, removing...")
             #     shutil.rmtree(save_path)
             #     print("\t✓ Cleaned up")
-            # ✅ CREATE DIRECTORY IF IT DOESN'T EXIST
+            # CREATE DIRECTORY IF IT DOESN'T EXIST
             save_path.parent.mkdir(parents=True, exist_ok=True)
             
             # If file exists → apply safety logic
             if save_path.exists():
                 do_overwrite, new_bytes = self._should_overwrite(save_path, save_dict)
-                
-                # ✅ CHECK IF WE SHOULD ACTUALLY OVERWRITE
+                # CHECK IF WE SHOULD ACTUALLY OVERWRITE
                 if not do_overwrite:
                     if self.verbose:
                         print(f"\t⊘ {obj} Skipping save (existing file is larger)")
@@ -1288,6 +1296,14 @@ class ExperimentConfiguration:
                 with open(save_path, "wb") as f: f.write(new_bytes)
                 if self.verbose:
                     print(f"\t✓ {obj} State overwritten")
+                    print(f"\t  → {save_path}")
+                return str(save_path)
+            else:
+                new_bytes = pickle.dumps(save_dict)
+                with open(save_path, "wb") as f:
+                    f.write(new_bytes)
+                if self.verbose:
+                    print(f"\t✓ {obj} New state saved")
                     print(f"\t  → {save_path}")
                 return str(save_path)
         except Exception as e: 

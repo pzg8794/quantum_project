@@ -583,7 +583,7 @@ def rebuild_registry(registry_path, state_roots, is_metadata=False):
 
         # --- FIRST LOOP: day_xxxxx dirs ---
         for date_dir in root.iterdir():
-            print(f"[DEBUG]   Checking date_dir: {date_dir}")
+            # print(f"[DEBUG]   Checking date_dir: {date_dir}")
 
 
             if not date_dir.is_dir():
@@ -595,32 +595,27 @@ def rebuild_registry(registry_path, state_roots, is_metadata=False):
 
 
             date_key = date_dir.name
-            print(f"[DEBUG]   → Day folder accepted: {date_key}")
+            # print(f"[DEBUG]   → Day folder accepted: {date_key}")
 
 
             # --- SECOND LOOP: files ---
             has_files = False
             for f in date_dir.iterdir():
-                print(f"[DEBUG]       Inspect file/dir: {f}")
-
+                # print(f"[DEBUG]       Inspect file/dir: {f}")
 
                 if not f.is_file():
                     print(f"[SKIP]         Not a file: {f}")
                     continue
 
-
                 has_files = True
                 abs_path = str(f.resolve())
 
-
-                print(f"[DEBUG]         File accepted: {f.name}")
-                print(f"[DEBUG]         Abs path: {abs_path}")
-
-
+                # print(f"[DEBUG]         File accepted: {f.name}")
+                # print(f"[DEBUG]         Abs path: {abs_path}")
                 try:
                     registry[component][f.name] = abs_path
                     corrected += 1
-                    print(f"[CORRECTED]    Updated: {component}/{date_key}/{f.name}")
+                    # print(f"[CORRECTED]    Updated: {component}/{date_key}/{f.name}")
                 except Exception:
                     if not is_metadata:
                         print(f"[SKIP]         Missing metadata structure (component/date), skipping...")

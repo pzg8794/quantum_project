@@ -350,7 +350,7 @@ class EXPNeuralUCB(QuantumModel):
         if self.overwrite or (not self.resumed and self.resume()):
             if verbose: print(f"\n\t✓ {self}: Resuming from saved state - skipping execution")
             return  True
-        
+
         start_time = time.time()
         
         if verbose:
@@ -360,9 +360,14 @@ class EXPNeuralUCB(QuantumModel):
             print("=" * 50)
 
         # FIX: Add disable parameter
-        for frame in tqdm(range(self.frame_number), 
-                        desc=f"- {self.mode.upper()} Progress",
-                        disable=not verbose):  # Now respects verbose parameter
+        for frame in tqdm(range(self.frame_number), desc=f"- {self.mode.upper()} Progress", disable=not verbose):  # Now respects verbose parameter
+        
+            if self.transition_trigger and frame > 0 and frame % self.transition_interval == 0:
+                new_contexts, new_rewards = self.transition_trigger()
+                if new_contexts is not None:
+                    self.X_n = new_contexts
+                    self.reward_list = new_rewards            
+            
             selected_path, prob_array = self.select_group(frame)
             selected_action = self.select_action(selected_path)
             self.path_action_list.append([selected_path, selected_action])

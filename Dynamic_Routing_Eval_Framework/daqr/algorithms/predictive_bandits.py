@@ -256,7 +256,7 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
     def run(self, attack_list, verbose=False):
         """Enhanced batch runner with progress suppression"""
         if verbose: self.verbose = verbose
-        
+                
         start_time = time.time()
         
         if self.verbose:
@@ -269,10 +269,14 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
             print(f"| ARIMA Update:     | Every {self.arima_update_interval} frames |")
             print("=" * 50)
         
-        for frame in tqdm(range(self.frame_number), 
-                          desc=f"- {self.mode.upper()} Progress",
-                          disable=not self.verbose):  # Now respects verbose
-            
+        for frame in tqdm(range(self.frame_number), desc=f"- {self.mode.upper()} Progress", disable=not self.verbose):  # Now respects verbose
+
+            if self.transition_trigger and frame > 0 and frame % self.transition_interval == 0:
+                new_contexts, new_rewards = self.transition_trigger()
+                if new_contexts is not None:
+                    self.Xn = new_contexts
+                    self.reward_list = new_rewards
+
             selected_path, _ = self.select_group(frame)
             selected_action = self.select_action(selected_path)
             self.path_action_list.append([selected_path, selected_action])

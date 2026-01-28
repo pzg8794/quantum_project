@@ -67,8 +67,11 @@ class QuantumModel(ABC):
         self.id = str(self)
         self.configs = configs
         self.is_complete = False
-        self.alg_dir = os.path.dirname(os.path.abspath(__file__))
         self.overwrite = self.configs.overwrite
+        self.alg_dir = os.path.dirname(os.path.abspath(__file__))
+
+        self.transition_trigger = getattr(self.configs, 'transition_trigger', None)
+        self.transition_interval = getattr(self.configs, 'transition_interval', 50)
         
         # Core parameters (shared across all modes)
         self.X_n = X_n
@@ -119,32 +122,32 @@ class QuantumModel(ABC):
         #         if self.resume(): self.state = 1
         #     except Exception as e:  print(f"⚠️ Resume failed: {e}")
     
-    def apply_testbed_configs(self):
-        """
-        Applies testbed parameters safely:
-        - Only assign parameters this model already defines.
-        - Prevents unexpected attributes from breaking other models.
-        """
-        # Debug print to confirm testbed application
-        print(f"\n[TESTBED] Applying testbed params to {self}")
-        if not hasattr(self.configs, "get_testbed_config"):
-            return
+    # def apply_testbed_configs(self):
+    #     """
+    #     Applies testbed parameters safely:
+    #     - Only assign parameters this model already defines.
+    #     - Prevents unexpected attributes from breaking other models.
+    #     """
+    #     # Debug print to confirm testbed application
+    #     print(f"\n[TESTBED] Applying testbed params to {self}")
+    #     if not hasattr(self.configs, "get_testbed_config"):
+    #         return
 
-        params = self.configs.get_testbed_config()
-        current_params = self.configs.algorithm_configs.get(str(self), {})
-        if not params:
-            print(f"\n[TESTBED] Applying testbed params to {self}: NO PARAMS")
-            return
+    #     params = self.configs.get_testbed_config()
+    #     current_params = self.configs.algorithm_configs.get(str(self), {})
+    #     if not params:
+    #         print(f"\n[TESTBED] Applying testbed params to {self}: NO PARAMS")
+    #         return
 
-        # Debug print to confirm testbed application
-        print(f"\n[TESTBED] Applying testbed params to {self}: {params}")
+    #     # Debug print to confirm testbed application
+    #     print(f"\n[TESTBED] Applying testbed params to {self}: {params}")
 
-        for key, value in params.items():
-            if hasattr(self, key):
-                print(f"[TESTBED]   • Setting {key} = {value}")   # Debug line
-                setattr(self, key, value)
-            else:
-                print(f"[TESTBED]   • Skipping {key} (model does not define it)")
+    #     for key, value in params.items():
+    #         if hasattr(self, key):
+    #             print(f"[TESTBED]   • Setting {key} = {value}")   # Debug line
+    #             setattr(self, key, value)
+    #         else:
+    #             print(f"[TESTBED]   • Skipping {key} (model does not define it)")
 
 
     def set_id(self, id):

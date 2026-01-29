@@ -327,3 +327,111 @@ def test_comprehensive_environments():
     
 #     print("\nQuantum MAB Models Evaluation Framework - All testing completed!")
 #     print("Check generated PNG files for detailed visualizations.")
+
+# ============================================================================
+# Paper 7 Helper Functions
+# ============================================================================
+
+def generate_paper7_paths(topology, k: int, n_qisps: int, seed: int):
+    """Generate k-shortest paths between n_qisps ISP nodes."""
+    import itertools
+    rng = np.random.default_rng(seed)
+    nodes = list(topology.nodes)
+    
+    if len(nodes) < n_qisps:
+        raise ValueError(f"Topology has {len(nodes)} nodes, need {n_qisps} for ISPs")
+    
+    isp_nodes = rng.choice(nodes, size=n_qisps, replace=False)
+    all_paths = []
+    
+    for src, dst in itertools.combinations(isp_nodes, 2):
+        try:
+            path_generator = nx.shortest_simple_paths(topology, src, dst, weight='distance')
+            paths = list(itertools.islice(path_generator, k))
+            all_paths.extend(paths)
+        except nx.NetworkXNoPath:
+            continue
+    
+    return all_paths
+
+
+def generate_paper7_contexts(paths, topology):
+    """Generate context vectors: [hop_count, avg_degree, path_length]."""
+    contexts = []
+    
+    for path in paths:
+        hop_count = len(path) - 1
+        degrees = [topology.degree(node) for node in path]
+        avg_degree = sum(degrees) / len(degrees) if degrees else 0.0
+        
+        path_length = 0.0
+        for i in range(len(path) - 1):
+            edge_data = topology.get_edge_data(path[i], path[i+1])
+            path_length += edge_data.get('distance', 1.0)
+        
+        context_vector = np.array([hop_count, avg_degree, path_length])
+        contexts.append(context_vector)
+    
+    return contexts
+
+
+def get_physics_params(
+    physics_model: str = "default",
+    current_frames: int = 4000,
+    base_seed: int = 42,
+    **kwargs
+):
+    """
+    Main physics parameter dispatcher supporting Paper 2, Paper 7, Paper 12.
+    
+    For Paper 7, kwargs can include:
+        - n_ases, k, n_qisps, use_synthetic, reward_mode, use_context_rewards
+    """
+    
+    if physics_model == "paper7":
+        from daqr.core.topology_generator import Paper7ASTopologyGenerator
+        from daqr.core.quantum_physics import Paper7RewardFunction
+        
+        # Extract Paper 7 params from kwargs or use defaults
+        n_ases = kwargs.get('n_ases', 50)
+        k = kwargs.get('k', 5)
+        n_qisps = kwargs.get('n_qisps', 3)
+        use_synthetic = kwargs.get('use_synthetic', False)
+        reward_mode = kwargs.get('reward_mode', 'neghop')
+        use_context_rewards = kwargs.get('use_context_rewards', True)
+        
+        # Generate topology
+        topo_gen = Paper7ASTopologyGenerator()
+        final_topology = topo_gen.generate(
+            n_ases=n_ases,
+            use_synthetic=use_synthetic,
+            seed=base_seed
+        )
+        
+        # Generate paths
+        paths = generate_paper7_paths(final_topology, k, n_qisps, base_seed)
+        contexts = generate_paper7_contexts(paths, final_topology)
+        
+        print(f"Paper7 Paths: {len(paths)} paths from {k}-shortest between {n_qisps} ISPs")
+        
+        # Optional rewards
+        external_rewards = None
+        if use_context_rewards:
+            reward_func = Paper7RewardFunction(mode=reward_mode)
+            external_rewards = []
+            for ctx in contexts:
+                reward = reward_func.compute(ctx)
+                external_rewards.append([reward])
+            print(f"Paper7 Rewards: Context-aware (mode={reward_mode})")
+        
+        return (
+            None,              # noisemodel
+            None,              # fidelitycalculator
+            final_topology,    # externaltopology
+            contexts,          # externalcontexts
+            external_rewards,  # externalrewards
+        )
+    
+    # Add paper2, paper12, default cases here...
+    else:
+        raise ValueError(f"Unknown physics_model: {physics_model}")

@@ -103,7 +103,7 @@ class QuantumModel(ABC):
         self.allocator_id = str(getattr(self.configs, "allocator", "alloc"))
         self.env_id       = str(getattr(self.configs, "environment", "env"))
         self.attack_id    = str(getattr(self.configs, "attack_strategy", "None"))
-        alloc_str         = " ".join(str(v) for v in self.key_attrs["qubit_capacities"])
+        alloc_str         = " ".join(str(v) for v in self.key_attrs.get("qubit_capacities", []))  # ✅ FIX: Add .get() with default
         if "random" in str(self.configs.allocator).lower(): frame_no_str += f"_({re.sub(r'^_', '', alloc_str)})"
         self.file_name    = f"{self.id}({self.mode})_{int(self.capacity)}-{self.allocator_id}_{self.env_id }_{self.attack_id}-{frame_no_str}.pkl"
 
@@ -408,17 +408,31 @@ class Oracle(QuantumModel):
         self.X_n = X_n
         self.reward_list = reward_list
         self.attack_list = attack_list
-        self.frame_number = len(attack_list)
+        self.frame_number = len(attack_list) if attack_list is not None else frame_number
             
-        # Pre-compute with actual available data
-        self.optimal_actions = self._compute_optimal_actions()
+        # 🎯 PAPER7 SUPPORT: Detect context-aware rewards
+        use_context_aware = getattr(configs, 'use_context_rewards', False)
+        # Ensure it's a proper boolean, not a numpy array
+        if isinstance(use_context_aware, np.ndarray):
+            use_context_aware = bool(use_context_aware.item() if use_context_aware.size == 1 else use_context_aware[0])
+        else:
+            use_context_aware = bool(use_context_aware)
+        self.use_context_rewards = use_context_aware
+        self.external_rewards = getattr(configs, 'external_rewards', None)
+        
+        # Pre-compute optimal actions (skip for Paper7 context-aware mode)
+        # Defensive check: only pre-compute if reward_list is actually a list
+        try:
+            reward_list_len = len(self.reward_list) if self.reward_list is not None else 0
+        except TypeError:
+            reward_list_len = 0
+            
+        if not self.use_context_rewards and reward_list_len > 0:
+            self.optimal_actions = self._compute_optimal_actions()
+        else:
+            self.optimal_actions = []  # Will compute dynamically if needed
 
-        # Extract oracle path/action (attack-aware from first frame)
-        # if len(self.optimal_actions) > 0:
-        #     self.oracle_path, self.oracle_action, _ = self.optimal_actions[0]
-        # else:
-        #     self.oracle_path = 0
-        #     self.oracle_action = 0
+        # Extract oracle path/action using ROBUST method
         self.oracle_path, self.oracle_action = self._calculate_oracle()
 
         # Tracking variables
@@ -450,28 +464,69 @@ class Oracle(QuantumModel):
 
     def _compute_optimal_actions(self):
         """
-        Pre-compute optimal actions using ACTUAL data bounds. Handles edge cases without crashing.
+        Pre-compute optimal actions using ACTUAL data bounds.
+        ✅ NOW HANDLES: NumPy arrays, lists, None attack_list, dimension mismatches
+        
+        Returns:
+            List of (best_path, best_action, best_reward) tuples
         """
         optimal_actions = []
         
-        # Use actual attack_list length (defensive)
-        for frame in range(len(self.attack_list)):
+        # Defensive: Return empty if no reward data
+        if not self.reward_list or len(self.reward_list) == 0:
+            return []
+        
+        # Defensive: Handle None/missing attack_list for Paper7
+        if self.attack_list is None:
+            # Create synthetic all-ones attack pattern (no attacks)
+            attack_list = [np.ones(len(self.reward_list)) for _ in range(min(1000, self.frame_number))]
+        elif isinstance(self.attack_list, list) and len(self.attack_list) == 0:
+            attack_list = [np.ones(len(self.reward_list)) for _ in range(min(1000, self.frame_number))]
+        else:
+            attack_list = self.attack_list
+        
+        # Cap iterations to prevent infinite loops
+        max_frames = min(len(attack_list), 10000)
+        
+        for frame in range(max_frames):
             best_reward = -float('inf')
             best_path = 0
             best_action = 0
             
-            # Nested defensive check
+            # Check all available paths
             for path in range(len(self.reward_list)):
-                # Validate path exists in attack_list[frame]
-                if path < min(len(self.attack_list[frame]), len(self.reward_list)) and self.attack_list[frame][path] > 0:
-                    path_rewards = self.reward_list[path]
-                    best_path_action = np.argmax(path_rewards)
-                    path_reward = path_rewards[best_path_action] * self.attack_list[frame][path]
+                # Defensive: Bounds check both frame and path
+                if frame >= len(attack_list) or path >= len(attack_list[frame]):
+                    continue
+                
+                # Only consider paths not attacked (convert to scalar if numpy)
+                attack_value = attack_list[frame][path]
+                if isinstance(attack_value, np.ndarray):
+                    attack_value = attack_value.item() if attack_value.size == 1 else float(attack_value[0])
+                else:
+                    attack_value = float(attack_value)
                     
-                    if path_reward > best_reward:
-                        best_reward = path_reward
-                        best_path = path
-                        best_action = best_path_action
+                if attack_value <= 0:
+                    continue
+                
+                # Get rewards for this path (handle both list and NumPy array)
+                path_rewards = self.reward_list[path]
+                if isinstance(path_rewards, np.ndarray):
+                    path_rewards = path_rewards.tolist()
+                elif not isinstance(path_rewards, list):
+                    path_rewards = list(path_rewards) if hasattr(path_rewards, '__iter__') else [path_rewards]
+                
+                # Find best action on this path
+                if len(path_rewards) == 0:
+                    continue
+                
+                best_path_action = path_rewards.index(max(path_rewards))
+                path_reward = float(path_rewards[best_path_action]) * attack_value
+                
+                if path_reward > best_reward:
+                    best_reward = path_reward
+                    best_path = path
+                    best_action = best_path_action
 
             optimal_actions.append((best_path, best_action, best_reward))
 
@@ -485,13 +540,23 @@ class Oracle(QuantumModel):
     #     return 0, 0
     
     def take_action(self):
-        """Return optimal action with bounds checking"""
-        # Defensive: Check if we're within valid range
-        if self.current_frame >= len(self.optimal_actions):
-            # Fallback: return last known optimal action
-            if len(self.optimal_actions) > 0: return self.optimal_actions[-1][0], self.optimal_actions[-1][1]
-            else: return 0, 0 # Ultimate fallback: random valid action
+        """
+        Return optimal action with comprehensive bounds checking.
+        Handles both pre-computed (Paper2) and dynamic (Paper7) modes.
+        """
+        # Paper7 dynamic mode (context-aware rewards)
+        if self.use_context_rewards or len(self.optimal_actions) == 0:
+            # Fallback to oracle_path/oracle_action computed at init
+            return self.oracle_path, self.oracle_action
         
+        # Paper2 pre-computed mode
+        if self.current_frame >= len(self.optimal_actions):
+            # Bounds check: return last known optimal or fallback
+            if len(self.optimal_actions) > 0:
+                return self.optimal_actions[-1][0], self.optimal_actions[-1][1]
+            return self.oracle_path, self.oracle_action
+        
+        # Normal case: use pre-computed optimal action
         path, action, _ = self.optimal_actions[self.current_frame]
         return path, action
 
@@ -528,29 +593,75 @@ class Oracle(QuantumModel):
     
     def _calculate_oracle(self):
         """
-        Compute the oracle purely from reward_list (no attack patterns).
-        This restores the original correct behavior:
-            - Pick the path with highest max reward
-            - Pick the action that achieves that max reward
+        Compute the oracle from reward_list (no attack patterns required).
+        ✅ NOW HANDLES: NumPy arrays, Python lists, mixed data types
+        
+        Returns:
+            (oracle_path, oracle_action) tuple
         """
+        # Defensive: Handle empty/None reward_list
+        if not self.reward_list or len(self.reward_list) == 0:
+            if self.configs.verbose:
+                print(f"⚠️ ORACLE DEBUG: Empty reward_list!")
+            return 0, 0
+        
+        # Debug output for Paper7
+        if self.configs.verbose or getattr(self.configs, 'use_context_rewards', False):
+            print(f"📊 ORACLE._calculate_oracle() DEBUG:")
+            print(f"   reward_list type: {type(self.reward_list)}")
+            print(f"   reward_list length: {len(self.reward_list)}")
+            if len(self.reward_list) > 0:
+                first_reward = self.reward_list[0]
+                print(f"   First path rewards: {first_reward}")
+                print(f"   First path type: {type(first_reward)}")
+                if hasattr(first_reward, '__len__'):
+                    print(f"   First path length: {len(first_reward)}")
+                    if len(first_reward) > 0:
+                        print(f"   First action reward: {first_reward[0]}")
+        
         max_graph_action = []
         oracle_graph_list = []
 
         for graph_index in range(len(self.reward_list)):
             path_rewards = self.reward_list[graph_index]
+            
+            # Convert to list if NumPy array (CRITICAL FIX for Paper7)
+            if isinstance(path_rewards, np.ndarray):
+                path_rewards = path_rewards.tolist()
+            elif not isinstance(path_rewards, list):
+                # Handle other iterables (tuples, etc.)
+                try:
+                    path_rewards = list(path_rewards)
+                except (TypeError, ValueError):
+                    # Single scalar value
+                    path_rewards = [float(path_rewards)]
+            
+            # Safety check: empty path
+            if len(path_rewards) == 0:
+                max_graph_action.append(0)
+                oracle_graph_list.append(0.0)
+                continue
+            
+            # Find max reward and its action
             max_reward = max(path_rewards)
             oracle_graph_list.append(max_reward)
             max_graph_action.append(path_rewards.index(max_reward))
 
+        # Find the path with the highest achievable reward
+        if len(oracle_graph_list) == 0:
+            return 0, 0
+        
         oracle_path = oracle_graph_list.index(max(oracle_graph_list))
         oracle_action = max_graph_action[oracle_path]
 
         if self.configs.verbose:
-            print("\nORACLE (REWARD-BASED) ANALYSIS:")
+            print("\n📊 ORACLE (REWARD-BASED) ANALYSIS:")
             print("=" * 40)
-            print(f"| Optimal Path:      | {oracle_path:<4} |")
-            print(f"| Optimal Action:    | {oracle_action:<4} |")
-            print(f"| Path Performance:  | {oracle_graph_list} |")
+            print(f"| Paths evaluated:    | {len(oracle_graph_list):<4} |")
+            print(f"| Optimal Path:       | {oracle_path:<4} |")
+            print(f"| Optimal Action:     | {oracle_action:<4} |")
+            print(f"| Path max rewards:   | {oracle_graph_list} |")
+            print(f"| Max value:          | {max(oracle_graph_list):<4} |")
             print("=" * 40)
 
         return oracle_path, oracle_action
@@ -813,6 +924,8 @@ class NeuralUCB(RandomAlg):
             p = self.net(context).cpu().numpy() + self.beta * np.sqrt(
                 np.matmul(np.matmul(g[:, None, :], self.sigma_inv), g[:, :, None])[:, 0, :]
             )
+        # Clamp to ensure non-negative values for probability calculations
+        p = np.maximum(p, 0.0)
         action = np.argmax(p)
         return action
 

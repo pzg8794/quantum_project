@@ -282,7 +282,9 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
             self.path_action_list.append([selected_path, selected_action])
             
             base_reward = self.reward_list[selected_path][selected_action]
-            d_t = np.random.choice([0, 1], p=[1 - base_reward, base_reward])
+            # Clamp reward to [0, 1] for probability usage (Paper7 has rewards > 1.0)
+            base_reward_prob = np.clip(base_reward, 0.0, 1.0)
+            d_t = np.random.choice([0, 1], p=[1 - base_reward_prob, base_reward_prob])
             dt = d_t * attack_list[frame][selected_path]
             observed_reward = base_reward * attack_list[frame][selected_path]
             

@@ -889,11 +889,12 @@ class ExperimentConfiguration:
 
     def get_key_attrs(self):
         key_attrs = {}
-        for key, attr in self._env_params.items():
-            key_attrs[key] = str(attr)
-        
-        del key_attrs["seed"]
-        if self.base_capacity: key_attrs["runs"] = self.runs
+        if self._env_params is not None:  # ✅ FIX: Handle None case
+            for key, attr in self._env_params.items():
+                key_attrs[key] = str(attr)
+            
+            del key_attrs["seed"]
+            if self.base_capacity: key_attrs["runs"] = self.runs
         return key_attrs
 
     def __eq__(self, other):

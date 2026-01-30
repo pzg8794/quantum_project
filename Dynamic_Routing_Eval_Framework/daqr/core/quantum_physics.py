@@ -439,15 +439,22 @@ class Paper7RewardFunction:
     def compute(self, context_vector):
         hop, degree, length = context_vector.tolist()
 
+        # Note: All modes return positive rewards (inverted from raw metrics)
+        # This is needed for bandit algorithms which expect positive rewards
         if self.mode == "neg_hop":
-            return -hop
+            # Reward = inverse of hops: fewer hops = higher reward
+            # Min hop = 1, Max typical hop = 10, so invert and scale
+            return max(0.1, 10.0 - hop)  # Returns values between 0.1 and 10
         elif self.mode == "neg_degree":
-            return -degree
+            # Reward = inverse of degree: lower degree bottleneck = higher reward
+            return max(0.1, 10.0 - degree)
         elif self.mode == "neg_length":
-            return -length
+            # Reward = inverse of length: shorter path = higher reward
+            return max(0.1, 20.0 - length)
         elif self.mode == "custom":
-            # Weighted combo (example)
-            return - (0.5 * hop + 0.3 * degree + 0.2 * length)
+            # Weighted combo with inversion
+            raw_score = 0.5 * hop + 0.3 * degree + 0.2 * length
+            return max(0.1, 10.0 - raw_score)
         else:
             raise ValueError(f"Unknown reward mode: {self.mode}")
 

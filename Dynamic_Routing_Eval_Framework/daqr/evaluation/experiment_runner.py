@@ -401,9 +401,26 @@ class QuantumExperimentRunner:
             return self.results[alg_name], None
         else:
             try:
-                while total_reward <= 0.0:
+                retry_count = 0
+                max_retries = 3  # Prevent infinite loops
+                while total_reward <= 0.0 and retry_count < max_retries:
                     # model_kwargs['verbose'] = enable_progress
                     self.configs.verbose = enable_progress
+                    
+                    # Debug Paper7 reward structure
+                    if alg_name == 'Oracle' and retry_count == 0:
+                        reward_funcs = env_info.get('reward_functions', [])
+                        if reward_funcs:
+                            print(f"\t📊 Reward structure for Oracle:")
+                            print(f"\t   Type: {type(reward_funcs)}")
+                            print(f"\t   Length: {len(reward_funcs)}")
+                            if len(reward_funcs) > 0:
+                                print(f"\t   First reward: {reward_funcs[0]}, type: {type(reward_funcs[0])}")
+                                if hasattr(reward_funcs[0], '__len__'):
+                                    print(f"\t   First reward length: {len(reward_funcs[0])}")
+                        else:
+                            print(f"\t⚠️ WARNING: reward_functions is empty or None!")
+                    
                     model = model_class(
                         configs=self.configs,
                         X_n=env_info['contexts'],
@@ -422,6 +439,12 @@ class QuantumExperimentRunner:
                         if result is None:
                             mr = model.get_results() if hasattr(model, 'get_results') else {}
                             if mr and 'final_reward' in mr: total_reward = float(mr['final_reward'])
+                        
+                        retry_count += 1
+                        if retry_count >= max_retries and total_reward <= 0.0:
+                            # Break out to avoid infinite loop - allow zero rewards for context-aware modes
+                            print(f"\t⚠️ Max retries ({max_retries}) reached. Proceeding with total_reward={total_reward}")
+                            break
 
                         enable_progress = False
                         avg_reward = total_reward / self.frames_count if (self.frames_count > 0 and total_reward > 0) else 0.0

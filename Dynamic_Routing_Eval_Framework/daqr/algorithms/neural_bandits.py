@@ -296,12 +296,42 @@ class EXPNeuralUCB(QuantumModel):
     def _calculate_group_probabilities(self):
         prob_array = []
         sum_group = 0
+        
+        # Safely compute exponentials with overflow protection
+        max_exponent = -np.inf
+        exponents = []
+        
         for group_index in range(self.num_groups):
-            sum_group += math.exp(self.eta * sum(self.estimate_group_reward[group_index]))
-        for group_index in range(self.num_groups):
-            p = (self.gamma / self.num_groups +
-                 (1 - self.gamma) * math.exp(self.eta * sum(self.estimate_group_reward[group_index])) / sum_group)
-            prob_array.append(p)
+            # Compute reward sum
+            reward_sum = sum(self.estimate_group_reward[group_index])
+            exponent = self.eta * reward_sum
+            exponents.append(exponent)
+            max_exponent = max(max_exponent, exponent)
+        
+        # Use log-sum-exp trick to avoid numerical overflow/underflow
+        # Normalize by the max exponent
+        try:
+            for exp_val in exponents:
+                sum_group += math.exp(exp_val - max_exponent)
+            
+            for exp_val in exponents:
+                p = (self.gamma / self.num_groups +
+                     (1 - self.gamma) * math.exp(exp_val - max_exponent) / max(sum_group, 1e-10))
+                # Clamp probability to valid range [0, 1]
+                p = max(0.0, min(1.0, p))
+                prob_array.append(p)
+        except (OverflowError, ValueError) as e:
+            # Fallback to uniform distribution if numerical issues occur
+            uniform_prob = 1.0 / self.num_groups
+            prob_array = [uniform_prob] * self.num_groups
+        
+        # Normalize to ensure probabilities sum to 1
+        prob_sum = sum(prob_array)
+        if prob_sum > 0:
+            prob_array = [p / prob_sum for p in prob_array]
+        else:
+            prob_array = [1.0 / self.num_groups] * self.num_groups
+        
         return np.array(prob_array)
 
     def select_action(self, selected_group):
@@ -373,7 +403,9 @@ class EXPNeuralUCB(QuantumModel):
             self.path_action_list.append([selected_path, selected_action])
             
             base_reward = self.reward_list[selected_path][selected_action]
-            d_t = np.random.choice([0, 1], p=[1 - base_reward, base_reward])
+            # Clamp reward to [0, 1] for probability usage (Paper7 has rewards > 1.0)
+            base_reward_prob = np.clip(base_reward, 0.0, 1.0)
+            d_t = np.random.choice([0, 1], p=[1 - base_reward_prob, base_reward_prob])
             dt = d_t * attack_list[frame][selected_path]
             observed_reward = base_reward * attack_list[frame][selected_path]
             

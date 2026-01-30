@@ -122,4 +122,4 @@ Icon
 # Large files
 *.pack
 *.idx
-*.rev
+*.rev.quantum/

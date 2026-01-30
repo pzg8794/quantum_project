@@ -758,7 +758,15 @@ class QuantumExperimentRunner:
             model.save()
             del model
             if gc: gc.collect()
+            
         self.configs.overwrite = overwrite
+
+        if oracle_reward == 0.0:
+            raise RuntimeError(
+                "[FATAL] Oracle returned zero total reward. "
+                "This indicates reward generation or attack pattern is invalid."
+            )
+
         return oracle_reward
     
     def run_experiment(self, frames_count=None, models=None, base_model='Oracle', attack_type=None, qubit_cap=None, neuralUCB='GNeuralUCB'):

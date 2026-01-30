@@ -123,3 +123,8 @@ Icon
 *.pack
 *.idx
 *.rev.quantum/
+
+# notebooks
+*.ipynb
+.ipynb_checkpoints/
+

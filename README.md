@@ -32,12 +32,14 @@ A **multi-testbed** research framework for evaluating quantum routing algorithms
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
-| **[TESTBEDS.md](setup_files/TESTBEDS.md)** | Testbed integration hub & status | Everyone |
-| **[Paper2 Integration](docs/Paper2_Integration_Report.md)** | Paper2 stochastic testbed (PROD) | Researchers |
-| **[Paper12 Integration](docs/Paper12_Integration_Report.md)** | Paper12 event-driven testbed (IN PROGRESS) | Researchers |
-| **[SETUP_COLAB.md](setup_files/SETUP_COLAB.md)** | Colab step-by-step with screenshots | First-time users |
-| **[SETUP_LOCAL.md](setup_files/SETUP_LOCAL.md)** | Local + GCP VM setup | Developers |
-| **[TROUBLESHOOTING.md](setup_files/TROUBLESHOOTING.md)** | Common issues & fixes | Everyone |
+| **[Documentation Index](docs/INDEX.md)** | Master index of all docs organized by topic | Everyone |
+| **[Testbeds Overview](docs/TESTBEDS_OVERVIEW.md)** | All testbeds hub with comparison matrix | Everyone |
+| **[Paper 2 Quick Ref](docs/testbeds/Paper2_Quick_Reference.md)** | Paper 2 - MAB quantum routing (PROD) | Researchers |
+| **[Paper 7 Quick Ref](docs/testbeds/Paper7_Quick_Reference.md)** | Paper 7 - QBGP routing (INTEGRATED) | Researchers |
+| **[Paper 12 Quick Ref](docs/testbeds/Paper12_Quick_Reference.md)** | Paper 12 - QuARC allocation (INTEGRATED) | Researchers |
+| **[SETUP_COLAB.md](docs/setup/SETUP_COLAB.md)** | Colab step-by-step with screenshots | First-time users |
+| **[SETUP_LOCAL.md](docs/setup/SETUP_LOCAL.md)** | Local + GCP VM setup | Developers |
+| **[TROUBLESHOOTING.md](docs/setup/TROUBLESHOOTING.md)** | Common issues & fixes | Everyone |
 
 ---
 
@@ -65,7 +67,7 @@ results = evaluator.test_stochastic_environment(
 # Results auto-saved to shared drive ✅
 ```
 
-**Full guide**: [`SETUP_COLAB.md`](setup_files/SETUP_COLAB.md)
+**Full guide**: [`SETUP_COLAB.md`](docs/setup/SETUP_COLAB.md)
 
 ---
 
@@ -98,7 +100,7 @@ print(f'Efficiency: {results[\"efficiency\"]:.1f}%')
 "
 ```
 
-**Full guide**: [`SETUP_LOCAL.md`](setup_files/SETUP_LOCAL.md)
+**Full guide**: [`SETUP_LOCAL.md`](docs/setup/SETUP_LOCAL.md)
 
 ---
 
@@ -118,7 +120,7 @@ bash scripts/dynamic_exp_runner.sh \
   --runs=20
 ```
 
-**Full guide**: [`SETUP_LOCAL.md`](setup_files/SETUP_LOCAL.md#gcp-vm-setup)
+**Full guide**: [`SETUP_LOCAL.md`](docs/setup/SETUP_LOCAL.md#gcp-vm-setup)
 
 ---
 
@@ -126,23 +128,26 @@ bash scripts/dynamic_exp_runner.sh \
 
 ### Current Status
 
-| Testbed | Status | Integration Doc | Type |
-|---------|--------|-----------------|------|
-| **Paper2** | ✅ Production | [Paper2_Integration_Report.md](docs/Paper2_Integration_Report.md) | Stochastic |
-| **Paper12** | 🔄 In Progress | [Paper12_Integration_Report.md](docs/Paper12_Integration_Report.md) | Event-driven |
-| **Paper5** | 📋 Planned | Coming soon | Long-distance |
-| **Paper7** | 📋 Planned | Coming soon | Multi-domain |
+| Testbed | Status | Quick Ref | Type | Language |
+|---------|--------|-----------|------|----------|
+| **Paper 2** | ✅ Production | [Paper2_Quick_Reference.md](docs/testbeds/Paper2_Quick_Reference.md) | Stochastic MAB | MATLAB |
+| **Paper 7** | ✅ Integrated | [Paper7_Quick_Reference.md](docs/testbeds/Paper7_Quick_Reference.md) | Online BGP | Python |
+| **Paper 12** | ✅ Integrated | [Paper12_Quick_Reference.md](docs/testbeds/Paper12_Quick_Reference.md) | Qubit Allocation | Python |
 
-**See** [`TESTBEDS.md`](setup_files/TESTBEDS.md) **for complete testbed hub, comparison matrix, and integration roadmap.**
+**Central Hub**: [`docs/TESTBEDS_OVERVIEW.md`](docs/TESTBEDS_OVERVIEW.md) — Quick summary table, comparison matrix, and navigation to all paper-specific docs.
 
-### Paper2 Highlights (Stochastic Network)
+### Quick Testbed Summary
 
-- **Network**: 4-node, 4-path (2-hop + 3-hop paths)
-- **Physics**: Per-hop fidelity 0.95, multiplicative cascading
-- **Threat Levels**: 6.25% stochastic, 25% Markov/Adaptive escalation
-- **Key Finding**: CPursuit achieves 89.9% efficiency; context-aware >> adversarial-only
+| Paper | Network | Key Metric | Status |
+|-------|---------|-----------|--------|
+| **Paper 2** | 4 nodes, 4 paths | CPursuit: 89.9% efficiency | ✅ PROD |
+| **Paper 7** | 100 nodes (50-400 range) | Fidelity ≥0.85, delay-aware | ✅ INTEGRATED |
+| **Paper 12** | 100 nodes, 10 S-D pairs | 54% success (0.9 × 0.6) | ✅ INTEGRATED |
 
-🚀 **Ready for production experiments** → See [`Paper2_Integration_Report.md`](docs/Paper2_Integration_Report.md)
+**Individual Documentation**:
+- 📄 [Paper 2 Integration Report](docs/testbeds/Paper2_Integration_Report.md)
+- 📄 [Paper 7 Validation Guide](docs/testbeds/Paper7_Validation.md) & [Summary](docs/testbeds/Paper7_Summary.md)
+- 📄 [Paper 12 Testing Guide](docs/testbeds/Paper12_Testing_Guide.md) & [Parameters](docs/testbeds/Paper12_Parameters.md)
 
 ---
 
@@ -171,28 +176,20 @@ quantum_data_lake/
 ## 📚 Documentation Structure
 
 ```
-├── README.md                          ← You are here
-├── TESTBEDS.md                        ← Testbed hub (NEW)
-├── setup_files/
-│   ├── SETUP_COLAB.md                 ← Colab detailed guide
-│   ├── SETUP_LOCAL.md                 ← Local + GCP guide
-│   └── TROUBLESHOOTING.md             ← Common issues
-├── docs/
-│   ├── Paper2_Integration_Report.md   ← Paper2 full details
-│   ├── Paper2_Quick_Reference.md      ← Paper2 parameters
-│   ├── Paper2_Test_Commands.md        ← Paper2 test scripts
-│   ├── Paper12_Integration_Report.md  ← Paper12 full details (planned)
-│   └── ...
-└── daqr/
-    └── (source code with inline docstrings)
+├── README.md                              ← You are here
+└── docs/                                  ← ALL DOCUMENTATION ORGANIZED HERE
+  ├── INDEX.md                           ← Master documentation index
+  ├── TESTBEDS_OVERVIEW.md               ← Central testbed hub
+  ├── setup/                             ← Setup guides (10 files)
+  ├── testbeds/                          ← Paper-specific documentation (16 files)
+  ├── implementation-notes/              ← Technical debugging docs (12 files)
+  └── [Integration & completion docs]
 ```
 
----
-
-## 🔧 Repository Structure
+## 🔧 Framework Structure
 
 ```
-quantum_mab_research/
+hybrid_variable_framework/
 ├── daqr/                          # Main Python package
 │   ├── algorithms/                # Bandit algorithms (testbed-agnostic)
 │   ├── core/                      # Quantum environments (testbed-specific)
@@ -209,11 +206,10 @@ quantum_mab_research/
 ├── notebooks/                     # Colab notebooks (PROD/DEV/TEST)
 ├── scripts/                       # Bash + GCP helper scripts
 ├── docs/                          # Detailed documentation
-├── setup_files/                   # Setup guides
+├── setup_files/                   # Setup guide sources (non-md artifacts)
 ├── quantum_data_lake/             # Shared results (Git-ignored, in Drive)
 ├── requirements.txt
-├── README.md                      ← Overview & quick start
-└── TESTBEDS.md                    ← Testbed hub & integration status
+└── README.md                      ← Overview & quick start
 ```
 
 ---
@@ -227,19 +223,21 @@ quantum_mab_research/
 - [ ] I read the setup guide for my path
 - [ ] I can run the "Quick Start" example
 - [ ] I see results saved to `quantum_data_lake/`
-- [ ] I understand my testbed (Paper2 / Paper12 / etc.)
+- [ ] I understand my testbed (Paper2 / Paper7 / Paper12)
 
-**If any fail** → Check [`TROUBLESHOOTING.md`](setup_files/TROUBLESHOOTING.md)
+**If any fail** → Check [`TROUBLESHOOTING.md`](docs/setup/TROUBLESHOOTING.md)
 
 ---
 
 ## 🎯 Next Steps
 
-1. **Pick your execution path** → Read corresponding setup guide (Colab / Local / GCP)
-2. **Choose your testbed** → See [`TESTBEDS.md`](setup_files/TESTBEDS.md) for overview
-3. **Run a test** → Use the quick-start example for your path
-4. **Check results** → Look in `quantum_data_lake/` on shared drive
-5. **Dive deeper** → Read testbed-specific integration reports
+1. **Start with documentation index** → Read [`docs/INDEX.md`](docs/INDEX.md)
+2. **Get testbed overview** → Read [`docs/TESTBEDS_OVERVIEW.md`](docs/TESTBEDS_OVERVIEW.md)
+3. **Pick your testbed** → Choose Paper 2, Paper 7, or Paper 12
+4. **Review testbed docs** → See `docs/testbeds/Paper{2,7,12}_*.md`
+5. **Pick your execution path** → Read setup guide (Colab / Local / GCP)
+6. **Run a test** → Use the quick-start example for your path
+7. **Check results** → Look in `quantum_data_lake/` on shared drive
 
 ---
 
@@ -247,11 +245,14 @@ quantum_mab_research/
 
 | Topic | Resource |
 |-------|----------|
-| **Setup issues** | [`TROUBLESHOOTING.md`](setup_files/TROUBLESHOOTING.md) |
-| **Colab help** | [`SETUP_COLAB.md`](setup_files/SETUP_COLAB.md) |
-| **Local/GCP help** | [`SETUP_LOCAL.md`](setup_files/SETUP_LOCAL.md) |
-| **Testbed details** | [`TESTBEDS.md`](setup_files/TESTBEDS.md) |
-| **Paper2 specifics** | [`Paper2_Integration_Report.md`](docs/Paper2_Integration_Report.md) |
+| **Docs index** | [`docs/INDEX.md`](docs/INDEX.md) |
+| **Testbed overview** | [`docs/TESTBEDS_OVERVIEW.md`](docs/TESTBEDS_OVERVIEW.md) |
+| **Paper 2 details** | [`docs/testbeds/Paper2_Integration_Report.md`](docs/testbeds/Paper2_Integration_Report.md) |
+| **Paper 7 details** | [`docs/testbeds/Paper7_Summary.md`](docs/testbeds/Paper7_Summary.md) |
+| **Paper 12 details** | [`docs/testbeds/Paper12_Testing_Guide.md`](docs/testbeds/Paper12_Testing_Guide.md) |
+| **Setup issues** | [`TROUBLESHOOTING.md`](docs/setup/TROUBLESHOOTING.md) |
+| **Colab help** | [`SETUP_COLAB.md`](docs/setup/SETUP_COLAB.md) |
+| **Local/GCP help** | [`SETUP_LOCAL.md`](docs/setup/SETUP_LOCAL.md) |
 | **Framework bugs** | Open a GitHub issue |
 
 ---
@@ -269,6 +270,9 @@ quantum_mab_research/
 
 ---
 
-**Framework Status**: ✅ **PRODUCTION READY** (Paper2 validated)
+**Framework Status**: ✅ **MULTI-TESTBED READY**
+- Paper 2 (MAB): ✅ Production-ready
+- Paper 7 (QBGP): ✅ Fully integrated with testing
+- Paper 12 (QuARC): ✅ Fully integrated with testing
 
-🚀 **Get started**: Pick your path above, follow the setup guide, run your first experiment!
+🚀 **Get started**: See [docs/INDEX.md](docs/INDEX.md), choose your testbed, follow the setup guide, and run your first experiment!

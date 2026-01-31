@@ -96,6 +96,10 @@ class MultiRunEvaluator:
         try:    self.resume()
         except Exception as e:  print(f"⚠️ {self} Resume failed: {e}")
 
+        if not self.resumed:
+            self.configs.use_last_backup = False
+            print("No state found for MultiRunEvaluator, disabling resume for Experiment Runners")
+
         print("Multi-Run Evaluator Initialized")
         print(f"Environment Type: {attack_type}")
         print(f"Frame Range: {base_frames} -> {base_frames + (self.configs.runs-1)*frame_step} (step: {frame_step})")
@@ -395,7 +399,9 @@ class MultiRunEvaluator:
                     return self.resumed
             except Exception as e:
                 print(f"❌ Multi-run resume failed: {e}")
-            
+        
+        self.resumed = False
+        self.configs.use_last_backup = False    
         print("[Resume-Supersets] ❌ No valid supersets found for resume")
         return False
 
@@ -438,6 +444,8 @@ class MultiRunEvaluator:
                 print("[Resume] exact failed → Looking for supersets")
                 sub_registry = self._get_superset_subregistry()
                 return self._resume_from_supersets(sub_registry)
+        self.configs.use_last_backup = False
+        self.resumed = False
         return self.resumed
 
 
@@ -1234,6 +1242,7 @@ class MultiRunEvaluator:
             raise
 
         finally:
+            self.configs.use_last_backup = runner.resumed
             del runner
             if gc: gc.collect()
             self.save()

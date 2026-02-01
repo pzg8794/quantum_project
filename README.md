@@ -32,6 +32,7 @@ A **multi-testbed** research framework for evaluating quantum routing algorithms
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
+| **[Repository Structure](REPOSITORY_STRUCTURE.md)** | Complete directory guide & file locations | Everyone |
 | **[Documentation Index](docs/INDEX.md)** | Master index of all docs organized by topic | Everyone |
 | **[Testbeds Overview](docs/TESTBEDS_OVERVIEW.md)** | All testbeds hub with comparison matrix | Everyone |
 | **[Paper 2 Quick Ref](docs/testbeds/Paper2_Quick_Reference.md)** | Paper 2 - MAB quantum routing (PROD) | Researchers |
@@ -40,6 +41,11 @@ A **multi-testbed** research framework for evaluating quantum routing algorithms
 | **[SETUP_COLAB.md](docs/setup/SETUP_COLAB.md)** | Colab step-by-step with screenshots | First-time users |
 | **[SETUP_LOCAL.md](docs/setup/SETUP_LOCAL.md)** | Local + GCP VM setup | Developers |
 | **[TROUBLESHOOTING.md](docs/setup/TROUBLESHOOTING.md)** | Common issues & fixes | Everyone |
+| **[Assessments](docs/assessments/)** | Assessment reports and corrections | Researchers |
+| **[Planning](docs/planning/)** | Project planning and schedules | Team |
+| **[Updates](docs/updates/)** | Change logs and summaries | Everyone |
+| **[Validated Logs](docs/validated_logs/)** | Validation results and datasets | Researchers |
+| **[Validated_Logs/](Validated_Logs/)** | Master datasets & experiment results | Researchers |
 
 ---
 
@@ -173,6 +179,27 @@ quantum_data_lake/
 
 ---
 
+## 📊 Experiments & Results
+
+### Experiment Management
+- **experiments/**: Experiment configurations and parameter sweeps
+- **results/**: Local result storage and analysis scripts
+- **Dynamic_Routing_Eval_Framework/**: Advanced evaluation framework with notebooks and automated testing
+- **Validated_Logs/**: Master datasets and validation results from all experiments
+
+### Validation & Testing
+- **tests/test_*.py**: Automated test suites for each testbed
+- **run_*.py**: Sanity checks and validation scripts
+- **scripts/**: Bash automation for running experiments
+- **run_scripts/**: Additional experiment runners
+
+### Notebooks & Interactive Development
+- **notebooks/**: Production Colab notebooks
+- **sandbox_notebooks/**: Development and testing notebooks
+- **Dynamic_Routing_Eval_Framework/notebooks/**: Advanced evaluation notebooks
+
+---
+
 ## 📚 Documentation Structure
 
 ```
@@ -181,35 +208,45 @@ quantum_data_lake/
   ├── INDEX.md                           ← Master documentation index
   ├── TESTBEDS_OVERVIEW.md               ← Central testbed hub
   ├── setup/                             ← Setup guides (10 files)
-  ├── testbeds/                          ← Paper-specific documentation (16 files)
+  ├── testbeds/                          ← Paper-specific documentation (16+ files)
+  ├── paper12/                           ← Additional Paper 12 docs (4 files)
+  ├── guides/                            ← General guides (4 files)
+  ├── assessments/                       ← Assessment reports (2 files)
+  ├── planning/                          ← Planning documents (2 files)
+  ├── updates/                           ← Update summaries (2 files)
+  ├── validated_logs/                    ← Validation results (2 files)
   ├── implementation-notes/              ← Technical debugging docs (12 files)
   └── [Integration & completion docs]
 ```
 
-## 🔧 Framework Structure
+## 🔧 Complete Repository Structure
 
 ```
 hybrid_variable_framework/
 ├── daqr/                          # Main Python package
 │   ├── algorithms/                # Bandit algorithms (testbed-agnostic)
 │   ├── core/                      # Quantum environments (testbed-specific)
-│   │   ├── quantum_physics.py
-│   │   ├── network_environment.py
-│   │   ├── attack_strategies.py
-│   │   └── qubit_allocator.py
 │   ├── config/                    # Configuration management
-│   │   └── experiment_config.py   # PAPER2_CONFIG, PAPER12_CONFIG, etc.
 │   └── evaluation/                # Experiment runners & visualizers
 ├── tests/                         # Testbed validation suites
-│   ├── test_paper2_*.py           # Paper2: 8 validation tests
-│   └── test_paper12_*.py          # Paper12: validation tests
-├── notebooks/                     # Colab notebooks (PROD/DEV/TEST)
+├── notebooks/                     # Production Colab notebooks
+├── sandbox_notebooks/             # Development notebooks
 ├── scripts/                       # Bash + GCP helper scripts
-├── docs/                          # Detailed documentation
-├── setup_files/                   # Setup guide sources (non-md artifacts)
-├── quantum_data_lake/             # Shared results (Git-ignored, in Drive)
+├── run_scripts/                   # Additional experiment runners
+├── experiments/                   # Experiment configurations
+├── results/                       # Local result storage
+├── Dynamic_Routing_Eval_Framework/# Advanced evaluation framework
+│   ├── notebooks/                 # Evaluation notebooks
+│   ├── experiments/               # Test configurations
+│   ├── results/                   # Output data
+│   └── daqr/                      # Framework components
+├── Validated_Logs/                # Master datasets & validation
+├── docs/                          # Complete documentation
+├── setup_files/                   # Setup guide sources
+├── .github/                       # GitHub configuration
 ├── requirements.txt
-└── README.md                      ← Overview & quick start
+├── README.md                      ← This file
+└── [Other config files]
 ```
 
 ---
@@ -231,13 +268,14 @@ hybrid_variable_framework/
 
 ## 🎯 Next Steps
 
-1. **Start with documentation index** → Read [`docs/INDEX.md`](docs/INDEX.md)
-2. **Get testbed overview** → Read [`docs/TESTBEDS_OVERVIEW.md`](docs/TESTBEDS_OVERVIEW.md)
-3. **Pick your testbed** → Choose Paper 2, Paper 7, or Paper 12
-4. **Review testbed docs** → See `docs/testbeds/Paper{2,7,12}_*.md`
-5. **Pick your execution path** → Read setup guide (Colab / Local / GCP)
-6. **Run a test** → Use the quick-start example for your path
-7. **Check results** → Look in `quantum_data_lake/` on shared drive
+1. **Understand the repository** → Read [REPOSITORY_STRUCTURE.md](REPOSITORY_STRUCTURE.md) for complete file organization
+2. **Start with documentation index** → Read [docs/INDEX.md](docs/INDEX.md)
+3. **Get testbed overview** → Read [docs/TESTBEDS_OVERVIEW.md](docs/TESTBEDS_OVERVIEW.md)
+4. **Pick your testbed** → Choose Paper 2, Paper 7, or Paper 12
+5. **Review testbed docs** → See `docs/testbeds/Paper{2,7,12}_*.md`
+6. **Pick your execution path** → Read setup guide (Colab / Local / GCP)
+7. **Run a test** → Use the quick-start example for your path
+8. **Check results** → Look in `quantum_data_lake/` on shared drive or `Validated_Logs/` for datasets
 
 ---
 
@@ -245,14 +283,19 @@ hybrid_variable_framework/
 
 | Topic | Resource |
 |-------|----------|
-| **Docs index** | [`docs/INDEX.md`](docs/INDEX.md) |
-| **Testbed overview** | [`docs/TESTBEDS_OVERVIEW.md`](docs/TESTBEDS_OVERVIEW.md) |
-| **Paper 2 details** | [`docs/testbeds/Paper2_Integration_Report.md`](docs/testbeds/Paper2_Integration_Report.md) |
-| **Paper 7 details** | [`docs/testbeds/Paper7_Summary.md`](docs/testbeds/Paper7_Summary.md) |
-| **Paper 12 details** | [`docs/testbeds/Paper12_Testing_Guide.md`](docs/testbeds/Paper12_Testing_Guide.md) |
-| **Setup issues** | [`TROUBLESHOOTING.md`](docs/setup/TROUBLESHOOTING.md) |
-| **Colab help** | [`SETUP_COLAB.md`](docs/setup/SETUP_COLAB.md) |
-| **Local/GCP help** | [`SETUP_LOCAL.md`](docs/setup/SETUP_LOCAL.md) |
+| **Repository structure** | [REPOSITORY_STRUCTURE.md](REPOSITORY_STRUCTURE.md) |
+| **Docs index** | [docs/INDEX.md](docs/INDEX.md) |
+| **Testbed overview** | [docs/TESTBEDS_OVERVIEW.md](docs/TESTBEDS_OVERVIEW.md) |
+| **Paper 2 details** | [docs/testbeds/Paper2_Integration_Report.md](docs/testbeds/Paper2_Integration_Report.md) |
+| **Paper 7 details** | [docs/testbeds/Paper7_Summary.md](docs/testbeds/Paper7_Summary.md) |
+| **Paper 12 details** | [docs/testbeds/Paper12_Testing_Guide.md](docs/testbeds/Paper12_Testing_Guide.md) |
+| **Setup issues** | [docs/setup/TROUBLESHOOTING.md](docs/setup/TROUBLESHOOTING.md) |
+| **Colab help** | [docs/setup/SETUP_COLAB.md](docs/setup/SETUP_COLAB.md) |
+| **Local/GCP help** | [docs/setup/SETUP_LOCAL.md](docs/setup/SETUP_LOCAL.md) |
+| **Assessments** | [docs/assessments/](docs/assessments/) |
+| **Planning** | [docs/planning/](docs/planning/) |
+| **Updates** | [docs/updates/](docs/updates/) |
+| **Validated results** | [docs/validated_logs/](docs/validated_logs/) & [Validated_Logs/](Validated_Logs/) |
 | **Framework bugs** | Open a GitHub issue |
 
 ---

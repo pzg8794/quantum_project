@@ -62,7 +62,7 @@ docs/
 
 ### 4. ✅ Created Central TESTBEDS_OVERVIEW.md
 
-**Location**: `/hybrid_variable_framework/docs/TESTBEDS_OVERVIEW.md`
+**Location**: `/hybrid_variable_framework/doTESTBEDS_OVERVIEW.md`
 
 **Purpose**: Central hub serving as entry point for all testbed documentation
 
@@ -88,7 +88,7 @@ docs/
 
 ### After (Current State)
 - ✅ All three papers (2, 7, 12) prominently featured in main README
-- ✅ Centralized documentation hub at `/docs/TESTBEDS_OVERVIEW.md`
+- ✅ Centralized documentation hub at `/doTESTBEDS_OVERVIEW.md`
 - ✅ Individual paper documentation organized in `/docs/testbeds/`
 - ✅ Clear integration status for all papers in main README
 - ✅ Easy navigation from README → Hub → Individual papers
@@ -113,7 +113,7 @@ hybrid_variable_framework/
 ```
 README.md (Main entry point)
   ↓
-docs/TESTBEDS_OVERVIEW.md (Testbed hub)
+doTESTBEDS_OVERVIEW.md (Testbed hub)
   ↓
 docs/testbeds/Paper{2,7,12}_*.md (Specific papers)
 ```
@@ -126,7 +126,7 @@ docs/testbeds/Paper{2,7,12}_*.md (Specific papers)
 ```
 README.md 
   → [Click "Testbeds Overview" link]
-  → docs/TESTBEDS_OVERVIEW.md
+  → doTESTBEDS_OVERVIEW.md
 ```
 
 ### For Users Wanting Paper-Specific Info
@@ -140,7 +140,7 @@ README.md
 ### For Developers/Researchers
 ```
 README.md 
-  → docs/TESTBEDS_OVERVIEW.md (Comparison matrix)
+  → doTESTBEDS_OVERVIEW.md (Comparison matrix)
   → docs/testbeds/Paper{N}_*.md (Detailed docs per paper)
 ```
 
@@ -179,7 +179,7 @@ README.md
 ## Links Updated in README
 
 **Quick Navigation Section**:
-- ✅ "Testbeds Overview" → docs/TESTBEDS_OVERVIEW.md
+- ✅ "Testbeds Overview" → doTESTBEDS_OVERVIEW.md
 - ✅ "Paper 2 Quick Ref" → docs/testbeds/Paper2_Quick_Reference.md
 - ✅ "Paper 7 Quick Ref" → docs/testbeds/Paper7_Quick_Reference.md
 - ✅ "Paper 12 Quick Ref" → docs/testbeds/Paper12_Quick_Reference.md
@@ -246,7 +246,7 @@ README.md
 ## Verification Checklist
 
 - ✅ All three papers (2, 7, 12) linked from main README
-- ✅ Central hub created at docs/TESTBEDS_OVERVIEW.md
+- ✅ Central hub created at doTESTBEDS_OVERVIEW.md
 - ✅ Individual paper docs in docs/testbeds/ (9 files)
 - ✅ Quick Navigation section updated
 - ✅ Multi-Testbed Architecture section updated

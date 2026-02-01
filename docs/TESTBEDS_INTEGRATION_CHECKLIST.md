@@ -22,7 +22,7 @@
 ### Phase 3: Directory Structure (Current Phase)
 - [x] Create `/docs/` directory
 - [x] Create `/docs/testbeds/` subdirectory
-- [x] Create `docs/TESTBEDS_OVERVIEW.md` (central hub)
+- [x] Create `doTESTBEDS_OVERVIEW.md` (central hub)
 
 ### Phase 4: Individual Paper Documentation (Current Phase)
 - [x] Create Paper 2 Quick Reference in `/docs/testbeds/`
@@ -54,7 +54,7 @@
 
 ### Hub & Summary Documents (4)
 ```
-docs/TESTBEDS_OVERVIEW.md                     ✅ Created
+doTESTBEDS_OVERVIEW.md                     ✅ Created
 docs/INTEGRATION_COMPLETE.md                  ✅ Created
 docs/TESTBEDS_INTEGRATION_SUMMARY.md          ✅ Created
 docs/TESTBEDS_INTEGRATION_CHECKLIST.md        ✅ Created (this file)
@@ -131,7 +131,7 @@ README.md                                     ✅ Updated
 **Goal 1**: Organize papers testbeds under `doc`
 - [x] Created `/docs/` directory structure
 - [x] Created `/docs/testbeds/` for paper-specific docs
-- [x] Created central `/docs/TESTBEDS_OVERVIEW.md`
+- [x] Created central `/doTESTBEDS_OVERVIEW.md`
 - ✅ **COMPLETE**
 
 **Goal 2**: Update testbed documentation for the repo
@@ -157,7 +157,7 @@ README.md                                     ✅ Updated
 ```
 hybrid_variable_framework/README.md
   ↓ [Click "Testbeds Overview"]
-  ↓ docs/TESTBEDS_OVERVIEW.md
+  ↓ doTESTBEDS_OVERVIEW.md
   ↓ [See all papers & comparison matrix]
 ```
 
@@ -189,7 +189,7 @@ hybrid_variable_framework/README.md
 ```
 hybrid_variable_framework/README.md
   ↓ [Click "Testbeds Overview"]
-  ↓ docs/TESTBEDS_OVERVIEW.md
+  ↓ doTESTBEDS_OVERVIEW.md
   ↓ [See comparison matrix]
 ```
 
@@ -225,7 +225,7 @@ hybrid_variable_framework/README.md
 ## ✅ Key Features Delivered
 
 1. **Centralized Documentation Hub**
-   - Single entry point: docs/TESTBEDS_OVERVIEW.md
+   - Single entry point: doTESTBEDS_OVERVIEW.md
    - Comparison matrix for all papers
    - Quick summary table
 

@@ -52,7 +52,7 @@ Copied files:
 
 ### 3. ✅ Archived Legacy Testbed Hub
 
-**From**: `docs/setup/TESTBEDS.md`  
+**From**: `setup/TESTBEDS.md`  
 **To**: `/docs/TESTBEDS_HUB_LEGACY.md`
 
 **Purpose**: Preserve old testbeds hub for reference while new `TESTBEDS_OVERVIEW.md` serves as primary hub
@@ -160,14 +160,14 @@ docs/
 README.md
   ↓ [Click "Documentation Index" in Quick Navigation]
   ↓ docs/INDEX.md (Master index with all topics)
-    ├→ docs/TESTBEDS_OVERVIEW.md (For testbed overview)
+    ├→ doTESTBEDS_OVERVIEW.md (For testbed overview)
     ├→ docs/testbeds/Paper{2,7,12}_*.md (For specific papers)
     └→ docs/implementation-notes/ (For technical details)
 ```
 
 ### Direct Links in Quick Navigation Table
 - `docs/INDEX.md` - Master index (NEW)
-- `docs/TESTBEDS_OVERVIEW.md` - Testbed overview
+- `doTESTBEDS_OVERVIEW.md` - Testbed overview
 - `docs/testbeds/Paper2_Quick_Reference.md` - Paper 2
 - `docs/testbeds/Paper7_Quick_Reference.md` - Paper 7
 - `docs/testbeds/Paper12_Quick_Reference.md` - Paper 12
@@ -178,7 +178,7 @@ README.md
 
 These files remain in their original locations because they're context-specific:
 
-### `/docs/setup/` - Environment Setup (Centralized)
+### `/setup/` - Environment Setup (Centralized)
 - `SETUP_COLAB.md` - Colab-specific setup
 - `SETUP_LOCAL.md` - Local/GCP-specific setup
 - `TROUBLESHOOTING.md` - Common setup issues
@@ -225,7 +225,7 @@ README.md
 ```
 README.md 
   → Quick Navigation: "Testbeds Overview"
-  → docs/TESTBEDS_OVERVIEW.md
+  → doTESTBEDS_OVERVIEW.md
 ```
 
 ### Path 3: User wants specific paper (e.g., Paper 7)

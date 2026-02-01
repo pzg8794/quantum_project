@@ -48,7 +48,7 @@ All markdown documentation files in the `hybrid_variable_framework/` repository 
 ✅ PAPER12_TESTS_README.md → PAPER12_TESTS_README.md
 ```
 
-**From `setup_files/` to `/docs/setup/`** (10 files - moved):
+**From `setup_files/` to `/setup/`** (10 files - moved):
 ```
 ✅ SETUP_COLAB.md
 ✅ SETUP_LOCAL.md
@@ -134,7 +134,7 @@ docs/INDEX.md (Master index with all topics organized)
 ### Direct Access Paths
 
 **For Testbed Overview**:
-- README.md → Quick Navigation → "Testbeds Overview" → `docs/TESTBEDS_OVERVIEW.md`
+- README.md → Quick Navigation → "Testbeds Overview" → `doTESTBEDS_OVERVIEW.md`
 
 **For Specific Paper**:
 - README.md → Quick Navigation → "Paper X Quick Ref" → `docs/testbeds/PaperX_*.md`
@@ -251,7 +251,7 @@ The organization is complete and fully functional. Optional future improvements:
 - **`/docs/INDEX.md`**: Master index for navigation
 - **`/docs/testbeds/`**: All paper-specific documentation
 - **`/docs/implementation-notes/`**: Technical debugging docs
-- **`/docs/setup/`**: Centralized setup guides
+- **`/setup/`**: Centralized setup guides
 
 Users can find any documentation in seconds through the master index or quick navigation links in README.
 

@@ -128,4 +128,4 @@ qos_threshold = 0.80    # QoS acceptance threshold
 
 ---
 
-**See Also**: [TESTBEDS_OVERVIEW.md](../TESTBEDS_OVERVIEW.md)
+**See Also**: [TESTBEDS_OVERVIEW.md](TESTBEDS_OVERVIEW.md)

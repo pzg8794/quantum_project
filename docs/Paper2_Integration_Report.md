@@ -632,9 +632,9 @@ qubit_cap = (8, 10, 8, 9)  # 35 total, all 4 paths
 
 - **[TESTBEDS.md](TESTBEDS.md)** — Testbed overview & roadmap
 - **[Paper2_Quick_Reference.md](Paper2_Quick_Reference.md)** — Parameter lookup card
-- **[SETUP_COLAB.md](../setup_files/SETUP_COLAB.md)** — Colab instructions
-- **[SETUP_LOCAL.md](../setup_files/SETUP_LOCAL.md)** — Local/GCP setup
-- **[TROUBLESHOOTING.md](../setup_files/TROUBLESHOOTING.md)** — General issues
+- **[SETUP_COLAB.md](setup/SETUP_COLAB.md)** — Colab instructions
+- **[SETUP_LOCAL.md](setup/SETUP_LOCAL.md)** — Local/GCP setup
+- **[TROUBLESHOOTING.md](setup/TROUBLESHOOTING.md)** — General issues
 
 ---
 

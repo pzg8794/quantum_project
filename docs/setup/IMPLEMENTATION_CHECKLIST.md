@@ -5,9 +5,9 @@
 **Integration with**: Existing documentation in `/docs` directory  
 **Related Documents**:
 - [`TESTBEDS.md`](TESTBEDS.md) - Testbed overview & status matrix
-- [`Paper2_Integration_Report.md`](docs/Paper2_Integration_Report.md) - Paper2 detailed reference
-- [`Paper2_Quick_Reference.md`](docs/Paper2_Quick_Reference.md) - Parameter lookup
-- [`Paper2_Test_Commands.md`](docs/Paper2_Test_Commands.md) - Validation suite
+- [`Paper2_Integration_Report.md`](testbeds/Paper2_Integration_Report.md) - Paper2 detailed reference
+- [`Paper2_Quick_Reference.md`](testbeds/Paper2_Quick_Reference.md) - Parameter lookup
+- [`Paper2_Test_Commands.md`](testbeds/Paper2_Test_Commands.md) - Validation suite
 
 ---
 
@@ -222,10 +222,10 @@ Create `results/COMPARISON_TABLE.md`:
 - [ ] Link to detailed reports in `/docs`
 
 ### 5.2 Create Paper-Specific Documents (if not already done)
-- [ ] `docs/Paper5_Integration_Report.md`
-- [ ] `docs/Paper7_Integration_Report.md`
-- [ ] `docs/Paper8_Integration_Report.md`
-- [ ] `docs/Paper12_Integration_Report.md`
+- [ ] `testbeds/Paper5_Integration_Report.md`
+- [ ] `testbeds/Paper7_Integration_Report.md`
+- [ ] `testbeds/Paper8_Integration_Report.md`
+- [ ] `testbeds/Paper12_Integration_Report.md`
 - [ ] (Paper2 already done per `DOCUMENTATION_STRUCTURE.md`)
 
 ### 5.3 Update README.md

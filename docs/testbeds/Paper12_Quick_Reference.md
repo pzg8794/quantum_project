@@ -81,4 +81,4 @@ cat results/paper12_sanity_tests.json | python -m json.tool
 
 ---
 
-**See Also**: [TESTBEDS_OVERVIEW.md](../TESTBEDS_OVERVIEW.md)
+**See Also**: [TESTBEDS_OVERVIEW.md](TESTBEDS_OVERVIEW.md)

@@ -165,10 +165,11 @@ docs/
 
 ## Key Resources
 
-- **Master Quick Reference**: [TESTBEDS_MASTER_QUICK_REFERENCE.md](../../TESTBEDS_MASTER_QUICK_REFERENCE.md) (root level)
+- **Master Quick Reference**: [TESTBEDS_MASTER_QUICK_REFERENCE.md](testbeds/TESTBEDS_MASTER_QUICK_REFERENCE.md)
 - **Framework README**: [README.md](../README.md)
-- **Setup Guides**: [docs/setup/](setup/)
-- **Individual Testbed Directories**: [Testbeds/](../../Testbeds/)
+- **Setup Guides**: [setup/](setup/)
+- **Documentation Index**: [INDEX.md](INDEX.md)
+- **Validated Results**: [Validated_Logs/](../Validated_Logs/)
 
 ---
 

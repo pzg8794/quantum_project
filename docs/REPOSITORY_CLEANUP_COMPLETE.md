@@ -33,8 +33,8 @@ Root Directory: CLEAN
 - Total: **14 files** from root → `/docs/`
 
 ### Phase 2: Setup Files Centralization ✅
-- Moved 10 setup files from `setup_files/` → `/docs/setup/`
-- Total: **10 files** centralized under `/docs/setup/`
+- Moved 10 setup files from `setup_files/` → `/setup/`
+- Total: **10 files** centralized under `/setup/`
 
 ### Phase 3: Framework Documentation Consolidation ✅
 - Moved 7 Paper 12 framework docs from `Dynamic_Routing_Eval_Framework/` → `/docs/testbeds/`
@@ -64,9 +64,9 @@ docs/
 └── [other integration docs]
 ```
 
-**Setup Guides (10 files) - NEW `/docs/setup/`**:
+**Setup Guides (10 files) - NEW `/setup/`**:
 ```
-docs/setup/
+setup/
 ├── SETUP_COLAB.md
 ├── SETUP_LOCAL.md
 ├── TROUBLESHOOTING.md
@@ -124,7 +124,7 @@ docs/implementation-notes/
 | Category | Files | Location |
 |----------|-------|----------|
 | Core Documentation | 8 | `/docs/` |
-| Setup Guides | 10 | `/docs/setup/` |
+| Setup Guides | 10 | `/setup/` |
 | Paper Docs | 16 | `/docs/testbeds/` |
 | Implementation Notes | 12 | `/docs/implementation-notes/` |
 | **Total in /docs/** | **46** | |
@@ -136,15 +136,15 @@ docs/implementation-notes/
 ## What Was Updated
 
 ### README.md Changes ✅
-- Updated Quick Navigation links to point to `/docs/setup/`
-- Updated Documentation Structure to show new `/docs/setup/` directory
+- Updated Quick Navigation links to point to `/setup/`
+- Updated Documentation Structure to show new `/setup/` directory
 - All links verified and working
 - Clear navigation path established
 
 ### INDEX.md Changes ✅
-- Updated Setup section to show `/docs/setup/` location
+- Updated Setup section to show `/setup/` location
 - Updated Paper 12 section with new framework docs
-- Updated directory structure to show `/docs/setup/`
+- Updated directory structure to show `/setup/`
 - Updated file counts (47 total in `/docs/`)
 - Added reference to all new files
 
@@ -154,7 +154,7 @@ docs/implementation-notes/
 
 ### For Users
 ✅ **Single documentation hub**: Everything accessible from `/docs/INDEX.md`
-✅ **Centralized setup guides**: All setup docs in `/docs/setup/`
+✅ **Centralized setup guides**: All setup docs in `/setup/`
 ✅ **Clean root directory**: Only README.md at root
 ✅ **Clear organization**: 4 logical subdirectories
 ✅ **Easy navigation**: Master index and quick navigation links
@@ -162,7 +162,7 @@ docs/implementation-notes/
 ### For Developers
 ✅ **Debugging docs isolated**: `/docs/implementation-notes/`
 ✅ **Framework docs consolidated**: `/docs/testbeds/` with all papers
-✅ **Setup references updated**: All setup docs now under `docs/setup/`
+✅ **Setup references updated**: All setup docs now under `setup/`
 ✅ **Easy to maintain**: Clear structure for adding new docs
 
 ### For Maintenance
@@ -187,7 +187,7 @@ docs/implementation-notes/
 
 **Run a setup**:
 ```
-README.md → Quick Nav → SETUP_COLAB/LOCAL → /docs/setup/
+README.md → Quick Nav → SETUP_COLAB/LOCAL → /setup/
 ```
 
 **Learn about a paper**:
@@ -206,7 +206,7 @@ README.md → Quick Nav → Paper X Quick Ref → /docs/testbeds/
 
 ✅ Root directory cleaned (only README.md remains)
 ✅ All 12 implementation notes moved to `/docs/implementation-notes/`
-✅ All 10 setup files copied to `/docs/setup/`
+✅ All 10 setup files copied to `/setup/`
 ✅ All Paper 12 framework docs copied to `/docs/testbeds/`
 ✅ Master INDEX.md updated with new structure
 ✅ README.md updated with new paths
@@ -229,7 +229,7 @@ README.md → Quick Nav → Paper X Quick Ref → /docs/testbeds/
 ### After Cleanup
 - Root: 1 .md file (README.md)
 - docs/: 46 .md files (fully organized)
-- docs/setup/: 10 setup guides
+- setup/: 10 setup guides
 - docs/testbeds/: 16 paper docs
 - docs/implementation-notes/: 12 debugging docs
 - docs/: 8 core/integration docs
@@ -245,7 +245,7 @@ The cleanup is complete and fully functional. Optional future enhancements:
 1. **Archive phase**: Optional cleanup of non-md artifacts in `setup_files/` if desired
 2. **Quick-start**: Create `/docs/QUICK_START.md` with common tasks
 3. **Video tutorials**: Add links to video guides in setup docs
-4. **Troubleshooting**: Expand `/docs/setup/TROUBLESHOOTING.md` as issues arise
+4. **Troubleshooting**: Expand `/setup/TROUBLESHOOTING.md` as issues arise
 5. **Paper comparison**: Add `/docs/testbeds/PAPER_COMPARISON.md`
 
 ---
@@ -256,7 +256,7 @@ The cleanup is complete and fully functional. Optional future enhancements:
 
 - **Root directory**: Clean (only README.md)
 - **Documentation hub**: `/docs/INDEX.md` (master index)
-- **Setup guides**: `/docs/setup/` (10 files, centralized)
+- **Setup guides**: `/setup/` (10 files, centralized)
 - **Paper docs**: `/docs/testbeds/` (16 files, consolidated)
 - **Technical notes**: `/docs/implementation-notes/` (12 files, isolated)
 - **References**: Original files preserved in source locations

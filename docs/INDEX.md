@@ -10,6 +10,7 @@
 
 **New to the framework?** Start here:
 - [README.md](../README.md) - Main framework overview
+- [REPOSITORY_STRUCTURE.md](../REPOSITORY_STRUCTURE.md) - Complete directory guide
 - [TESTBEDS_OVERVIEW.md](TESTBEDS_OVERVIEW.md) - All testbeds at a glance
 
 ---
@@ -18,6 +19,7 @@
 
 ### All Testbeds
 - **[TESTBEDS_OVERVIEW.md](TESTBEDS_OVERVIEW.md)** - Central hub with comparison matrix, all papers
+- **[TESTBEDS_MASTER_QUICK_REFERENCE.md](testbeds/TESTBEDS_MASTER_QUICK_REFERENCE.md)** - Master testbeds reference
 
 ### Paper 2 (MAB Quantum Routing)
 - [Paper2_Quick_Reference.md](testbeds/Paper2_Quick_Reference.md) - Quick overview
@@ -40,12 +42,72 @@
 - [Paper12_Testing_Readme.md](testbeds/Paper12_Testing_Readme.md) - Testing procedures
 - [PAPER12_TESTS_README.md](testbeds/PAPER12_TESTS_README.md) - Complete testing guide
 - [PAPER12_TESTING_SUMMARY.md](testbeds/PAPER12_TESTING_SUMMARY.md) - Testing summary
+- [PAPER12_ALLOCATOR_EXECUTION.md](paper12/PAPER12_ALLOCATOR_EXECUTION.md) - Allocator execution details
+- [PAPER12_DOCUMENTATION_UPDATE_COMPLETE.md](paper12/PAPER12_DOCUMENTATION_UPDATE_COMPLETE.md) - Documentation updates
+- [PAPER12_PARAMETERS_VALIDATION.md](paper12/PAPER12_PARAMETERS_VALIDATION.md) - Parameter validation
+- [PAPER12_UPDATES_CHECKLIST.md](paper12/PAPER12_UPDATES_CHECKLIST.md) - Updates checklist
 
 ---
 
 ## 🔧 Setup & Installation
 
-**Location**: `docs/setup/` (centralized setup guides)
+**Location**: `setup/` (centralized setup guides)
+
+- [setup/SETUP_COLAB.md](setup/SETUP_COLAB.md) - Google Colab setup
+- [setup/SETUP_LOCAL.md](setup/SETUP_LOCAL.md) - Local machine & GCP setup
+- [setup/TROUBLESHOOTING.md](setup/TROUBLESHOOTING.md) - Common issues & fixes
+- [setup/README_START_HERE.md](setup/README_START_HERE.md) - Getting started guide
+- [setup/TESTBEDS.md](setup/TESTBEDS.md) - Legacy testbed hub
+- [setup/IMPLEMENTATION_CHECKLIST.md](setup/IMPLEMENTATION_CHECKLIST.md) - Implementation tracking
+- [setup/INTEGRATION_GUIDE.md](setup/INTEGRATION_GUIDE.md) - Integration procedures
+- [setup/QUICK_START_CODE_SNIPPETS.md](setup/QUICK_START_CODE_SNIPPETS.md) - Code examples
+- [setup/README_TESTBED_RUNNERS.md](setup/README_TESTBED_RUNNERS.md) - Running testbeds
+- [setup/SEAMLESS_INTEGRATION_SUMMARY.md](setup/SEAMLESS_INTEGRATION_SUMMARY.md) - Integration overview
+
+---
+
+## 📖 Guides & References
+
+**Location**: `docs/guides/` (general guides and checklists)
+
+- [guides/QUICK_START_GUIDE.md](guides/QUICK_START_GUIDE.md) - Quick start guide
+- [guides/RUN_NOTEBOOK_GUIDE.md](guides/RUN_NOTEBOOK_GUIDE.md) - Running notebooks
+- [guides/NOTEBOOK_READY_CHECKLIST.md](guides/NOTEBOOK_READY_CHECKLIST.md) - Notebook readiness checklist
+- [guides/DOCUMENTATION_STRUCTURE.md](guides/DOCUMENTATION_STRUCTURE.md) - Documentation structure
+
+---
+
+## 📋 Assessments & Planning
+
+**Location**: `docs/assessments/` and `docs/planning/`
+
+### Assessments
+- [assessments/ASSESSMENT_CORRECTION_SUMMARY.md](assessments/ASSESSMENT_CORRECTION_SUMMARY.md) - Assessment corrections
+- [assessments/BASELINE_ASSESSMENT_QUICK_REF.md](assessments/BASELINE_ASSESSMENT_QUICK_REF.md) - Baseline assessment reference
+
+### Planning
+- [planning/Spring-2026-Master-Plan-Final.md](planning/Spring-2026-Master-Plan-Final.md) - Master plan
+- [planning/Daily-Reference-Card.md](planning/Daily-Reference-Card.md) - Daily reference
+
+---
+
+## 📊 Updates & Validated Logs
+
+**Location**: `docs/updates/` and `docs/validated_logs/`
+
+### Updates
+- [updates/UPDATE_SUMMARY.md](updates/UPDATE_SUMMARY.md) - Update summary
+- [updates/CRITICAL_CORRECTION_PARAMETER_REVERSION.md](updates/CRITICAL_CORRECTION_PARAMETER_REVERSION.md) - Critical corrections
+
+### Validated Logs
+- [validated_logs/validation_results.md](validated_logs/validation_results.md) - Validation results
+- [validated_logs/3runs_S1T_verification.md](validated_logs/3runs_S1T_verification.md) - 3-run verification
+
+---
+
+## 🔧 Setup & Installation
+
+**Location**: `setup/` (centralized setup guides)
 
 - [setup/SETUP_COLAB.md](setup/SETUP_COLAB.md) - Google Colab setup
 - [setup/SETUP_LOCAL.md](setup/SETUP_LOCAL.md) - Local machine & GCP setup
@@ -115,7 +177,8 @@ docs/
 │   ├── README_TESTBED_RUNNERS.md
 │   └── SEAMLESS_INTEGRATION_SUMMARY.md
 │
-├── testbeds/ (Paper-specific documentation - 19 files)
+├── testbeds/ (Paper-specific documentation - 19+ files)
+│   ├── TESTBEDS_MASTER_QUICK_REFERENCE.md
 │   ├── Paper2_Quick_Reference.md
 │   ├── Paper2_Integration_Report.md
 │   ├── Paper2_Test_Commands.md
@@ -131,6 +194,32 @@ docs/
 │   ├── Paper12_Documentation_Index.md
 │   ├── Paper12_Testing_Readme.md
 │   └── [more Paper 12 docs]
+│
+├── paper12/ (Additional Paper 12 documentation - 4 files)
+│   ├── PAPER12_ALLOCATOR_EXECUTION.md
+│   ├── PAPER12_DOCUMENTATION_UPDATE_COMPLETE.md
+│   ├── PAPER12_PARAMETERS_VALIDATION.md
+│   └── PAPER12_UPDATES_CHECKLIST.md
+│
+├── guides/ (General guides and references - 4 files)
+│   ├── QUICK_START_GUIDE.md
+│   ├── RUN_NOTEBOOK_GUIDE.md
+│   ├── NOTEBOOK_READY_CHECKLIST.md
+│   └── DOCUMENTATION_STRUCTURE.md
+│
+├── assessments/ (Assessment reports - 2 files)
+│   ├── ASSESSMENT_CORRECTION_SUMMARY.md
+│   └── BASELINE_ASSESSMENT_QUICK_REF.md
+│
+├── planning/ (Planning documents)
+│
+├── updates/ (Update summaries - 2 files)
+│   ├── UPDATE_SUMMARY.md
+│   └── CRITICAL_CORRECTION_PARAMETER_REVERSION.md
+│
+├── validated_logs/ (Validation results - 2 files)
+│   ├── validation_results.md
+│   └── 3runs_S1T_verification.md
 │
 └── implementation-notes/ (Technical debugging docs - 12 files)
     ├── ORACLE_FIX_ANALYSIS.md
@@ -169,7 +258,19 @@ docs/
 → Check `implementation-notes/` folder for technical details
 
 **...set up my environment**
-→ Go to [docs/setup/](setup/) directory
+→ Go to [setup/](setup/) directory
+
+**...read assessment reports**
+→ Check `docs/assessments/` for evaluation summaries
+
+**...see planning documents**
+→ Look in `docs/planning/` for project plans
+
+**...find update logs**
+→ See `docs/updates/` for change summaries
+
+**...review validated results**
+→ Check `docs/validated_logs/` for verification data
 
 ---
 
@@ -177,8 +278,13 @@ docs/
 
 **Documentation is organized into**:
 - **docs/testbeds/** - Paper-specific docs
-- **docs/setup/** - Setup & configuration guides
+- **setup/** - Setup & configuration guides
 - **docs/implementation-notes/** - Technical debugging notes
+- **docs/guides/** - General guides and references
+- **docs/assessments/** - Assessment reports
+- **docs/planning/** - Planning documents
+- **docs/updates/** - Update summaries
+- **docs/validated_logs/** - Validation results
 - **docs/** - Integration summaries, indexes, and legacy references
 
 **Root directory**: Only `README.md` and `.github/copilot-instructions.md` (config)

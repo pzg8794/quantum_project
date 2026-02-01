@@ -50,8 +50,8 @@ We have expanded this foundation into a **sophisticated multi-testbed framework*
 | Testbed | Status | Foundation | Network Type | Nodes | Paths | Qubits | Attack Models | Integration Doc | Typical Runtime |
 |---------|--------|-----------|--------------|-------|-------|--------|---------------|-----------------|-----------------|
 | **EXPNeuralUCB (Original)** | 📚 Reference | Huang et al. 2024 | Stochastic (4-node) | 4 | 4 | 35 | 5 | [arXiv:2411.00316](https://arxiv.org/abs/2411.00316) | Academic |
-| **Paper2** | ✅ PROD | EXPNeuralUCB expanded | Stochastic | 4 | 4 | 35 | 5 | [Integration Report](docs/Paper2_Integration_Report.md) | 2-3 hrs (full) |
-| **Paper12** | 🔄 IN PROGRESS | Paper2 evolved | Event-driven | 5 | 8+ | 50+ | 3 | [Integration Report](docs/Paper12_Integration_Report.md) | 1-2 hrs |
+| **Paper2** | ✅ PROD | EXPNeuralUCB expanded | Stochastic | 4 | 4 | 35 | 5 | [Integration Report](testbeds/Paper2_Integration_Report.md) | 2-3 hrs (full) |
+| **Paper12** | 🔄 IN PROGRESS | Paper2 evolved | Event-driven | 5 | 8+ | 50+ | 3 | [Integration Report](testbeds/Paper12_Integration_Report.md) | 1-2 hrs |
 | **Paper5** | 📋 PLANNED | Paper2 extended | Long-distance | 6+ | 10+ | 100+ | 4 | Coming soon | 3-4 hrs |
 | **Paper7** | 📋 PLANNED | Paper5 extended | Multi-domain | 8+ | 12+ | 150+ | 5 | Coming soon | 4-5 hrs |
 
@@ -172,9 +172,9 @@ results = evaluator.test_stochastic_environment(
 ```
 
 **Full Documentation**:
-- 📖 [Paper2 Integration Report](docs/Paper2_Integration_Report.md) — Complete details, physics model, RQ configurations
-- 📋 [Paper2 Quick Reference](docs/Paper2_Quick_Reference.md) — Parameter lookup, key metrics
-- 🧪 [Paper2 Test Commands](docs/Paper2_Test_Commands.md) — 8-test validation suite
+- 📖 [Paper2 Integration Report](testbeds/Paper2_Integration_Report.md) — Complete details, physics model, RQ configurations
+- 📋 [Paper2 Quick Reference](testbeds/Paper2_Quick_Reference.md) — Parameter lookup, key metrics
+- 🧪 [Paper2 Test Commands](testbeds/Paper2_Test_Commands.md) — 8-test validation suite
 
 **Validation Tests**: Run `bash scripts/paper2_test_suite.sh` (2-3 hours, validates all RQs)
 
@@ -220,7 +220,7 @@ results = evaluator.test_event_driven_environment(
 ```
 
 **Documentation**:
-- 📖 [Paper12 Integration Report](docs/Paper12_Integration_Report.md) — Coming soon (late January)
+- 📖 [Paper12 Integration Report](testbeds/Paper12_Integration_Report.md) — Coming soon (late January)
 - 📋 Paper12 Quick Reference — Coming soon
 - 🧪 Paper12 Test Commands — Coming soon
 
@@ -365,7 +365,7 @@ Stretch Goal: Paper5 basic integration by end of March
 
 ### For Paper2 (Immediate)
 
-1. Read [`Paper2_Integration_Report.md`](docs/Paper2_Integration_Report.md) (10 min)
+1. Read [`Paper2_Integration_Report.md`](testbeds/Paper2_Integration_Report.md) (10 min)
    - Understand RQ1, RQ2, RQ3 structure
    - See how EXPNeuralUCB is extended with CPursuit + iCPursuit
 2. Read your [setup guide](setup_files/SETUP_COLAB.md) (5 min)
@@ -394,9 +394,9 @@ Stretch Goal: Paper5 basic integration by end of March
 - Baseline for all our extensions
 
 ### Paper2 (Stochastic)
-- [`Paper2_Integration_Report.md`](docs/Paper2_Integration_Report.md) — Complete integration details
-- [`Paper2_Quick_Reference.md`](docs/Paper2_Quick_Reference.md) — Parameter lookup card
-- [`Paper2_Test_Commands.md`](docs/Paper2_Test_Commands.md) — 8-test validation suite
+- [`Paper2_Integration_Report.md`](testbeds/Paper2_Integration_Report.md) — Complete integration details
+- [`Paper2_Quick_Reference.md`](testbeds/Paper2_Quick_Reference.md) — Parameter lookup card
+- [`Paper2_Test_Commands.md`](testbeds/Paper2_Test_Commands.md) — 8-test validation suite
 
 ### Paper12 (Event-Driven) — Coming Feb
 - `Paper12_Integration_Report.md` — TBD
@@ -462,7 +462,7 @@ Foundation Paper: Huang et al. 2024 (EXPNeuralUCB)
    - Paper12 if interested in temporal patterns (coming Feb)
 
 3. **Read Integration Report** (15 min):
-   - Paper2: [`Paper2_Integration_Report.md`](docs/Paper2_Integration_Report.md)
+   - Paper2: [`Paper2_Integration_Report.md`](testbeds/Paper2_Integration_Report.md)
    - Understand research questions & expected results
    - See how CPursuit and iCPursuit extend EXPNeuralUCB
 

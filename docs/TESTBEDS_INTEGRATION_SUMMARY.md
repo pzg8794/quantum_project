@@ -34,7 +34,7 @@ hybrid_variable_framework/docs/
 ### New Files (9 Total)
 
 **Hub Document**:
-- `docs/TESTBEDS_OVERVIEW.md` - Central entry point with comparison matrix
+- `doTESTBEDS_OVERVIEW.md` - Central entry point with comparison matrix
 
 **Paper 2** (3 files):
 - `docs/testbeds/Paper2_Quick_Reference.md`
@@ -104,7 +104,7 @@ hybrid_variable_framework/docs/
 ```
 README.md 
   → "Testbeds Overview" link
-  → docs/TESTBEDS_OVERVIEW.md
+  → doTESTBEDS_OVERVIEW.md
 ```
 
 **Get Paper Details**:
@@ -118,7 +118,7 @@ README.md
 ```
 README.md 
   → "Testbeds Overview" link
-  → docs/TESTBEDS_OVERVIEW.md (has comparison matrix)
+  → doTESTBEDS_OVERVIEW.md (has comparison matrix)
 ```
 
 **Deep Dive**:
@@ -182,7 +182,7 @@ Paper{N}_Test_Commands.md           # Commands (Paper 2 only)
 - `README.md` - ✅ Updated
 
 **Documentation Hub**:
-- `docs/TESTBEDS_OVERVIEW.md` - ✅ New
+- `doTESTBEDS_OVERVIEW.md` - ✅ New
 - `docs/INTEGRATION_COMPLETE.md` - ✅ New (this document)
 
 **Paper 2 Documentation** (3 files):

@@ -113,4 +113,4 @@ See `Paper2_Integration_Checklist.txt` in testbed folder.
 
 ---
 
-**See Also**: [TESTBEDS_OVERVIEW.md](../TESTBEDS_OVERVIEW.md)
+**See Also**: [TESTBEDS_OVERVIEW.md](TESTBEDS_OVERVIEW.md)

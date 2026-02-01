@@ -1,0 +1,41 @@
+[Logging Redirect Initialized]
+Log File: /workspaces/quantum_project/Dynamic_Routing_Eval_Framework/daqr/config/quantum_logs/quantum_exps-Default(paper7)_alloc-all_envs-5_attacks-50_50-1_runs-S1T_20260130_log.txt
+⚙ Running evaluation...
+======================================================================
+SCENARIOS MODEL EVALUATION
+======================================================================
+Testing algorithm performance against:
+	• Stochastic:  	Natural quantum decoherence and network failures
+	• Baseline:    	Optimal conditions for validation
+======================================================================
+Models to Test:             	Oracle, GNeuralUCB, EXPNeuralUCB, CPursuitNeuralUCB, iCPursuitNeuralUCB
+Experiments per Scenario:   	1
+======================================================================
+
+
+
+TESTING ENVIRONMENT SCENARIO: BASELINE (OPTIMAL CONDITIONS)
+==================================================
+
+STARTING EXPERIMENTS: NONE
+Category: Baseline (No Attacks)
+============================================================
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 1: 50 frames  <>  SCALED-CAPACITY: 50 frames (CAPACITY:50 X SCALE:1)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=0 → allocation=(5, 6, 4, 6, 4, 6, 4, 6, 4, 6, 4, 6, 4, 6, 4)
+🔧 Allocated qubits for NONE Exp 1: (5, 6, 4, 6, 4, 6, 4, 6, 4, 6, 4, 6, 4, 6, 4)
+🔄 Default Dynamic Allocation (Initial): (5, 6, 4, 6, 4, 6, 4, 6, 4, 6, 4, 6, 4, 6, 4)
+======================================================================================================================================================
+
+BASELINE (NONE) (NO) EXP 1: Env:Baseline (None), Attack:No, Rate:0.0, Frames:50, QubitAlloc=Default, SC:50 (Scale=1 x Cap=50), Seed: 21706
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+Exception ignored in: <function QuantumModel.__del__ at 0x7165d3aa44a0>
+Traceback (most recent call last):
+  File "/workspaces/quantum_project/Dynamic_Routing_Eval_Framework/daqr/algorithms/base_bandit.py", line 381, in __del__
+    self.cleanup(verbose=False)
+  File "/workspaces/quantum_project/Dynamic_Routing_Eval_Framework/daqr/algorithms/base_bandit.py", line 372, in cleanup
+    if cooldown_seconds > 0: time.sleep(cooldown_seconds)
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt: 

@@ -239,6 +239,8 @@ class QuantumModel(ABC):
         # This now always loads from the correct data lake (or backup if not found)
         if not self.resumed:
             if self.configs.resume_obj(self): self.resumed = True
+        if not self.resumed:
+            self.configs.use_last_backup = False
         return self.resumed
 
             

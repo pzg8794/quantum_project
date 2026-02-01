@@ -1,0 +1,1293 @@
+[Logging Redirect Initialized]
+Log File: /workspaces/quantum_project/Dynamic_Routing_Eval_Framework/daqr/config/quantum_logs/quantum_exps-Default(paper12)_alloc-all_envs-5_attacks-1500_500-5_runs-S2T_20260131_log.txt
+⚙ Running evaluation...
+======================================================================
+SCENARIOS MODEL EVALUATION
+======================================================================
+Testing algorithm performance against:
+	• Stochastic:  	Natural quantum decoherence and network failures
+	• Baseline:    	Optimal conditions for validation
+======================================================================
+Models to Test:             	Oracle, GNeuralUCB, EXPNeuralUCB, CPursuitNeuralUCB, iCPursuitNeuralUCB
+Experiments per Scenario:   	5
+======================================================================
+
+
+
+TESTING ENVIRONMENT SCENARIO: BASELINE (OPTIMAL CONDITIONS)
+==================================================
+
+STARTING EXPERIMENTS: NONE
+Category: Baseline (No Attacks)
+============================================================
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 1: 1500 frames  <>  SCALED-CAPACITY: 3000 frames (CAPACITY:1500 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=0 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for NONE Exp 1: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+BASELINE (NONE) (NO) EXP 1: Env:Baseline (None), Attack:No, Rate:0.0, Frames:1500, QubitAlloc=Default, SC:3000 (Scale=2 x Cap=1500), Seed: 14857
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 BASELINE (NONE) (NO) EXP 1: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 GNEURALUCB          : Reward=0661.98, Efficiency=050.1% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.582]
+
+	🔄 BASELINE (NONE) (NO) EXP 1: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 EXPNEURALUCB        : Reward=0630.53, Efficiency=047.7% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.628]
+
+	🔄 BASELINE (NONE) (NO) EXP 1: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 CPURSUITNEURALUCB   : Reward=0663.47, Efficiency=050.2% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.634]
+
+	🔄 BASELINE (NONE) (NO) EXP 1: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 ICPURSUITNEURALUCB  : Reward=0666.27, Efficiency=050.4% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.712]
+
+BASELINE (NONE) (NO) EXP 1: Env:Baseline (None), Attack:No, Rate:0.0, Frames:1500, QubitAlloc=Default, SC:3000 (Scale=2 x Cap=1500), Seed: 14857
+	-->🏆 EXP1 Winner:iCPursuitNeuralUCB  (Gap:049.6%) [Env:Baseline (None), Attack:No X Rate:0.0, Frames:1500, SCapacity=3000, Alloc=Default]
+✓ Experiment 1 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 2: 2000 frames  <>  SCALED-CAPACITY: 4000 frames (CAPACITY:2000 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=1 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for NONE Exp 2: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+BASELINE (NONE) (NO) EXP 2: Env:Baseline (None), Attack:No, Rate:0.0, Frames:2000, QubitAlloc=Default, SC:4000 (Scale=2 x Cap=2000), Seed: 22026
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 BASELINE (NONE) (NO) EXP 2: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 GNEURALUCB          : Reward=0878.41, Efficiency=049.8% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.582]
+
+	🔄 BASELINE (NONE) (NO) EXP 2: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 EXPNEURALUCB        : Reward=0930.26, Efficiency=052.8% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.628]
+
+	🔄 BASELINE (NONE) (NO) EXP 2: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 CPURSUITNEURALUCB   : Reward=0900.58, Efficiency=051.1% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.634]
+
+	🔄 BASELINE (NONE) (NO) EXP 2: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 ICPURSUITNEURALUCB  : Reward=0885.71, Efficiency=050.2% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.712]
+
+BASELINE (NONE) (NO) EXP 2: Env:Baseline (None), Attack:No, Rate:0.0, Frames:2000, QubitAlloc=Default, SC:4000 (Scale=2 x Cap=2000), Seed: 22026
+	-->🏆 EXP2 Winner:EXPNeuralUCB        (Gap:047.2%) [Env:Baseline (None), Attack:No X Rate:0.0, Frames:2000, SCapacity=4000, Alloc=Default]
+✓ Experiment 2 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 3: 2500 frames  <>  SCALED-CAPACITY: 5000 frames (CAPACITY:2500 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=2 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for NONE Exp 3: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+BASELINE (NONE) (NO) EXP 3: Env:Baseline (None), Attack:No, Rate:0.0, Frames:2500, QubitAlloc=Default, SC:5000 (Scale=2 x Cap=2500), Seed: 22112
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 BASELINE (NONE) (NO) EXP 3: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 GNEURALUCB          : Reward=1099.32, Efficiency=049.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.582]
+
+	🔄 BASELINE (NONE) (NO) EXP 3: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 EXPNEURALUCB        : Reward=1103.31, Efficiency=050.1% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.628]
+
+	🔄 BASELINE (NONE) (NO) EXP 3: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 CPURSUITNEURALUCB   : Reward=1095.85, Efficiency=049.7% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.634]
+
+	🔄 BASELINE (NONE) (NO) EXP 3: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 ICPURSUITNEURALUCB  : Reward=1120.84, Efficiency=050.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.712]
+
+BASELINE (NONE) (NO) EXP 3: Env:Baseline (None), Attack:No, Rate:0.0, Frames:2500, QubitAlloc=Default, SC:5000 (Scale=2 x Cap=2500), Seed: 22112
+	-->🏆 EXP3 Winner:iCPursuitNeuralUCB  (Gap:049.1%) [Env:Baseline (None), Attack:No X Rate:0.0, Frames:2500, SCapacity=5000, Alloc=Default]
+✓ Experiment 3 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 4: 3000 frames  <>  SCALED-CAPACITY: 6000 frames (CAPACITY:3000 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=3 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for NONE Exp 4: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+BASELINE (NONE) (NO) EXP 4: Env:Baseline (None), Attack:No, Rate:0.0, Frames:3000, QubitAlloc=Default, SC:6000 (Scale=2 x Cap=3000), Seed: 13260
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 BASELINE (NONE) (NO) EXP 4: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 GNEURALUCB          : Reward=1337.49, Efficiency=050.6% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.582]
+
+	🔄 BASELINE (NONE) (NO) EXP 4: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 EXPNEURALUCB        : Reward=1235.25, Efficiency=046.7% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.628]
+
+	🔄 BASELINE (NONE) (NO) EXP 4: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 CPURSUITNEURALUCB   : Reward=1358.68, Efficiency=051.4% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.634]
+
+	🔄 BASELINE (NONE) (NO) EXP 4: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 ICPURSUITNEURALUCB  : Reward=1384.60, Efficiency=052.3% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.712]
+
+BASELINE (NONE) (NO) EXP 4: Env:Baseline (None), Attack:No, Rate:0.0, Frames:3000, QubitAlloc=Default, SC:6000 (Scale=2 x Cap=3000), Seed: 13260
+	-->🏆 EXP4 Winner:iCPursuitNeuralUCB  (Gap:047.7%) [Env:Baseline (None), Attack:No X Rate:0.0, Frames:3000, SCapacity=6000, Alloc=Default]
+✓ Experiment 4 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 5: 3500 frames  <>  SCALED-CAPACITY: 7000 frames (CAPACITY:3500 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=4 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for NONE Exp 5: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+BASELINE (NONE) (NO) EXP 5: Env:Baseline (None), Attack:No, Rate:0.0, Frames:3500, QubitAlloc=Default, SC:7000 (Scale=2 x Cap=3500), Seed: 16608
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 BASELINE (NONE) (NO) EXP 5: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 GNEURALUCB          : Reward=1541.43, Efficiency=050.0% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.582]
+
+	🔄 BASELINE (NONE) (NO) EXP 5: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 EXPNEURALUCB        : Reward=1522.04, Efficiency=049.3% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.628]
+
+	🔄 BASELINE (NONE) (NO) EXP 5: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 CPURSUITNEURALUCB   : Reward=1570.02, Efficiency=050.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.634]
+
+	🔄 BASELINE (NONE) (NO) EXP 5: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 ICPURSUITNEURALUCB  : Reward=1582.69, Efficiency=051.3% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.712]
+
+BASELINE (NONE) (NO) EXP 5: Env:Baseline (None), Attack:No, Rate:0.0, Frames:3500, QubitAlloc=Default, SC:7000 (Scale=2 x Cap=3500), Seed: 16608
+	-->🏆 EXP5 Winner:iCPursuitNeuralUCB  (Gap:048.7%) [Env:Baseline (None), Attack:No X Rate:0.0, Frames:3500, SCapacity=7000, Alloc=Default]
+✓ Experiment 5 completed successfully.
+Total experiment time: 3917.8s
+Experiments completed for none
+
+
+
+TESTING ENVIRONMENT SCENARIO: STOCHASTIC RANDOM FAILURES
+==================================================
+
+STARTING EXPERIMENTS: STOCHASTIC
+Category: Stochastic (Natural Random Failures)
+============================================================
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 1: 1500 frames  <>  SCALED-CAPACITY: 3000 frames (CAPACITY:1500 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=0 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for STOCHASTIC Exp 1: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+STOCHASTIC (RANDOM) EXP 1: Env:Stochastic, Attack:Random, Rate:0.0625, Frames:1500, QubitAlloc=Default, SC:3000 (Scale=2 x Cap=1500), Seed: 12895
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 STOCHASTIC (RANDOM) EXP 1: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 GNEURALUCB          : Reward=0619.11, Efficiency=046.8% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.582]
+
+	🔄 STOCHASTIC (RANDOM) EXP 1: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 EXPNEURALUCB        : Reward=0641.54, Efficiency=048.5% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.628]
+
+	🔄 STOCHASTIC (RANDOM) EXP 1: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 CPURSUITNEURALUCB   : Reward=0638.23, Efficiency=048.3% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.634]
+
+	🔄 STOCHASTIC (RANDOM) EXP 1: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 ICPURSUITNEURALUCB  : Reward=0609.92, Efficiency=046.1% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.712]
+
+STOCHASTIC (RANDOM) EXP 1: Env:Stochastic, Attack:Random, Rate:0.0625, Frames:1500, QubitAlloc=Default, SC:3000 (Scale=2 x Cap=1500), Seed: 12895
+	-->🏆 EXP1 Winner:EXPNeuralUCB        (Gap:051.5%) [Env:Stochastic, Attack:Random X Rate:0.0625, Frames:1500, SCapacity=3000, Alloc=Default]
+✓ Experiment 1 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 2: 2000 frames  <>  SCALED-CAPACITY: 4000 frames (CAPACITY:2000 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=1 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for STOCHASTIC Exp 2: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+STOCHASTIC (RANDOM) EXP 2: Env:Stochastic, Attack:Random, Rate:0.0625, Frames:2000, QubitAlloc=Default, SC:4000 (Scale=2 x Cap=2000), Seed: 21897
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 STOCHASTIC (RANDOM) EXP 2: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 GNEURALUCB          : Reward=0861.64, Efficiency=048.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.582]
+
+	🔄 STOCHASTIC (RANDOM) EXP 2: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 EXPNEURALUCB        : Reward=0845.52, Efficiency=048.0% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.628]
+
+	🔄 STOCHASTIC (RANDOM) EXP 2: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 CPURSUITNEURALUCB   : Reward=0798.76, Efficiency=045.3% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.634]
+
+	🔄 STOCHASTIC (RANDOM) EXP 2: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 ICPURSUITNEURALUCB  : Reward=0859.05, Efficiency=048.8% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.712]
+
+STOCHASTIC (RANDOM) EXP 2: Env:Stochastic, Attack:Random, Rate:0.0625, Frames:2000, QubitAlloc=Default, SC:4000 (Scale=2 x Cap=2000), Seed: 21897
+	-->🏆 EXP2 Winner:GNeuralUCB          (Gap:051.1%) [Env:Stochastic, Attack:Random X Rate:0.0625, Frames:2000, SCapacity=4000, Alloc=Default]
+✓ Experiment 2 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 3: 2500 frames  <>  SCALED-CAPACITY: 5000 frames (CAPACITY:2500 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=2 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for STOCHASTIC Exp 3: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+STOCHASTIC (RANDOM) EXP 3: Env:Stochastic, Attack:Random, Rate:0.0625, Frames:2500, QubitAlloc=Default, SC:5000 (Scale=2 x Cap=2500), Seed: 20523
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 STOCHASTIC (RANDOM) EXP 3: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 GNEURALUCB          : Reward=1032.87, Efficiency=046.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.582]
+
+	🔄 STOCHASTIC (RANDOM) EXP 3: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 EXPNEURALUCB        : Reward=1021.94, Efficiency=046.4% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.628]
+
+	🔄 STOCHASTIC (RANDOM) EXP 3: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 CPURSUITNEURALUCB   : Reward=1032.48, Efficiency=046.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.634]
+
+	🔄 STOCHASTIC (RANDOM) EXP 3: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 ICPURSUITNEURALUCB  : Reward=1029.23, Efficiency=046.7% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.712]
+
+STOCHASTIC (RANDOM) EXP 3: Env:Stochastic, Attack:Random, Rate:0.0625, Frames:2500, QubitAlloc=Default, SC:5000 (Scale=2 x Cap=2500), Seed: 20523
+	-->🏆 EXP3 Winner:GNeuralUCB          (Gap:053.1%) [Env:Stochastic, Attack:Random X Rate:0.0625, Frames:2500, SCapacity=5000, Alloc=Default]
+✓ Experiment 3 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 4: 3000 frames  <>  SCALED-CAPACITY: 6000 frames (CAPACITY:3000 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=3 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for STOCHASTIC Exp 4: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+STOCHASTIC (RANDOM) EXP 4: Env:Stochastic, Attack:Random, Rate:0.0625, Frames:3000, QubitAlloc=Default, SC:6000 (Scale=2 x Cap=3000), Seed: 21549
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 STOCHASTIC (RANDOM) EXP 4: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 GNEURALUCB          : Reward=1269.73, Efficiency=048.0% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.582]
+
+	🔄 STOCHASTIC (RANDOM) EXP 4: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 EXPNEURALUCB        : Reward=1213.96, Efficiency=045.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.628]
+
+	🔄 STOCHASTIC (RANDOM) EXP 4: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 CPURSUITNEURALUCB   : Reward=1174.29, Efficiency=044.4% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.634]
+
+	🔄 STOCHASTIC (RANDOM) EXP 4: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 ICPURSUITNEURALUCB  : Reward=1279.11, Efficiency=048.4% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.712]
+
+STOCHASTIC (RANDOM) EXP 4: Env:Stochastic, Attack:Random, Rate:0.0625, Frames:3000, QubitAlloc=Default, SC:6000 (Scale=2 x Cap=3000), Seed: 21549
+	-->🏆 EXP4 Winner:iCPursuitNeuralUCB  (Gap:051.6%) [Env:Stochastic, Attack:Random X Rate:0.0625, Frames:3000, SCapacity=6000, Alloc=Default]
+✓ Experiment 4 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 5: 3500 frames  <>  SCALED-CAPACITY: 7000 frames (CAPACITY:3500 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=4 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for STOCHASTIC Exp 5: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+STOCHASTIC (RANDOM) EXP 5: Env:Stochastic, Attack:Random, Rate:0.0625, Frames:3500, QubitAlloc=Default, SC:7000 (Scale=2 x Cap=3500), Seed: 13394
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 STOCHASTIC (RANDOM) EXP 5: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 GNEURALUCB          : Reward=1449.95, Efficiency=047.0% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.582]
+
+	🔄 STOCHASTIC (RANDOM) EXP 5: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 EXPNEURALUCB        : Reward=1506.62, Efficiency=048.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.628]
+
+	🔄 STOCHASTIC (RANDOM) EXP 5: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 CPURSUITNEURALUCB   : Reward=1492.56, Efficiency=048.4% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.634]
+
+	🔄 STOCHASTIC (RANDOM) EXP 5: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 ICPURSUITNEURALUCB  : Reward=1506.87, Efficiency=048.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.712]
+
+STOCHASTIC (RANDOM) EXP 5: Env:Stochastic, Attack:Random, Rate:0.0625, Frames:3500, QubitAlloc=Default, SC:7000 (Scale=2 x Cap=3500), Seed: 13394
+	-->🏆 EXP5 Winner:iCPursuitNeuralUCB  (Gap:051.1%) [Env:Stochastic, Attack:Random X Rate:0.0625, Frames:3500, SCapacity=7000, Alloc=Default]
+✓ Experiment 5 completed successfully.
+Total experiment time: 3729.0s
+Experiments completed for stochastic
+
+
+
+TESTING ENVIRONMENT SCENARIO: MARKOV ADVERSARIAL ATTACK
+==================================================
+
+STARTING EXPERIMENTS: MARKOV
+Category: Structured (Markov Chain Based)
+============================================================
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 1: 1500 frames  <>  SCALED-CAPACITY: 3000 frames (CAPACITY:1500 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=0 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for MARKOV Exp 1: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+ADVERSARIAL (MARKOV) EXP 1: Env:Adversarial, Attack:Markov, Rate:0.25, Frames:1500, QubitAlloc=Default, SC:3000 (Scale=2 x Cap=1500), Seed: 20148
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 ADVERSARIAL (MARKOV) EXP 1: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 GNEURALUCB          : Reward=0362.46, Efficiency=029.6% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.582]
+
+	🔄 ADVERSARIAL (MARKOV) EXP 1: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 EXPNEURALUCB        : Reward=0305.77, Efficiency=024.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.628]
+
+	🔄 ADVERSARIAL (MARKOV) EXP 1: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 CPURSUITNEURALUCB   : Reward=0336.71, Efficiency=027.5% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.634]
+
+	🔄 ADVERSARIAL (MARKOV) EXP 1: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 ICPURSUITNEURALUCB  : Reward=0349.91, Efficiency=028.5% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.712]
+
+ADVERSARIAL (MARKOV) EXP 1: Env:Adversarial, Attack:Markov, Rate:0.25, Frames:1500, QubitAlloc=Default, SC:3000 (Scale=2 x Cap=1500), Seed: 20148
+	-->🏆 EXP1 Winner:GNeuralUCB          (Gap:070.4%) [Env:Adversarial, Attack:Markov X Rate:0.25, Frames:1500, SCapacity=3000, Alloc=Default]
+✓ Experiment 1 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 2: 2000 frames  <>  SCALED-CAPACITY: 4000 frames (CAPACITY:2000 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=1 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for MARKOV Exp 2: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+ADVERSARIAL (MARKOV) EXP 2: Env:Adversarial, Attack:Markov, Rate:0.25, Frames:2000, QubitAlloc=Default, SC:4000 (Scale=2 x Cap=2000), Seed: 17200
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 ADVERSARIAL (MARKOV) EXP 2: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 GNEURALUCB          : Reward=0451.69, Efficiency=027.3% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.582]
+
+	🔄 ADVERSARIAL (MARKOV) EXP 2: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 EXPNEURALUCB        : Reward=0420.37, Efficiency=025.4% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.628]
+
+	🔄 ADVERSARIAL (MARKOV) EXP 2: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 CPURSUITNEURALUCB   : Reward=0488.71, Efficiency=029.6% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.634]
+
+	🔄 ADVERSARIAL (MARKOV) EXP 2: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 ICPURSUITNEURALUCB  : Reward=0487.87, Efficiency=029.5% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.712]
+
+ADVERSARIAL (MARKOV) EXP 2: Env:Adversarial, Attack:Markov, Rate:0.25, Frames:2000, QubitAlloc=Default, SC:4000 (Scale=2 x Cap=2000), Seed: 17200
+	-->🏆 EXP2 Winner:CPursuitNeuralUCB   (Gap:070.4%) [Env:Adversarial, Attack:Markov X Rate:0.25, Frames:2000, SCapacity=4000, Alloc=Default]
+✓ Experiment 2 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 3: 2500 frames  <>  SCALED-CAPACITY: 5000 frames (CAPACITY:2500 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=2 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for MARKOV Exp 3: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+ADVERSARIAL (MARKOV) EXP 3: Env:Adversarial, Attack:Markov, Rate:0.25, Frames:2500, QubitAlloc=Default, SC:5000 (Scale=2 x Cap=2500), Seed: 20842
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 ADVERSARIAL (MARKOV) EXP 3: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 GNEURALUCB          : Reward=0583.18, Efficiency=028.5% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.582]
+
+	🔄 ADVERSARIAL (MARKOV) EXP 3: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 EXPNEURALUCB        : Reward=0549.72, Efficiency=026.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.628]
+
+	🔄 ADVERSARIAL (MARKOV) EXP 3: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 CPURSUITNEURALUCB   : Reward=0573.26, Efficiency=028.0% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.634]
+
+	🔄 ADVERSARIAL (MARKOV) EXP 3: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 ICPURSUITNEURALUCB  : Reward=0617.10, Efficiency=030.2% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.712]
+
+ADVERSARIAL (MARKOV) EXP 3: Env:Adversarial, Attack:Markov, Rate:0.25, Frames:2500, QubitAlloc=Default, SC:5000 (Scale=2 x Cap=2500), Seed: 20842
+	-->🏆 EXP3 Winner:iCPursuitNeuralUCB  (Gap:069.8%) [Env:Adversarial, Attack:Markov X Rate:0.25, Frames:2500, SCapacity=5000, Alloc=Default]
+✓ Experiment 3 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 4: 3000 frames  <>  SCALED-CAPACITY: 6000 frames (CAPACITY:3000 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=3 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for MARKOV Exp 4: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+ADVERSARIAL (MARKOV) EXP 4: Env:Adversarial, Attack:Markov, Rate:0.25, Frames:3000, QubitAlloc=Default, SC:6000 (Scale=2 x Cap=3000), Seed: 22266
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 ADVERSARIAL (MARKOV) EXP 4: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 GNEURALUCB          : Reward=0716.30, Efficiency=028.7% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.582]
+
+	🔄 ADVERSARIAL (MARKOV) EXP 4: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 EXPNEURALUCB        : Reward=0664.22, Efficiency=026.6% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.628]
+
+	🔄 ADVERSARIAL (MARKOV) EXP 4: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 CPURSUITNEURALUCB   : Reward=0637.57, Efficiency=025.6% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.634]
+
+	🔄 ADVERSARIAL (MARKOV) EXP 4: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 ICPURSUITNEURALUCB  : Reward=0702.37, Efficiency=028.2% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.712]
+
+ADVERSARIAL (MARKOV) EXP 4: Env:Adversarial, Attack:Markov, Rate:0.25, Frames:3000, QubitAlloc=Default, SC:6000 (Scale=2 x Cap=3000), Seed: 22266
+	-->🏆 EXP4 Winner:GNeuralUCB          (Gap:071.3%) [Env:Adversarial, Attack:Markov X Rate:0.25, Frames:3000, SCapacity=6000, Alloc=Default]
+✓ Experiment 4 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 5: 3500 frames  <>  SCALED-CAPACITY: 7000 frames (CAPACITY:3500 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=4 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for MARKOV Exp 5: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+ADVERSARIAL (MARKOV) EXP 5: Env:Adversarial, Attack:Markov, Rate:0.25, Frames:3500, QubitAlloc=Default, SC:7000 (Scale=2 x Cap=3500), Seed: 17778
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 ADVERSARIAL (MARKOV) EXP 5: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 GNEURALUCB          : Reward=0837.93, Efficiency=029.0% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.582]
+
+	🔄 ADVERSARIAL (MARKOV) EXP 5: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 EXPNEURALUCB        : Reward=0747.23, Efficiency=025.8% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.628]
+
+	🔄 ADVERSARIAL (MARKOV) EXP 5: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 CPURSUITNEURALUCB   : Reward=0793.31, Efficiency=027.4% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.634]
+
+	🔄 ADVERSARIAL (MARKOV) EXP 5: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 ICPURSUITNEURALUCB  : Reward=0818.16, Efficiency=028.3% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.712]
+
+ADVERSARIAL (MARKOV) EXP 5: Env:Adversarial, Attack:Markov, Rate:0.25, Frames:3500, QubitAlloc=Default, SC:7000 (Scale=2 x Cap=3500), Seed: 17778
+	-->🏆 EXP5 Winner:GNeuralUCB          (Gap:071.0%) [Env:Adversarial, Attack:Markov X Rate:0.25, Frames:3500, SCapacity=7000, Alloc=Default]
+✓ Experiment 5 completed successfully.
+Total experiment time: 2570.6s
+Experiments completed for markov
+
+
+
+TESTING ENVIRONMENT SCENARIO: ADAPTIVE ADVERSARIAL ATTACK
+==================================================
+
+STARTING EXPERIMENTS: ADAPTIVE
+Category: Adaptive (Reactive Strategic)
+============================================================
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 1: 1500 frames  <>  SCALED-CAPACITY: 3000 frames (CAPACITY:1500 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=0 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for ADAPTIVE Exp 1: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+ADVERSARIAL (ADAPTIVE) EXP 1: Env:Adversarial, Attack:Adaptive, Rate:0.25, Frames:1500, QubitAlloc=Default, SC:3000 (Scale=2 x Cap=1500), Seed: 15062
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 1: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 GNEURALUCB          : Reward=0460.26, Efficiency=034.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.582]
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 1: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 EXPNEURALUCB        : Reward=0461.16, Efficiency=035.0% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.628]
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 1: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 CPURSUITNEURALUCB   : Reward=0475.60, Efficiency=036.1% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.634]
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 1: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 ICPURSUITNEURALUCB  : Reward=0496.17, Efficiency=037.7% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.712]
+
+ADVERSARIAL (ADAPTIVE) EXP 1: Env:Adversarial, Attack:Adaptive, Rate:0.25, Frames:1500, QubitAlloc=Default, SC:3000 (Scale=2 x Cap=1500), Seed: 15062
+	-->🏆 EXP1 Winner:iCPursuitNeuralUCB  (Gap:062.3%) [Env:Adversarial, Attack:Adaptive X Rate:0.25, Frames:1500, SCapacity=3000, Alloc=Default]
+✓ Experiment 1 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 2: 2000 frames  <>  SCALED-CAPACITY: 4000 frames (CAPACITY:2000 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=1 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for ADAPTIVE Exp 2: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+ADVERSARIAL (ADAPTIVE) EXP 2: Env:Adversarial, Attack:Adaptive, Rate:0.25, Frames:2000, QubitAlloc=Default, SC:4000 (Scale=2 x Cap=2000), Seed: 12896
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 2: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 GNEURALUCB          : Reward=0633.31, Efficiency=036.1% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.582]
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 2: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 EXPNEURALUCB        : Reward=0650.37, Efficiency=037.1% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.628]
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 2: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 CPURSUITNEURALUCB   : Reward=0664.83, Efficiency=037.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.634]
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 2: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 ICPURSUITNEURALUCB  : Reward=0656.96, Efficiency=037.5% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.712]
+
+ADVERSARIAL (ADAPTIVE) EXP 2: Env:Adversarial, Attack:Adaptive, Rate:0.25, Frames:2000, QubitAlloc=Default, SC:4000 (Scale=2 x Cap=2000), Seed: 12896
+	-->🏆 EXP2 Winner:CPursuitNeuralUCB   (Gap:062.1%) [Env:Adversarial, Attack:Adaptive X Rate:0.25, Frames:2000, SCapacity=4000, Alloc=Default]
+✓ Experiment 2 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 3: 2500 frames  <>  SCALED-CAPACITY: 5000 frames (CAPACITY:2500 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=2 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for ADAPTIVE Exp 3: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+ADVERSARIAL (ADAPTIVE) EXP 3: Env:Adversarial, Attack:Adaptive, Rate:0.25, Frames:2500, QubitAlloc=Default, SC:5000 (Scale=2 x Cap=2500), Seed: 16792
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 3: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 GNEURALUCB          : Reward=0788.23, Efficiency=036.0% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.582]
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 3: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 EXPNEURALUCB        : Reward=0910.26, Efficiency=041.6% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.628]
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 3: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 CPURSUITNEURALUCB   : Reward=0814.56, Efficiency=037.2% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.634]
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 3: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 ICPURSUITNEURALUCB  : Reward=0810.20, Efficiency=037.0% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.712]
+
+ADVERSARIAL (ADAPTIVE) EXP 3: Env:Adversarial, Attack:Adaptive, Rate:0.25, Frames:2500, QubitAlloc=Default, SC:5000 (Scale=2 x Cap=2500), Seed: 16792
+	-->🏆 EXP3 Winner:EXPNeuralUCB        (Gap:058.4%) [Env:Adversarial, Attack:Adaptive X Rate:0.25, Frames:2500, SCapacity=5000, Alloc=Default]
+✓ Experiment 3 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 4: 3000 frames  <>  SCALED-CAPACITY: 6000 frames (CAPACITY:3000 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=3 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for ADAPTIVE Exp 4: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+ADVERSARIAL (ADAPTIVE) EXP 4: Env:Adversarial, Attack:Adaptive, Rate:0.25, Frames:3000, QubitAlloc=Default, SC:6000 (Scale=2 x Cap=3000), Seed: 19165
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 4: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 GNEURALUCB          : Reward=0944.74, Efficiency=035.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.582]
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 4: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 EXPNEURALUCB        : Reward=1004.95, Efficiency=038.2% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.628]
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 4: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 CPURSUITNEURALUCB   : Reward=1004.03, Efficiency=038.2% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.634]
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 4: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 ICPURSUITNEURALUCB  : Reward=0974.25, Efficiency=037.0% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.712]
+
+ADVERSARIAL (ADAPTIVE) EXP 4: Env:Adversarial, Attack:Adaptive, Rate:0.25, Frames:3000, QubitAlloc=Default, SC:6000 (Scale=2 x Cap=3000), Seed: 19165
+	-->🏆 EXP4 Winner:EXPNeuralUCB        (Gap:061.8%) [Env:Adversarial, Attack:Adaptive X Rate:0.25, Frames:3000, SCapacity=6000, Alloc=Default]
+✓ Experiment 4 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 5: 3500 frames  <>  SCALED-CAPACITY: 7000 frames (CAPACITY:3500 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=4 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for ADAPTIVE Exp 5: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+ADVERSARIAL (ADAPTIVE) EXP 5: Env:Adversarial, Attack:Adaptive, Rate:0.25, Frames:3500, QubitAlloc=Default, SC:7000 (Scale=2 x Cap=3500), Seed: 18689
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 5: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 GNEURALUCB          : Reward=1184.82, Efficiency=038.7% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.582]
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 5: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 EXPNEURALUCB        : Reward=1146.98, Efficiency=037.4% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.628]
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 5: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 CPURSUITNEURALUCB   : Reward=1195.05, Efficiency=039.0% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.634]
+
+	🔄 ADVERSARIAL (ADAPTIVE) EXP 5: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 ICPURSUITNEURALUCB  : Reward=1166.06, Efficiency=038.1% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.712]
+
+ADVERSARIAL (ADAPTIVE) EXP 5: Env:Adversarial, Attack:Adaptive, Rate:0.25, Frames:3500, QubitAlloc=Default, SC:7000 (Scale=2 x Cap=3500), Seed: 18689
+	-->🏆 EXP5 Winner:CPursuitNeuralUCB   (Gap:061.0%) [Env:Adversarial, Attack:Adaptive X Rate:0.25, Frames:3500, SCapacity=7000, Alloc=Default]
+✓ Experiment 5 completed successfully.
+Total experiment time: 3233.0s
+Experiments completed for adaptive
+
+
+
+TESTING ENVIRONMENT SCENARIO: ONLINE ADAPTIVE ATTACK
+==================================================
+
+STARTING EXPERIMENTS: ONLINEADAPTIVE
+Category: Online Adaptive (Real-time Strategic)
+============================================================
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 1: 1500 frames  <>  SCALED-CAPACITY: 3000 frames (CAPACITY:1500 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=0 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for ONLINEADAPTIVE Exp 1: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+ADVERSARIAL (ONLINEADAPTIVE) EXP 1: Env:Adversarial, Attack:OnlineAdaptive, Rate:0.25, Frames:1500, QubitAlloc=Default, SC:3000 (Scale=2 x Cap=1500), Seed: 15322
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 1: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 GNEURALUCB          : Reward=0485.05, Efficiency=037.0% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.582]
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 1: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 EXPNEURALUCB        : Reward=0501.91, Efficiency=038.3% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.628]
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 1: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 CPURSUITNEURALUCB   : Reward=0485.24, Efficiency=037.0% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.634]
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 1: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 ICPURSUITNEURALUCB  : Reward=0462.72, Efficiency=035.3% [Retries=3, Failed=0, < Threshold=3, SCapacity=3000, Threshold=0.712]
+
+ADVERSARIAL (ONLINEADAPTIVE) EXP 1: Env:Adversarial, Attack:OnlineAdaptive, Rate:0.25, Frames:1500, QubitAlloc=Default, SC:3000 (Scale=2 x Cap=1500), Seed: 15322
+	-->🏆 EXP1 Winner:EXPNeuralUCB        (Gap:061.7%) [Env:Adversarial, Attack:OnlineAdaptive X Rate:0.25, Frames:1500, SCapacity=3000, Alloc=Default]
+✓ Experiment 1 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 2: 2000 frames  <>  SCALED-CAPACITY: 4000 frames (CAPACITY:2000 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=1 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for ONLINEADAPTIVE Exp 2: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+ADVERSARIAL (ONLINEADAPTIVE) EXP 2: Env:Adversarial, Attack:OnlineAdaptive, Rate:0.25, Frames:2000, QubitAlloc=Default, SC:4000 (Scale=2 x Cap=2000), Seed: 18219
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 2: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 GNEURALUCB          : Reward=0651.50, Efficiency=037.2% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.582]
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 2: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 EXPNEURALUCB        : Reward=0672.92, Efficiency=038.4% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.628]
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 2: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 CPURSUITNEURALUCB   : Reward=0657.96, Efficiency=037.5% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.634]
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 2: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 ICPURSUITNEURALUCB  : Reward=0619.05, Efficiency=035.3% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.712]
+
+ADVERSARIAL (ONLINEADAPTIVE) EXP 2: Env:Adversarial, Attack:OnlineAdaptive, Rate:0.25, Frames:2000, QubitAlloc=Default, SC:4000 (Scale=2 x Cap=2000), Seed: 18219
+	-->🏆 EXP2 Winner:EXPNeuralUCB        (Gap:061.6%) [Env:Adversarial, Attack:OnlineAdaptive X Rate:0.25, Frames:2000, SCapacity=4000, Alloc=Default]
+✓ Experiment 2 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 3: 2500 frames  <>  SCALED-CAPACITY: 5000 frames (CAPACITY:2500 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=2 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for ONLINEADAPTIVE Exp 3: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+ADVERSARIAL (ONLINEADAPTIVE) EXP 3: Env:Adversarial, Attack:OnlineAdaptive, Rate:0.25, Frames:2500, QubitAlloc=Default, SC:5000 (Scale=2 x Cap=2500), Seed: 12781
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 3: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 GNEURALUCB          : Reward=0855.56, Efficiency=039.1% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.582]
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 3: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 EXPNEURALUCB        : Reward=0746.40, Efficiency=034.1% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.628]
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 3: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 CPURSUITNEURALUCB   : Reward=0806.16, Efficiency=036.8% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.634]
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 3: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 3 ICPURSUITNEURALUCB  : Reward=0824.45, Efficiency=037.6% [Retries=3, Failed=0, < Threshold=3, SCapacity=5000, Threshold=0.712]
+
+ADVERSARIAL (ONLINEADAPTIVE) EXP 3: Env:Adversarial, Attack:OnlineAdaptive, Rate:0.25, Frames:2500, QubitAlloc=Default, SC:5000 (Scale=2 x Cap=2500), Seed: 12781
+	-->🏆 EXP3 Winner:GNeuralUCB          (Gap:060.9%) [Env:Adversarial, Attack:OnlineAdaptive X Rate:0.25, Frames:2500, SCapacity=5000, Alloc=Default]
+✓ Experiment 3 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 4: 3000 frames  <>  SCALED-CAPACITY: 6000 frames (CAPACITY:3000 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=3 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for ONLINEADAPTIVE Exp 4: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+ADVERSARIAL (ONLINEADAPTIVE) EXP 4: Env:Adversarial, Attack:OnlineAdaptive, Rate:0.25, Frames:3000, QubitAlloc=Default, SC:6000 (Scale=2 x Cap=3000), Seed: 22613
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 4: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 GNEURALUCB          : Reward=0970.68, Efficiency=036.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.582]
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 4: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 EXPNEURALUCB        : Reward=1022.29, Efficiency=038.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.628]
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 4: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 CPURSUITNEURALUCB   : Reward=1013.51, Efficiency=038.6% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.634]
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 4: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 4 ICPURSUITNEURALUCB  : Reward=1017.89, Efficiency=038.7% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.712]
+
+ADVERSARIAL (ONLINEADAPTIVE) EXP 4: Env:Adversarial, Attack:OnlineAdaptive, Rate:0.25, Frames:3000, QubitAlloc=Default, SC:6000 (Scale=2 x Cap=3000), Seed: 22613
+	-->🏆 EXP4 Winner:EXPNeuralUCB        (Gap:061.1%) [Env:Adversarial, Attack:OnlineAdaptive X Rate:0.25, Frames:3000, SCapacity=6000, Alloc=Default]
+✓ Experiment 4 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 5: 3500 frames  <>  SCALED-CAPACITY: 7000 frames (CAPACITY:3500 X SCALE:2)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=4 → allocation=(25, 25, 25, 25)
+🔧 Allocated qubits for ONLINEADAPTIVE Exp 5: (25, 25, 25, 25)
+🔄 Default Dynamic Allocation (Initial): (25, 25, 25, 25)
+======================================================================================================================================================
+
+ADVERSARIAL (ONLINEADAPTIVE) EXP 5: Env:Adversarial, Attack:OnlineAdaptive, Rate:0.25, Frames:3500, QubitAlloc=Default, SC:7000 (Scale=2 x Cap=3500), Seed: 13752
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.1944, 0.5334336, 0.7380232703999999, 0.8326343725056001, 0.8726341491523584], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 5: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 GNEURALUCB          : Reward=1168.67, Efficiency=038.1% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.582]
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 5: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 EXPNEURALUCB        : Reward=1224.43, Efficiency=039.9% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.628]
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 5: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 CPURSUITNEURALUCB   : Reward=1175.45, Efficiency=038.3% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.634]
+
+	🔄 ADVERSARIAL (ONLINEADAPTIVE) EXP 5: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 5 ICPURSUITNEURALUCB  : Reward=1186.05, Efficiency=038.7% [Retries=3, Failed=0, < Threshold=3, SCapacity=7000, Threshold=0.712]
+
+ADVERSARIAL (ONLINEADAPTIVE) EXP 5: Env:Adversarial, Attack:OnlineAdaptive, Rate:0.25, Frames:3500, QubitAlloc=Default, SC:7000 (Scale=2 x Cap=3500), Seed: 13752
+	-->🏆 EXP5 Winner:EXPNeuralUCB        (Gap:060.1%) [Env:Adversarial, Attack:OnlineAdaptive X Rate:0.25, Frames:3500, SCapacity=7000, Alloc=Default]
+✓ Experiment 5 completed successfully.
+Total experiment time: 3251.9s
+Experiments completed for onlineadaptive
+✓ Scenario 'none' evaluation completed.
+✓ Scenario 'stochastic' evaluation completed.
+✓ Scenario 'markov' evaluation completed.
+✓ Scenario 'adaptive' evaluation completed.
+✓ Scenario 'onlineadaptive' evaluation completed.
+
+======================================================================
+COMPREHENSIVE SCENARIO PERFORMANCE ANALYSIS
+======================================================================
+SCENARIO: NONE
+	• Total Experiments: 5
+	• Overall Winner: iCPursuitNeuralUCB
+	• Oracle Avg Reward: 2204.16
+	• Winner Avg Gap: 0048.98%
+	• Winner Avg Reward: 1128.02
+	• Winner Avg Efficiency: 0051.02%
+	• Win Counts:
+		- Oracle: 0 wins
+		- GNeuralUCB: 0 wins
+		- EXPNeuralUCB: 1 wins
+		- CPursuitNeuralUCB: 0 wins
+		- iCPursuitNeuralUCB: 4 wins
+----------------------------------------------------------------------
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: NONE
+======================================================================
+SCENARIO: 	BASELINE (OPTIMAL CONDITIONS)
+----------------------------------------
+Recommended Model: 	iCPursuitNeuralUCB (Won 4/5 experiments)
+	Winner Avg Gap: 	049.0%
+	Winner Avg Efficiency: 	051.0%
+
+Overall Models Performance:
+	• iCPursuitNeuralUCB: 	051.0% Efficiency 	(Won 4/5 experiments)
+	• CPursuitNeuralUCB: 	050.6% Efficiency 	(Won 0/5 experiments)
+	• GNeuralUCB     : 	050.1% Efficiency 	(Won 0/5 experiments)
+	• EXPNeuralUCB   : 	049.3% Efficiency 	(Won 1/5 experiments)
+======================================================================
+SCENARIO: STOCHASTIC
+	• Total Experiments: 5
+	• Overall Winner: iCPursuitNeuralUCB
+	• Oracle Avg Reward: 2202.68
+	• Winner Avg Gap: 0052.22%
+	• Winner Avg Reward: 1056.84
+	• Winner Avg Efficiency: 0047.78%
+	• Win Counts:
+		- Oracle: 0 wins
+		- GNeuralUCB: 2 wins
+		- EXPNeuralUCB: 1 wins
+		- CPursuitNeuralUCB: 0 wins
+		- iCPursuitNeuralUCB: 2 wins
+----------------------------------------------------------------------
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: STOCHASTIC
+======================================================================
+SCENARIO: 	STOCHASTIC RANDOM FAILURES
+----------------------------------------
+Recommended Model: 	iCPursuitNeuralUCB (Won 2/5 experiments)
+	Winner Avg Gap: 	052.2%
+	Winner Avg Efficiency: 	047.8%
+
+Overall Models Performance:
+	• iCPursuitNeuralUCB: 	047.8% Efficiency 	(Won 2/5 experiments)
+	• EXPNeuralUCB   : 	047.5% Efficiency 	(Won 1/5 experiments)
+	• GNeuralUCB     : 	047.5% Efficiency 	(Won 2/5 experiments)
+	• CPursuitNeuralUCB: 	046.7% Efficiency 	(Won 0/5 experiments)
+======================================================================
+SCENARIO: MARKOV
+	• Total Experiments: 5
+	• Overall Winner: iCPursuitNeuralUCB
+	• Oracle Avg Reward: 2061.84
+	• Winner Avg Gap: 0071.06%
+	• Winner Avg Reward: 0595.08
+	• Winner Avg Efficiency: 0028.94%
+	• Win Counts:
+		- Oracle: 0 wins
+		- GNeuralUCB: 3 wins
+		- EXPNeuralUCB: 0 wins
+		- CPursuitNeuralUCB: 1 wins
+		- iCPursuitNeuralUCB: 1 wins
+----------------------------------------------------------------------
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: MARKOV
+======================================================================
+SCENARIO: 	MARKOV ADVERSARIAL ATTACK
+----------------------------------------
+Recommended Model: 	iCPursuitNeuralUCB (Won 1/5 experiments)
+	Winner Avg Gap: 	071.1%
+	Winner Avg Efficiency: 	028.9%
+
+Overall Models Performance:
+	• iCPursuitNeuralUCB: 	028.9% Efficiency 	(Won 1/5 experiments)
+	• GNeuralUCB     : 	028.6% Efficiency 	(Won 3/5 experiments)
+	• CPursuitNeuralUCB: 	027.6% Efficiency 	(Won 1/5 experiments)
+	• EXPNeuralUCB   : 	025.9% Efficiency 	(Won 0/5 experiments)
+======================================================================
+SCENARIO: ADAPTIVE
+	• Total Experiments: 5
+	• Overall Winner: EXPNeuralUCB
+	• Oracle Avg Reward: 2191.22
+	• Winner Avg Gap: 0062.14%
+	• Winner Avg Reward: 0834.74
+	• Winner Avg Efficiency: 0037.86%
+	• Win Counts:
+		- Oracle: 0 wins
+		- GNeuralUCB: 0 wins
+		- EXPNeuralUCB: 2 wins
+		- CPursuitNeuralUCB: 2 wins
+		- iCPursuitNeuralUCB: 1 wins
+----------------------------------------------------------------------
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: ADAPTIVE
+======================================================================
+SCENARIO: 	ADAPTIVE ADVERSARIAL ATTACK
+----------------------------------------
+Recommended Model: 	EXPNeuralUCB (Won 2/5 experiments)
+	Winner Avg Gap: 	062.1%
+	Winner Avg Efficiency: 	037.9%
+
+Overall Models Performance:
+	• EXPNeuralUCB   : 	037.9% Efficiency 	(Won 2/5 experiments)
+	• CPursuitNeuralUCB: 	037.7% Efficiency 	(Won 2/5 experiments)
+	• iCPursuitNeuralUCB: 	037.4% Efficiency 	(Won 1/5 experiments)
+	• GNeuralUCB     : 	036.3% Efficiency 	(Won 0/5 experiments)
+======================================================================
+SCENARIO: ONLINEADAPTIVE
+	• Total Experiments: 5
+	• Overall Winner: EXPNeuralUCB
+	• Oracle Avg Reward: 2189.96
+	• Winner Avg Gap: 0062.09%
+	• Winner Avg Reward: 0833.59
+	• Winner Avg Efficiency: 0037.91%
+	• Win Counts:
+		- Oracle: 0 wins
+		- GNeuralUCB: 1 wins
+		- EXPNeuralUCB: 4 wins
+		- CPursuitNeuralUCB: 0 wins
+		- iCPursuitNeuralUCB: 0 wins
+----------------------------------------------------------------------
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: ONLINEADAPTIVE
+======================================================================
+SCENARIO: 	ONLINE ADAPTIVE ATTACK
+----------------------------------------
+Recommended Model: 	EXPNeuralUCB (Won 4/5 experiments)
+	Winner Avg Gap: 	062.1%
+	Winner Avg Efficiency: 	037.9%
+
+Overall Models Performance:
+	• EXPNeuralUCB   : 	037.9% Efficiency 	(Won 4/5 experiments)
+	• GNeuralUCB     : 	037.7% Efficiency 	(Won 1/5 experiments)
+	• CPursuitNeuralUCB: 	037.6% Efficiency 	(Won 0/5 experiments)
+	• iCPursuitNeuralUCB: 	037.1% Efficiency 	(Won 0/5 experiments)
+======================================================================
+KEY INSIGHTS:
+Best Performing Model Analysis (iCPursuitNeuralUCB):
+	• Stochastic Performance:    	1056.839
+	• Baseline Performance:      	1128.020
+	• Performance Retention:     	093.7%
+	GOOD:               	Acceptable performance under stochastic conditions
+Statistical Analysis:
+	• Total models evaluated:     	5
+	• Experiments per environment:	5
+	• Quantum network simulation: 	Comprehensive stochastic modeling
+======================================================================
+
+======================================================================
+COMPREHENSIVE SCENARIO PERFORMANCE ANALYSIS
+======================================================================
+SCENARIO: NONE
+	• Total Experiments: 5
+	• Overall Winner: iCPursuitNeuralUCB
+	• Oracle Avg Reward: 2204.16
+	• Winner Avg Gap: 0048.98%
+	• Winner Avg Reward: 1128.02
+	• Winner Avg Efficiency: 0051.02%
+	• Win Counts:
+		- Oracle: 0 wins
+		- GNeuralUCB: 0 wins
+		- EXPNeuralUCB: 1 wins
+		- CPursuitNeuralUCB: 0 wins
+		- iCPursuitNeuralUCB: 4 wins
+----------------------------------------------------------------------
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: NONE
+======================================================================
+SCENARIO: 	BASELINE (OPTIMAL CONDITIONS)
+----------------------------------------
+Recommended Model: 	iCPursuitNeuralUCB (Won 4/5 experiments)
+	Winner Avg Gap: 	049.0%
+	Winner Avg Efficiency: 	051.0%
+
+Overall Models Performance:
+	• iCPursuitNeuralUCB: 	051.0% Efficiency 	(Won 4/5 experiments)
+	• CPursuitNeuralUCB: 	050.6% Efficiency 	(Won 0/5 experiments)
+	• GNeuralUCB     : 	050.1% Efficiency 	(Won 0/5 experiments)
+	• EXPNeuralUCB   : 	049.3% Efficiency 	(Won 1/5 experiments)
+======================================================================
+SCENARIO: STOCHASTIC
+	• Total Experiments: 5
+	• Overall Winner: iCPursuitNeuralUCB
+	• Oracle Avg Reward: 2202.68
+	• Winner Avg Gap: 0052.22%
+	• Winner Avg Reward: 1056.84
+	• Winner Avg Efficiency: 0047.78%
+	• Win Counts:
+		- Oracle: 0 wins
+		- GNeuralUCB: 2 wins
+		- EXPNeuralUCB: 1 wins
+		- CPursuitNeuralUCB: 0 wins
+		- iCPursuitNeuralUCB: 2 wins
+----------------------------------------------------------------------
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: STOCHASTIC
+======================================================================
+SCENARIO: 	STOCHASTIC RANDOM FAILURES
+----------------------------------------
+Recommended Model: 	iCPursuitNeuralUCB (Won 2/5 experiments)
+	Winner Avg Gap: 	052.2%
+	Winner Avg Efficiency: 	047.8%
+
+Overall Models Performance:
+	• iCPursuitNeuralUCB: 	047.8% Efficiency 	(Won 2/5 experiments)
+	• EXPNeuralUCB   : 	047.5% Efficiency 	(Won 1/5 experiments)
+	• GNeuralUCB     : 	047.5% Efficiency 	(Won 2/5 experiments)
+	• CPursuitNeuralUCB: 	046.7% Efficiency 	(Won 0/5 experiments)
+======================================================================
+SCENARIO: MARKOV
+	• Total Experiments: 5
+	• Overall Winner: iCPursuitNeuralUCB
+	• Oracle Avg Reward: 2061.84
+	• Winner Avg Gap: 0071.06%
+	• Winner Avg Reward: 0595.08
+	• Winner Avg Efficiency: 0028.94%
+	• Win Counts:
+		- Oracle: 0 wins
+		- GNeuralUCB: 3 wins
+		- EXPNeuralUCB: 0 wins
+		- CPursuitNeuralUCB: 1 wins
+		- iCPursuitNeuralUCB: 1 wins
+----------------------------------------------------------------------
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: MARKOV
+======================================================================
+SCENARIO: 	MARKOV ADVERSARIAL ATTACK
+----------------------------------------
+Recommended Model: 	iCPursuitNeuralUCB (Won 1/5 experiments)
+	Winner Avg Gap: 	071.1%
+	Winner Avg Efficiency: 	028.9%
+
+Overall Models Performance:
+	• iCPursuitNeuralUCB: 	028.9% Efficiency 	(Won 1/5 experiments)
+	• GNeuralUCB     : 	028.6% Efficiency 	(Won 3/5 experiments)
+	• CPursuitNeuralUCB: 	027.6% Efficiency 	(Won 1/5 experiments)
+	• EXPNeuralUCB   : 	025.9% Efficiency 	(Won 0/5 experiments)
+======================================================================
+SCENARIO: ADAPTIVE
+	• Total Experiments: 5
+	• Overall Winner: EXPNeuralUCB
+	• Oracle Avg Reward: 2191.22
+	• Winner Avg Gap: 0062.14%
+	• Winner Avg Reward: 0834.74
+	• Winner Avg Efficiency: 0037.86%
+	• Win Counts:
+		- Oracle: 0 wins
+		- GNeuralUCB: 0 wins
+		- EXPNeuralUCB: 2 wins
+		- CPursuitNeuralUCB: 2 wins
+		- iCPursuitNeuralUCB: 1 wins
+----------------------------------------------------------------------
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: ADAPTIVE
+======================================================================
+SCENARIO: 	ADAPTIVE ADVERSARIAL ATTACK
+----------------------------------------
+Recommended Model: 	EXPNeuralUCB (Won 2/5 experiments)
+	Winner Avg Gap: 	062.1%
+	Winner Avg Efficiency: 	037.9%
+
+Overall Models Performance:
+	• EXPNeuralUCB   : 	037.9% Efficiency 	(Won 2/5 experiments)
+	• CPursuitNeuralUCB: 	037.7% Efficiency 	(Won 2/5 experiments)
+	• iCPursuitNeuralUCB: 	037.4% Efficiency 	(Won 1/5 experiments)
+	• GNeuralUCB     : 	036.3% Efficiency 	(Won 0/5 experiments)
+======================================================================
+SCENARIO: ONLINEADAPTIVE
+	• Total Experiments: 5
+	• Overall Winner: EXPNeuralUCB
+	• Oracle Avg Reward: 2189.96
+	• Winner Avg Gap: 0062.09%
+	• Winner Avg Reward: 0833.59
+	• Winner Avg Efficiency: 0037.91%
+	• Win Counts:
+		- Oracle: 0 wins
+		- GNeuralUCB: 1 wins
+		- EXPNeuralUCB: 4 wins
+		- CPursuitNeuralUCB: 0 wins
+		- iCPursuitNeuralUCB: 0 wins
+----------------------------------------------------------------------
+
+======================================================================
+DETAILED SCENARIO PERFORMANCE: ONLINEADAPTIVE
+======================================================================
+SCENARIO: 	ONLINE ADAPTIVE ATTACK
+----------------------------------------
+Recommended Model: 	EXPNeuralUCB (Won 4/5 experiments)
+	Winner Avg Gap: 	062.1%
+	Winner Avg Efficiency: 	037.9%
+
+Overall Models Performance:
+	• EXPNeuralUCB   : 	037.9% Efficiency 	(Won 4/5 experiments)
+	• GNeuralUCB     : 	037.7% Efficiency 	(Won 1/5 experiments)
+	• CPursuitNeuralUCB: 	037.6% Efficiency 	(Won 0/5 experiments)
+	• iCPursuitNeuralUCB: 	037.1% Efficiency 	(Won 0/5 experiments)
+======================================================================
+✅ Evaluation completed!

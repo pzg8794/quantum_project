@@ -1,0 +1,113 @@
+[Logging Redirect Initialized]
+Log File: /workspaces/quantum_project/Dynamic_Routing_Eval_Framework/daqr/config/quantum_logs/quantum_exps-Default(paper12)_alloc-all_envs-5_attacks-4000_2000-5_runs-S1T_20260130_log.txt
+⚙ Running evaluation...
+======================================================================
+SCENARIOS MODEL EVALUATION
+======================================================================
+Testing algorithm performance against:
+	• Stochastic:  	Natural quantum decoherence and network failures
+	• Baseline:    	Optimal conditions for validation
+======================================================================
+Models to Test:             	Oracle, GNeuralUCB, EXPNeuralUCB, CPursuitNeuralUCB, iCPursuitNeuralUCB
+Experiments per Scenario:   	5
+======================================================================
+
+
+
+TESTING ENVIRONMENT SCENARIO: BASELINE (OPTIMAL CONDITIONS)
+==================================================
+
+STARTING EXPERIMENTS: NONE
+Category: Baseline (No Attacks)
+============================================================
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 1: 4000 frames  <>  SCALED-CAPACITY: 4000 frames (CAPACITY:4000 X SCALE:1)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=0 → allocation=(30, 30, 30, 30)
+🔧 Allocated qubits for NONE Exp 1: (30, 30, 30, 30)
+🔄 Default Dynamic Allocation (Initial): (30, 30, 30, 30)
+======================================================================================================================================================
+
+BASELINE (NONE) (NO) EXP 1: Env:Baseline (None), Attack:No, Rate:0.0, Frames:4000, QubitAlloc=Default, SC:4000 (Scale=1 x Cap=4000), Seed: 13912
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.0, 0.0, 0.0, 0.0, 0.0], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 BASELINE (NONE) (NO) EXP 1: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 GNEURALUCB          : Reward=1468.00, Efficiency=036.7% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.582]
+
+	🔄 BASELINE (NONE) (NO) EXP 1: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 EXPNEURALUCB        : Reward=1404.00, Efficiency=035.1% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.628]
+
+	🔄 BASELINE (NONE) (NO) EXP 1: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 CPURSUITNEURALUCB   : Reward=1085.00, Efficiency=027.1% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.634]
+
+	🔄 BASELINE (NONE) (NO) EXP 1: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 1 ICPURSUITNEURALUCB  : Reward=1512.00, Efficiency=037.8% [Retries=3, Failed=0, < Threshold=3, SCapacity=4000, Threshold=0.712]
+
+BASELINE (NONE) (NO) EXP 1: Env:Baseline (None), Attack:No, Rate:0.0, Frames:4000, QubitAlloc=Default, SC:4000 (Scale=1 x Cap=4000), Seed: 13912
+	-->🏆 EXP1 Winner:iCPursuitNeuralUCB  (Gap:062.2%) [Env:Baseline (None), Attack:No X Rate:0.0, Frames:4000, SCapacity=4000, Alloc=Default]
+✓ Experiment 1 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 2: 6000 frames  <>  SCALED-CAPACITY: 6000 frames (CAPACITY:6000 X SCALE:1)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=1 → allocation=(30, 30, 30, 30)
+🔧 Allocated qubits for NONE Exp 2: (30, 30, 30, 30)
+🔄 Default Dynamic Allocation (Initial): (30, 30, 30, 30)
+======================================================================================================================================================
+
+BASELINE (NONE) (NO) EXP 2: Env:Baseline (None), Attack:No, Rate:0.0, Frames:6000, QubitAlloc=Default, SC:6000 (Scale=1 x Cap=6000), Seed: 16546
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.0, 0.0, 0.0, 0.0, 0.0], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 BASELINE (NONE) (NO) EXP 2: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 GNEURALUCB          : Reward=2302.00, Efficiency=038.4% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.582]
+
+	🔄 BASELINE (NONE) (NO) EXP 2: Starting EXPNeuralUCB         in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 EXPNEURALUCB        : Reward=2104.00, Efficiency=035.1% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.628]
+
+	🔄 BASELINE (NONE) (NO) EXP 2: Starting CPursuitNeuralUCB    in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 CPURSUITNEURALUCB   : Reward=1670.00, Efficiency=027.8% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.634]
+
+	🔄 BASELINE (NONE) (NO) EXP 2: Starting iCPursuitNeuralUCB   in sequence...
+	✓ Oracle model loaded from configs: Oracle
+	EXP 2 ICPURSUITNEURALUCB  : Reward=1955.00, Efficiency=032.6% [Retries=3, Failed=0, < Threshold=3, SCapacity=6000, Threshold=0.712]
+
+BASELINE (NONE) (NO) EXP 2: Env:Baseline (None), Attack:No, Rate:0.0, Frames:6000, QubitAlloc=Default, SC:6000 (Scale=1 x Cap=6000), Seed: 16546
+	-->🏆 EXP2 Winner:GNeuralUCB          (Gap:061.6%) [Env:Baseline (None), Attack:No X Rate:0.0, Frames:6000, SCapacity=6000, Alloc=Default]
+✓ Experiment 2 completed successfully.
+----------------------------------------------------------------------------------------------------
+EXPERIMENT 3: 8000 frames  <>  SCALED-CAPACITY: 8000 frames (CAPACITY:8000 X SCALE:1)
+----------------------------------------------------------------------------------------------------
+[QubitAllocator] timestep=2 → allocation=(30, 30, 30, 30)
+🔧 Allocated qubits for NONE Exp 3: (30, 30, 30, 30)
+🔄 Default Dynamic Allocation (Initial): (30, 30, 30, 30)
+======================================================================================================================================================
+
+BASELINE (NONE) (NO) EXP 3: Env:Baseline (None), Attack:No, Rate:0.0, Frames:8000, QubitAlloc=Default, SC:8000 (Scale=1 x Cap=8000), Seed: 19593
+======================================================================================================================================================
+	Getting Oracle Rewards ...
+	📊 Reward structure for Oracle:
+	   Type: <class 'list'>
+	   Length: 4
+	   First reward: [0.0, 0.0, 0.0, 0.0, 0.0], type: <class 'list'>
+	   First reward length: 5
+
+	🔄 BASELINE (NONE) (NO) EXP 3: Starting GNeuralUCB           in sequence...
+	✓ Oracle model loaded from configs: Oracle

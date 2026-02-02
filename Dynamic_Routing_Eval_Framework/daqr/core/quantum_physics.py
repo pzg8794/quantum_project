@@ -529,7 +529,8 @@ class StochasticPaper2NoiseModel(QuantumNoiseModel):
     """
     
     def __init__(self, topology, paths, p_init=0.00001, f_attenuation=0.05,
-                 p_BSM=0.2, p_GateErrors=0.2, p_depol=0.1):
+                 p_BSM=0.2, p_GateErrors=0.2, p_depol=0.1,
+                 r_dephase=None, c_light=None, t_BSM=None, t_d=None, refractive_index=None):
         """
         Args:
             topology: NetworkX graph
@@ -539,6 +540,13 @@ class StochasticPaper2NoiseModel(QuantumNoiseModel):
             p_BSM: Bell measurement error probability (0.2)
             p_GateErrors: Gate operation error probability (0.2)
             p_depol: Depolarization noise probability (0.1)
+            
+            # ✅ NEW: Paper 2 Physical Constants (optional)
+            r_dephase: Memory dephasing rate (Hz, e.g., 10000)
+            c_light: Speed of light (m/s, e.g., 3.0e8)
+            t_BSM: BSM operation time (s, e.g., 10e-9)
+            t_d: Gate operation time (s, e.g., 10e-9)
+            refractive_index: Fiber refractive index (e.g., 1.5)
         """
         self.topology = topology
         self.paths = paths
@@ -547,12 +555,21 @@ class StochasticPaper2NoiseModel(QuantumNoiseModel):
         self.p_BSM = p_BSM
         self.p_GateErrors = p_GateErrors
         self.p_depol = p_depol
+        
+        # ✅ Paper 2 physical constants (only used if provided)
+        self.r_dephase = r_dephase
+        self.c_light = c_light
+        self.t_BSM = t_BSM
+        self.t_d = t_d
+        self.refractive_index = refractive_index
+        self.use_time_based_decay = all([r_dephase, c_light, t_BSM, t_d, refractive_index])
     
     def get_error_rates(self, path_idx, gate_error_rate=None):
         """
         ✅ Generate STOCHASTIC noise for this path.
         
         CRITICAL: Returns DIFFERENT values each call!
+        Now includes optional time-based memory decay from Paper 2 constants.
         """
         if path_idx >= len(self.paths):
             return [1e-4] * 2  # Fallback
@@ -576,8 +593,19 @@ class StochasticPaper2NoiseModel(QuantumNoiseModel):
             # 4. ✅ STOCHASTIC Depolarization
             depol_happens = 1 if np.random.rand() < self.p_depol else 0
             
+            # 5. ✅ NEW: Time-based memory decay (only if Paper 2 constants provided)
+            time_decay_error = 0.0
+            if self.use_time_based_decay:
+                # Calculate propagation time through fiber
+                prop_time = distance * 1000 * self.refractive_index / self.c_light  # Convert km to m
+                # Total time including operations
+                total_time = prop_time + self.t_BSM + self.t_d
+                # Memory dephasing: F(t) = exp(-t * r_dephase)
+                decay_factor = np.exp(-total_time * self.r_dephase)
+                time_decay_error = 1 - decay_factor
+            
             # ✅ Combine all noise sources
-            total_error = p_fiber + (bsm_happens * 0.05) + (gate_happens * 0.03) + (depol_happens * 0.02)
+            total_error = p_fiber + (bsm_happens * 0.05) + (gate_happens * 0.03) + (depol_happens * 0.02) + time_decay_error
             total_error = min(1.0, total_error)  # Cap at 1.0
             
             error_rates.append(total_error)
@@ -606,6 +634,9 @@ class AdaptedPaper2FidelityCalculator(FidelityCalculator):
         self.gate_error_rate = gate_error_rate
         self.memory_model = memory_model
         self._path_idx_cache = None  # Hack to pass path_idx through
+        
+        # ✅ Expose Paper 2 constants status
+        self.using_paper2_constants = noise_model.use_time_based_decay if hasattr(noise_model, 'use_time_based_decay') else False
     
     def compute_path_fidelity(self, error_rates, context, success_factor=1.0):
         """

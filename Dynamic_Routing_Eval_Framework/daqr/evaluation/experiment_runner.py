@@ -473,7 +473,7 @@ class QuantumExperimentRunner:
                 self.configs.use_last_backup = False    
             except Exception as e:
                 print(f"\t❌ Failed to create {alg_name}: {e}")
-                results = {'final_reward': 0.0, 'error': str(e)}
+                results = {'final_reward': 0.0, 'error': str(e), 'retries': 0}
         return results, model
 
     def _get_min_efficiency(self, model_name, env_type='stochastic') -> float:
@@ -689,8 +689,8 @@ class QuantumExperimentRunner:
                 self.configs.overwrite = False  # always False during retries
                 alg_result, temp_model = self.run_algorithm(alg_name)
                 final_reward = alg_result.get('final_reward', 0.0)
-                failed_attempts['failed'] += alg_result['retries']
-                failed_attempts['total'] += alg_result['retries']
+                failed_attempts['failed'] += alg_result.get('retries', 0)
+                failed_attempts['total'] += alg_result.get('retries', 0)
                 threshold = final_reward / oracle_reward if oracle_reward > 0 else 0
                 efficiency = threshold * 100 if oracle_reward > 0 else self.get_oracle_reward(reset=True)
                 gap = 100 - efficiency

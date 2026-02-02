@@ -60,16 +60,20 @@ class QubitAllocator:
     
     def _default_baseline(self) -> Tuple[int, ...]:
         """CAPACITY-AGNOSTIC baseline allocation."""
-        # 🆕 Paper2: Return state-based capacities (don't override)
+        # 🆕 Paper2: Use uniform allocation for 8 paths (exact MATLAB replication)
         if self.testbed == "paper2":
-            # Paper2 manages its own BUSY/IDLE state transitions
-            # Read current state from config if available
+            # Paper 2 original MATLAB code uses 8 paths (No_of_arms = 8)
+            # Use uniform distribution across all 8 paths
+            return self._uniform_baseline()
+        # Paper2_extended: Return state-based capacities
+        elif self.testbed == "paper2_extended":
+            # Paper2_extended manages BUSY/IDLE state transitions
             current_state = self.testbed_config.get('initial_state', 'busy').lower()
             if current_state == 'busy': return (8, 10, 8, 9)  # BUSY state capacity
             elif current_state == 'idle':   return (9, 11, 11, 12)  # IDLE state capacity
             else:
                 # Fallback to BUSY if state unknown
-                print(f"⚠️ Unknown Paper2 state '{current_state}', defaulting to BUSY")
+                print(f"⚠️ Unknown Paper2_extended state '{current_state}', defaulting to BUSY")
                 return (8, 10, 8, 9)
         # Paper12: Uniform allocation
         elif self.testbed == "paper12": return self._uniform_baseline()

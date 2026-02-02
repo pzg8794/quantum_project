@@ -132,13 +132,15 @@ class EXPNeuralUCB(QuantumModel):
 
         # Loop through each path and initialize a NeuralUCB instance with current (baseline) dimension logic
         for i, path_context in enumerate(self.X_n):
-            # model = NeuralUCB(
-            #     2 if i < 2 else 3,             # 2D for first 2 paths, 3D for others
-            input_dim = len(path_context[0])  # ← ACTUAL CONTEXT DIMENSION
-            # print(f"Path {i}: context shape {input_dim}")  # DEBUG PRINT
+            # Get actual context dimension from the context vectors
+            # Paper 2: path_context = [np.array([1.0])] → input_dim=1, num_actions=1
+            # Paper 7/12: path_context = [ctx1, ctx2, ...] → input_dim=len(ctx1), num_actions=len(path_context)
+            input_dim = len(path_context[0]) if len(path_context) > 0 else 1
+            num_actions = len(path_context)
+            
             model = NeuralUCB(
-                input_dim,  # ← FIX: Use real dimension
-                len(path_context),             # Current baseline logic
+                input_dim,  # Context dimension (1 for dummy, actual for real contexts)
+                num_actions,  # Number of actions per path (1 for standard MAB, multiple for contextual)
                 self.beta,
                 lamb=1,
                 capacity=self.capacity,

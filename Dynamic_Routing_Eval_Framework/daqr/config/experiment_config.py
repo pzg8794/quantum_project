@@ -468,7 +468,7 @@ class ExperimentConfiguration:
                     attack_id = str(attack)
                     frame_no = base_frames + (frame_step * run_idx) 
                     cap_id = frame_no * self.scale if not self.base_capacity else base_frames * self.scale
-                    print(f"  • Frame number: {frame_no}")
+                    # print(f"  • Frame number: {frame_no}")
 
                     # -----------------------------------------------------------
                     # RUNNER KEY (framework_state)
@@ -479,12 +479,12 @@ class ExperimentConfiguration:
                         f"{frame_no}_{run_idx+1}{runtime_qubits}.pkl"
                     )
                     framework_state[runner_key] = runner_key
-                    print(f"  → Runner key: {runner_key}")
+                    # print(f"  → Runner key: {runner_key}")
 
                     # -----------------------------------------------------------
                     # MODEL KEYS (model_state)
                     # -----------------------------------------------------------
-                    print("  • Generating model keys:")
+                    # print("  • Generating model keys:")
 
                     for model_name in self.models:
                         model_class = self.algorithm_configs[model_name]["model_class"].__name__
@@ -496,18 +496,18 @@ class ExperimentConfiguration:
                             f"{frame_no}{runtime_qubits}.pkl"
                         )
                         model_state[model_key] = model_key
-                        print(f"    → {model_key}")
+                        # print(f"    → {model_key}")
 
             print("\n=====================================================")
             print("📦 FINAL EXPECTED KEYS")
             print("=====================================================")
             print(f"  • Runner keys: {len(framework_state)}")
-            for rk in framework_state.keys():
-                print(f"    - {rk}")
+            # for rk in framework_state.keys():
+            #     print(f"    - {rk}")
 
             print(f"\n  • Model keys: {len(model_state)}")
-            for mk in model_state.keys():
-                print(f"    - {mk}")
+            # for mk in model_state.keys():
+            #     print(f"    - {mk}")
 
         # ---------------------------------------------------------------
         # Save internally & return

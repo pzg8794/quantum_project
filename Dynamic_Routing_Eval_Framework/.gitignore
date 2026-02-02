@@ -1,0 +1,35 @@
+# Pickle files
+*.pkl
+
+# CSV files
+*.csv
+
+# Framework state directories
+daqr/config/framework_state/
+daqr/config/model_state/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

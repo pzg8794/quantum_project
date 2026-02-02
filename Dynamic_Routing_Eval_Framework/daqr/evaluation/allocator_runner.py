@@ -226,7 +226,7 @@ class AllocatorRunner:
 
         return True
 
-    def run_single_experiment(self, physics_model, scale, experiment_num, physics_params, current_frames, frame_step):
+    def run_single_evaluator(self, physics_model, scale, experiment_num, physics_params, current_frames, frame_step):
         """Run single experiment with full cleanup."""
         try:
             self.run_count += 1
@@ -307,9 +307,9 @@ class AllocatorRunner:
                 )
 
                 # Run experiments for all scales and runs
-                for scale in self.scales:
-                    for exp_num in self.runs:
-                        success = self.run_single_experiment(
+                for exp_num in self.runs:
+                    for scale in self.scales:
+                        success = self.run_single_evaluator(
                             physics_model=physics_model,
                             scale=scale,
                             experiment_num=exp_num,

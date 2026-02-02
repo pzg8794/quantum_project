@@ -91,9 +91,16 @@ class QuantumEnvironment:
         self.topology = external_topology
         self.qubit_capacities = self._normalize_qubit_capacities(qubit_capacities)
 
-        # Contexts - use normalized capacities
-        if external_contexts is not None:   self.contexts = external_contexts
-        else:                               self.contexts = self._generate_contexts()
+        # Contexts - handle standard MAB (None) vs contextual bandit (provided)
+        # Paper 2: external_contexts=None (standard MAB, no context vectors)
+        # Paper 7/12: external_contexts provided (contextual bandit)
+        if external_contexts is not None:
+            self.contexts = external_contexts
+        else:
+            # For standard MAB (Paper 2), create dummy single-element contexts
+            # Each path gets one dummy context [1.0] so neural bandits can function
+            # This allows neural bandits designed for contextual settings to work with standard MAB
+            self.contexts = [[np.array([1.0])] for _ in range(self.num_paths)]
 
         # Use allocator for initial allocation if provided
         if self.allocator:
@@ -108,6 +115,10 @@ class QuantumEnvironment:
         self.frame_length = int(frame_length)
         self.rng = np.random.default_rng(seed)
         self.num_paths = len(self.qubit_capacities)
+        
+        # Update contexts if allocator changed the number of paths
+        if external_contexts is None and len(self.contexts) != self.num_paths:
+            self.contexts = [[np.array([1.0])] for _ in range(self.num_paths)]
         # This new parameter restores the correct reward calculation.
         self.entanglement_success_factor = entanglement_success_factor
         self.route_stats = {i: {'pulls': 0, 'successes': 0, 'failures': 0} for i in range(self.num_paths)}
@@ -272,7 +283,15 @@ class QuantumEnvironment:
         return []
 
     def _calculate_path_rewards_from_physics(self):
-        """Calculate rewards using pluggable quantum physics objects."""
+        """
+        Calculate rewards using pluggable quantum physics objects.
+        
+        Returns consistent structure for both bandit types:
+        - Standard MAB (Paper 2): [[r1], [r2], ..., [r8]] - single action per path (dummy context)
+        - Contextual Bandit (Paper 7/12): [[r1_a1, r1_a2, ...], [r2_a1, ...], ...] - multiple actions per path
+        
+        Both return list of lists to maintain consistent Oracle interface.
+        """
         if self.noise_model is None or self.fidelity_calculator is None:
             raise ValueError("Both noise_model and fidelity_calculator must be provided")
         
@@ -280,24 +299,21 @@ class QuantumEnvironment:
         
         try:
             for path_idx in range(self.num_paths):
-                path_rewards = []
+                # Get error rates from quantum noise model
+                error_rates = self.noise_model.get_error_rates(path_idx)
                 
-                # ✅ FIX: Numpy-safe context check
-                if path_idx >= len(self.contexts) or len(self.contexts[path_idx]) == 0:
-                    print(f"⚠️ Warning: No contexts for path {path_idx}, using dummy")
-                    path_rewards = [0.5] * 10
-                else:
-                    # Get error rates from quantum noise model
-                    error_rates = self.noise_model.get_error_rates(path_idx)
-                    
-                    # Compute fidelity for each context
-                    for context in self.contexts[path_idx]:
-                        fidelity = self.fidelity_calculator.compute_path_fidelity(
-                            error_rates=error_rates,
-                            context=context,
-                            success_factor=self.entanglement_success_factor
-                        )
-                        path_rewards.append(fidelity)
+                # Calculate rewards based on number of contexts (actions) per path
+                path_rewards = []
+                for context in self.contexts[path_idx]:
+                    # For standard MAB with dummy contexts, context is np.array([1.0]) but we ignore it
+                    # For contextual bandit, context is actual context vector used in computation
+                    fidelity = self.fidelity_calculator.compute_path_fidelity(
+                        error_rates=error_rates,
+                        context=None if len(self.contexts[path_idx]) == 1 else context,  # Ignore dummy context
+                        success_factor=self.entanglement_success_factor
+                    )
+                    path_rewards.append(fidelity)
+                
                 rewards.append(path_rewards)
         except Exception as e: 
             print(f"\t Error Calculating Path Rewards for {self}\n\t\t{e}")

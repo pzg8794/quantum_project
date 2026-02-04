@@ -212,14 +212,15 @@ class MultiRunEvaluator:
 
             try:
                 temp_qubit_capacities = None
-                non_dflt_attrs = ["qubit_capacities", "frame_length", "actk_type", "noise_model", "fidelity_calculator", "external_topology", "external_contexts", "external_rewards", "runs"]
+                # non_dflt_attrs = ["qubit_capacities", "frame_length", "actk_type", "noise_model", "fidelity_calculator", "external_topology", "external_contexts", "external_rewards", "runs"]
+                non_dflt_attrs = ["frame_length", "actk_type", "noise_model", "fidelity_calculator", "external_topology", "external_contexts", "external_rewards", "runs"]
  
-                # if "random" in str(self.configs.allocator).lower(): 
-                #     try:
-                #         temp_qubit_capacities = other_attrs.get('qubit_capacities', None) or copied_attrs['qubit_capacities']
-                #         if 'qubit_capacities' in copied_attrs:  del copied_attrs['qubit_capacities']
-                #         if 'qubit_capacities' in other_attrs:   del other_attrs['qubit_capacities']
-                #     except: pass
+                if "random" in str(self.configs.allocator).lower(): 
+                    try:
+                        temp_qubit_capacities = other_attrs.get('qubit_capacities', None) or copied_attrs['qubit_capacities']
+                        if 'qubit_capacities' in copied_attrs:  del copied_attrs['qubit_capacities']
+                        if 'qubit_capacities' in other_attrs:   del other_attrs['qubit_capacities']
+                    except: pass
 
                 if "seed" in other_attrs:                   del other_attrs["seed"]
 

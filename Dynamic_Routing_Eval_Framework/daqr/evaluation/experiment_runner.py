@@ -174,6 +174,23 @@ class QuantumExperimentRunner:
         )
 
     def save(self):
+        # Before saving, ensure the stored `key_attrs['qubit_capacities']` reflects
+        # the allocation that actually produced the results (important for resume integrity).
+        try:
+            if isinstance(self.key_attrs, dict):
+                allocator_id = str(getattr(self.configs, "allocator", "")).lower()
+                is_random_alloc = "random" in allocator_id
+
+                if (not is_random_alloc) and (self.environment is not None):
+                    caps = getattr(self.environment, "qubit_capacities", None)
+                    if caps is not None:
+                        stable_caps = str(tuple(caps))
+                        self.key_attrs["qubit_capacities"] = stable_caps
+                        if hasattr(self.configs, "_env_params") and isinstance(self.configs._env_params, dict):
+                            self.configs._env_params["qubit_capacities"] = stable_caps
+        except Exception as e:
+            print(f"⚠️ Pre-save key_attrs qubit_capacities update failed: {e}")
+
         return self.configs.save_obj(self)
     
     def _resume_from_registry_set(self, registry_set, allow_same_runs=False):

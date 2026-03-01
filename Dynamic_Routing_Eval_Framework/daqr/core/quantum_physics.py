@@ -575,6 +575,11 @@ class StochasticPaper2NoiseModel(QuantumNoiseModel):
         """
         if path_idx >= len(self.paths):
             return [1e-4] * 2  # Fallback
+
+        # Backward-compatibility: older pickled states may have `None` here.
+        p_bsm = 0.2 if self.p_BSM is None else float(self.p_BSM)
+        p_gate = 0.2 if self.p_GateErrors is None else float(self.p_GateErrors)
+        p_depol = 0.1 if self.p_depol is None else float(self.p_depol)
         
         path = self.paths[path_idx]
         error_rates = []
@@ -587,13 +592,13 @@ class StochasticPaper2NoiseModel(QuantumNoiseModel):
             p_fiber = 1 - (1 - self.p_init) ** (10 ** (-self.f_attenuation * distance / 10))
             
             # 2. ✅ STOCHASTIC BSM error
-            bsm_happens = 1 if np.random.rand() < self.p_BSM else 0
+            bsm_happens = 1 if np.random.rand() < p_bsm else 0
             
             # 3. ✅ STOCHASTIC Gate error
-            gate_happens = 1 if np.random.rand() < self.p_GateErrors else 0
+            gate_happens = 1 if np.random.rand() < p_gate else 0
             
             # 4. ✅ STOCHASTIC Depolarization
-            depol_happens = 1 if np.random.rand() < self.p_depol else 0
+            depol_happens = 1 if np.random.rand() < p_depol else 0
             
             # 5. ✅ NEW: Time-based memory decay (only if Paper 2 constants provided)
             time_decay_error = 0.0

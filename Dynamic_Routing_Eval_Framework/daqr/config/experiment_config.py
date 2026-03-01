@@ -1031,7 +1031,8 @@ class ExperimentConfiguration:
                 'actk_type': attack_type,
                 # ✅ NEW: Quantum physics objects
                 'noise_model': noise_model,
-                'entanglement_success_factor': self.testbed_config.get('entanglement_success_factor', 100),
+                # Treat explicit None as "use default" so pickled states don't carry confusing 'None'
+                'entanglement_success_factor': self.testbed_config.get('entanglement_success_factor') or 100,
                 'fidelity_calculator': fidelity_calculator,
                 'external_topology': external_topology,
                 'external_contexts': external_contexts,
@@ -1539,4 +1540,3 @@ class ExperimentConfiguration:
 
         print(f"\t✅ Cleanup complete.\n")
         return True
-

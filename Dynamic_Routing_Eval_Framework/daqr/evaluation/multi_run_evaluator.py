@@ -305,6 +305,31 @@ class MultiRunEvaluator:
         )
     
     def save(self):
+        # Before saving, ensure the stored `key_attrs['qubit_capacities']` reflects
+        # the allocations that actually produced the results (esp. important for resume).
+        try:
+            if isinstance(self.key_attrs, dict):
+                allocator_id = str(getattr(self, "allocator_id", "")).lower()
+                is_random_alloc = "random" in allocator_id
+
+                rqc = getattr(self, "runner_qubit_caps", None)
+                unique_caps = set()
+                if isinstance(rqc, dict):
+                    for _scenario, exps in rqc.items():
+                        if not isinstance(exps, dict):
+                            continue
+                        for _exp_id, caps in exps.items():
+                            unique_caps.add(str(caps))
+
+                # For non-random allocators, enforce a single stable value if possible.
+                if unique_caps and (len(unique_caps) == 1) and (not is_random_alloc):
+                    stable_caps = next(iter(unique_caps))
+                    self.key_attrs["qubit_capacities"] = stable_caps
+                    if hasattr(self.configs, "_env_params") and isinstance(self.configs._env_params, dict):
+                        self.configs._env_params["qubit_capacities"] = stable_caps
+        except Exception as e:
+            print(f"⚠️ Pre-save key_attrs qubit_capacities update failed: {e}")
+
         # This now always writes to the config backup (safe, never corrupts data lake)
         return self.configs.save_obj(self)
 
@@ -1330,7 +1355,11 @@ class MultiRunEvaluator:
             raise
         finally:
             print(exp_id, ": ", runner.key_attrs['qubit_capacities'])
-            self.runner_qubit_caps.update({self.configs.attack_type:{exp_id:runner.key_attrs['qubit_capacities']}})
+            # Don't overwrite previous experiment entries for this scenario.
+            scenario_key = str(self.configs.attack_type)
+            if scenario_key not in self.runner_qubit_caps:
+                self.runner_qubit_caps[scenario_key] = {}
+            self.runner_qubit_caps[scenario_key][str(exp_id)] = runner.key_attrs['qubit_capacities']
             del runner
             if gc: gc.collect()
             self.save()

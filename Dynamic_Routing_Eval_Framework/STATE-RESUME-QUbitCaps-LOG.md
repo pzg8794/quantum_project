@@ -111,5 +111,4 @@ Confirm we do **not** overwrite/normalize random allocations:
 - Unpickling `framework_state/*.pkl` can import heavy deps; use the existing audit venv:
   - `.venv-audit` (created previously for audits / state inspection)
 - The retrofit script is intentionally conservative and primarily useful for reporting / confirming stability:
-  - `Dynamic_Routing_Eval_Framework/tools/fix_key_attrs_qubit_caps.py`
-
+  - `Dynamic_Routing_Eval_Framework/tools/state/fix_key_attrs_qubit_caps.py` (wrapper also exists at `tools/fix_key_attrs_qubit_caps.py`)

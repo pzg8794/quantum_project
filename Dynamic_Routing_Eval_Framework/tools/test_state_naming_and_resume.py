@@ -2,8 +2,8 @@
 """
 Backward-compatible wrapper.
 
-The canonical tool lives at:
-  tools/state/repair_state_key_attrs.py
+The canonical test lives at:
+  tools/tests/test_state_naming_and_resume.py
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 def main() -> int:
-    target = Path(__file__).resolve().parent / "state" / "repair_state_key_attrs.py"
+    target = Path(__file__).resolve().parent / "tests" / "test_state_naming_and_resume.py"
     runpy.run_path(str(target), run_name="__main__")
     return 0
 

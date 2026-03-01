@@ -1,6 +1,7 @@
 import os
 import sys
 import gc
+import subprocess
 import torch
 import warnings
 import networkx as nx
@@ -50,6 +51,76 @@ class AllocatorRunner:
         print(f"\n{'='*70}")
         print(f"🎯 AllocatorRunner initialized: {allocator_type}")
         print('='*70)
+
+    def _state_aggregation_enabled(self) -> bool:
+        """
+        Default behavior: ON.
+
+        Toggle OFF via:
+          - framework_config['aggregate_state'] = False, or
+          - env var DAQR_AGGREGATE_STATE in {0,false,no,off}
+        """
+        cfg_flag = bool(self.framework_config.get("aggregate_state", True))
+        env_val = os.getenv("DAQR_AGGREGATE_STATE", "1").strip().lower()
+        env_flag = env_val not in {"0", "false", "no", "off"}
+        return cfg_flag and env_flag
+
+    def _aggregate_state_dirs(self) -> bool:
+        """
+        Aggregate local state day directories into the current run day folder
+        BEFORE we build/resume evaluators, to stabilize scanning/resume.
+        """
+        if not self._state_aggregation_enabled():
+            print("🧩 State aggregation: disabled")
+            return False
+
+        project_root = Path(__file__).resolve().parents[2]  # Dynamic_Routing_Eval_Framework/
+        tool_path = project_root / "tools" / "state" / "aggregate_state_dirs.py"
+        config_dir = project_root / "daqr" / "config"
+        framework_state_root = config_dir / "framework_state"
+        model_state_root = config_dir / "model_state"
+
+        target = None
+        if self.custom_config is not None:
+            target = getattr(self.custom_config, "day_str", None)
+        if not target:
+            target = "today"
+
+        print(f"🧩 State aggregation: enabled (target={target})")
+
+        if not tool_path.exists():
+            print(f"⚠️ State aggregation tool missing: {tool_path}")
+            return False
+
+        try:
+            cmd = [
+                sys.executable,
+                str(tool_path),
+                "--config-dir",
+                str(config_dir),
+                "--framework-state-root",
+                str(framework_state_root),
+                "--model-state-root",
+                str(model_state_root),
+                "--target",
+                str(target),
+            ]
+            subprocess.run(cmd, cwd=str(project_root), check=True)
+        except Exception as e:
+            print(f"⚠️ State aggregation failed (continuing): {e}")
+            return False
+
+        # Refresh any already-instantiated backup manager registry in memory
+        # so resuming in the same process sees the aggregated view.
+        try:
+            if self.custom_config is not None and hasattr(self.custom_config, "backup_mgr"):
+                self.custom_config.backup_mgr.build_registry(
+                    force=True, expected_keys=getattr(self.custom_config, "expected_keys", None)
+                )
+        except Exception as e:
+            print(f"⚠️ Registry refresh failed (continuing): {e}")
+
+        return True
 
     def create_allocator(self, physics_model):
         """
@@ -273,6 +344,9 @@ class AllocatorRunner:
         print('='*70)
         
         try:
+            # Consolidate day_* state directories up-front to stabilize resume/scanning.
+            self._aggregate_state_dirs()
+
             for physics_model in self.physics_models:
                 print(f"\n📊 Physics Model: {physics_model}")
 

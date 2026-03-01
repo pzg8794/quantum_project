@@ -17,8 +17,10 @@ This folder contains **framework test + repair utilities**.
   - `python3 tools/state/repair_state_key_attrs.py --help`
   - `python3 tools/state/fix_key_attrs_qubit_caps.py --help`
 
+- Aggregate state day directories (safe, local-only):
+  - `python3 tools/state/aggregate_state_dirs.py --help`
+
 ## Backward compatibility
 
 Some older docs/scripts referenced tools directly under `tools/*.py`.
 Thin wrapper entrypoints are kept at the old paths for convenience.
-

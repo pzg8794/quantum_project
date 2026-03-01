@@ -53,38 +53,71 @@ class LocalBackupManager(GoogleDriveBackupManager):
         files_added = 0
         files_skipped = 0
         files_conflicted = 0
+        files_dedup_skipped = 0
+        files_dedup_replaced = 0
+
         self._fetch_registry_from_drive()
         # print(self.metadata.keys())
+
+        def _stat_key(p: Path) -> tuple[int, float]:
+            try:
+                st = p.stat()
+                return int(st.st_size), float(st.st_mtime)
+            except Exception:
+                return 0, 0.0
 
         for fname in filenames:
             if Path(fname).suffix not in valid_exts:
                 files_conflicted += 1
                 # print(f"         ⊘ Skip (invalid ext): {fname}")
                 continue
-            
+
             abs_path = str(dir_path / fname)
-            temp[component][fname] = abs_path
+
+            # Duplicate filename policy (important for resume):
+            # If the same filename appears across multiple `day_*` folders,
+            # keep the LARGEST file; break ties by NEWEST mtime.
+            existing = temp[component].get(fname)
+            if existing:
+                new_key = _stat_key(Path(abs_path))
+                old_key = _stat_key(Path(existing))
+                if new_key > old_key:
+                    temp[component][fname] = abs_path
+                    files_dedup_replaced += 1
+                else:
+                    files_dedup_skipped += 1
+                    continue
+            else:
+                temp[component][fname] = abs_path
 
             if load_to_drive:
                 # print(f"         🔄 Checking Drive status for {fname}...")
                 # self.download_drive_metadata()
-                try:    
+                try:
                     self.metadata[component][fname]
                     # print(f"            ✓ Already in Drive")
                     if not force:
                         # print(f"            ⊘ Skipping (force=False)")
                         files_skipped += 1
                         continue
-                    else:   print(f"            → Overwriting (force=True)")
-                except Exception as e:  print(f"            ℹ️  New file, will upload: {e}")
+                    else:
+                        print(f"            → Overwriting (force=True)")
+                except Exception as e:
+                    print(f"            ℹ️  New file, will upload: {e}")
 
                 # print(f"            📤 Uploading...")
                 self._upload_file_to_drive(component, date_str=date_str, local_path=abs_path, filename=fname)
+
             # print(f"         ✅ Added: {fname} → {abs_path.split('/')[-2]}")
             files_added += 1
+
         print(f"      📊 {component}/{date_str}: {files_added}/{len(filenames)} files processed")
         print(f"      📊 {component}/{date_str}: {files_skipped}/{len(filenames)} files skipped")
         print(f"      📊 {component}/{date_str}: {files_conflicted}/{len(filenames)} files conflicted")
+        if files_dedup_skipped or files_dedup_replaced:
+            print(
+                f"      📊 {component}/{date_str}: {files_dedup_replaced} replaced, {files_dedup_skipped} skipped (dedupe policy)"
+            )
         return temp
 
 

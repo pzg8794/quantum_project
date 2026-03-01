@@ -22,7 +22,6 @@ hybrid_variable_framework/
 ├── daqr/                              # 🧬 Core framework package
 ├── tests/                             # 🧪 Test suites
 ├── scripts/                           # 🚀 Automation scripts
-├── run_scripts/                       # 🏃 Experiment runners
 │
 ├── notebooks/                         # 📓 Production notebooks
 ├── sandbox_notebooks/                 # 🧪 Development notebooks
@@ -149,9 +148,6 @@ Production automation scripts:
 - `dynamic_exp_runner.sh`: Dynamic experiment runner
 - `run_exp[1-4].sh`: Individual experiment runners
 
-#### `run_scripts/`
-Additional experiment runners for specific scenarios
-
 ### Notebooks
 
 #### `notebooks/` (Production)
@@ -203,7 +199,7 @@ Additional experiment runners for specific scenarios
 ### For Running Experiments
 - **Colab setup**: [docs/setup/SETUP_COLAB.md](docs/setup/SETUP_COLAB.md)
 - **Local setup**: [docs/setup/SETUP_LOCAL.md](docs/setup/SETUP_LOCAL.md)
-- **Scripts**: [scripts/](scripts/), [run_scripts/](run_scripts/)
+- **Scripts**: [scripts/](scripts/)
 - **Notebooks**: [notebooks/](notebooks/)
 
 ---
@@ -217,7 +213,7 @@ Additional experiment runners for specific scenarios
 | **Evaluation Framework** | ~40 | `Dynamic_Routing_Eval_Framework/` |
 | **Test Scripts** | 15+ | `tests/`, root |
 | **Notebooks** | 10+ | `notebooks/`, `sandbox_notebooks/` |
-| **Scripts** | 15+ | `scripts/`, `run_scripts/` |
+| **Scripts** | 15+ | `scripts/` |
 | **Validated Datasets** | 4 master CSVs + hundreds of logs | `Validated_Logs/` |
 
 **Total Repository**: 200+ significant files across comprehensive framework

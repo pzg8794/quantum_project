@@ -193,7 +193,6 @@ quantum_data_lake/
 - **tests/test_*.py**: Automated test suites for each testbed
 - **run_*.py**: Sanity checks and validation scripts
 - **scripts/**: Bash automation for running experiments
-- **run_scripts/**: Additional experiment runners
 - **Dynamic_Routing_Eval_Framework/tools/**: Framework utilities:
   - `tools/tests/`: small, fast invariants (e.g., Random allocator naming/resume)
   - `tools/state/`: audit/repair of saved `.pkl` state under `daqr/config/framework_state/`
@@ -237,7 +236,6 @@ hybrid_variable_framework/
 ├── notebooks/                     # Production Colab notebooks
 ├── sandbox_notebooks/             # Development notebooks
 ├── scripts/                       # Bash + GCP helper scripts
-├── run_scripts/                   # Additional experiment runners
 ├── experiments/                   # Experiment configurations
 ├── results/                       # Local result storage
 ├── Dynamic_Routing_Eval_Framework/# Advanced evaluation framework

@@ -79,6 +79,9 @@ Thumbs.db
 *.h5
 *.ckpt
 
+# Setup artifacts (generated)
+setup_files/
+
 
 # macOS Icon files
 Icon?

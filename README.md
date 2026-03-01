@@ -41,6 +41,8 @@ A **multi-testbed** research framework for evaluating quantum routing algorithms
 | **[SETUP_COLAB.md](docs/setup/SETUP_COLAB.md)** | Colab step-by-step with screenshots | First-time users |
 | **[SETUP_LOCAL.md](docs/setup/SETUP_LOCAL.md)** | Local + GCP VM setup | Developers |
 | **[TROUBLESHOOTING.md](docs/setup/TROUBLESHOOTING.md)** | Common issues & fixes | Everyone |
+| **[Framework Tools](Dynamic_Routing_Eval_Framework/tools/README.md)** | Small tests + state repair tools (naming/resume, qubit-cap metadata) | Developers |
+| **[State/Resume Log](Dynamic_Routing_Eval_Framework/STATE-RESUME-QUbitCaps-LOG.md)** | Issue → diagnosis → fixes for state/resume metadata | Developers |
 | **[Assessments](docs/assessments/)** | Assessment reports and corrections | Researchers |
 | **[Planning](docs/planning/)** | Project planning and schedules | Team |
 | **[Updates](docs/updates/)** | Change logs and summaries | Everyone |
@@ -192,6 +194,9 @@ quantum_data_lake/
 - **run_*.py**: Sanity checks and validation scripts
 - **scripts/**: Bash automation for running experiments
 - **run_scripts/**: Additional experiment runners
+- **Dynamic_Routing_Eval_Framework/tools/**: Framework utilities:
+  - `tools/tests/`: small, fast invariants (e.g., Random allocator naming/resume)
+  - `tools/state/`: audit/repair of saved `.pkl` state under `daqr/config/framework_state/`
 
 ### Notebooks & Interactive Development
 - **notebooks/**: Production Colab notebooks

@@ -96,6 +96,11 @@ Dynamic_Routing_Eval_Framework/
 ├── run_paper12_sanity_tests.py    # Paper 12 validation suite
 ├── run_paper7_sanity_tests.py     # Paper 7 validation suite
 └── run_tests.sh                    # Test automation
+
+└── tools/                          # 🧰 Framework tools (small tests + state repair)
+    ├── README.md                   # Tool index + commands
+    ├── tests/                      # Fast invariants (naming/resume, etc.)
+    └── state/                      # Audit/repair saved framework_state pickles
 ```
 
 ### Validated Results (`Validated_Logs/`)

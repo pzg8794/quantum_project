@@ -69,10 +69,25 @@ class MultiRunEvaluator:
         # Update configs FIRST
         self.update_configs(runs, models, attack_type, scenarios, attack_intensity)
 
-        qubit_cap = (8, 10, 8, 9)  # legacy fallback to avoid breaking runs
-        # Strongly prefer caller to pass allocator-derived qubit_cap
-        if self.configs.allocator is not None and not self.configs.allocator.has_allocated():
-            qubit_cap = tuple(self.configs.allocator.allocate(timestep=0, route_stats={}, verbose=False))
+        # ------------------------------------------------------------
+        # Initial per-path qubit allocation (must be stable across threats)
+        # ------------------------------------------------------------
+        # Legacy fallback to avoid breaking runs, but for any configured allocator we
+        # must derive a qubit_cap that matches the allocator's route count.
+        qubit_cap = (8, 10, 8, 9)
+        if self.configs.allocator is not None:
+            try:
+                allocator_str = str(self.configs.allocator).lower()
+                if "random" in allocator_str and hasattr(self.configs.allocator, "baseline_allocation"):
+                    # Random allocator: use deterministic baseline allocation for keying the environment.
+                    qubit_cap = tuple(getattr(self.configs.allocator, "baseline_allocation"))
+                else:
+                    num_routes = int(getattr(self.configs.allocator, "num_routes", len(qubit_cap)))
+                    initial_stats = {i: {'success_rate': 0.5, 'pulls': 0, 'successes': 0, 'failures': 0} for i in range(num_routes)}
+                    # Always re-derive at timestep=0; do not depend on allocator.allocated flag.
+                    qubit_cap = tuple(self.configs.allocator.allocate(timestep=0, route_stats=initial_stats, verbose=False))
+            except Exception as e:
+                print(f"⚠️ Allocator qubit_cap derivation failed ({e}); using legacy fallback {qubit_cap}")
 
         # Build the environment ONCE per experiment, then reuse across all models
         mode = self.configs.backup_mgr.mode
@@ -393,6 +408,9 @@ class MultiRunEvaluator:
                 obj, loaded = self.configs._load_obj(self, file_path)
 
                 print(f"[Superset] _load_obj returned loaded={loaded}")
+                if not loaded:
+                    print(f"[Resume-Supersets] Horizon={horizon} rejected (config mismatch) — skipping subset reconstruction")
+                    continue
                 print(f"[Resume-Supersets] Horizon={horizon} loaded, attempting subset reconstruction...")
                 if self._subset_reconstruct(obj):
                     print(f"[Resume-Supersets] ✅ Successfully resumed from horizon={horizon}")

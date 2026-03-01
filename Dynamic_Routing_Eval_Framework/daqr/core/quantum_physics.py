@@ -550,11 +550,13 @@ class StochasticPaper2NoiseModel(QuantumNoiseModel):
         """
         self.topology = topology
         self.paths = paths
-        self.p_init = p_init
-        self.f_attenuation = f_attenuation
-        self.p_BSM = p_BSM
-        self.p_GateErrors = p_GateErrors
-        self.p_depol = p_depol
+        # Treat `None` as "use default" to avoid runtime TypeErrors in comparisons
+        # (e.g., `np.random.rand() < self.p_depol`).
+        self.p_init = float(p_init) if p_init is not None else 1e-5
+        self.f_attenuation = float(f_attenuation) if f_attenuation is not None else 0.05
+        self.p_BSM = float(p_BSM) if p_BSM is not None else 0.2
+        self.p_GateErrors = float(p_GateErrors) if p_GateErrors is not None else 0.2
+        self.p_depol = float(p_depol) if p_depol is not None else 0.1
         
         # ✅ Paper 2 physical constants (only used if provided)
         self.r_dephase = r_dephase

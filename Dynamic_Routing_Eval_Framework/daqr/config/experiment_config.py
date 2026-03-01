@@ -61,7 +61,9 @@ class ExperimentConfiguration:
         
         self.st = ""
         self.log_name = ""
-        self.random_runtime_qubits = (18, 9, 6, 2)
+        # Random allocator runs do not need to be resumable by exact qubit allocation;
+        # resume should be allocation-agnostic (we still support legacy files that include a qubit tuple suffix).
+        self.random_runtime_qubits = None
         self.is_random_alloc    =   False
         self.eval_file_name = ""
 
@@ -652,101 +654,59 @@ class ExperimentConfiguration:
 
     def _get_random_runtime_qubits(self, filename=None, file_qubits=None, component_type="MultiRunEvaluator"):
         """
-        Scans the registry for a matching Random file (Evaluator or Runner) with the same
-        run parameters (stem) and picks the LARGEST valid file by size.
-        
-        MODIFIED: Sorts candidates by file size (largest first) instead of random choice.
+        Random allocator compatibility:
+        - New naming omits qubit allocations from filenames.
+        - Legacy files may still include a `_(d_d_d_d)` suffix.
+
+        This resolves an allocation-agnostic match by scanning the registry for the same
+        *stem* (with any legacy qubit suffix stripped) and selecting the largest file.
+
+        Returns:
+            str | None: selected filename (not a suffix), or None if nothing matches.
         """
-        # If this is an Evaluator and we already have a global choice, stick to it to ensure consistency.
-        if self.random_runtime_qubits and component_type == "MultiRunEvaluator": return f"_{self.random_runtime_qubits}"
-        if not filename: return f"_{self.random_runtime_qubits}" if self.random_runtime_qubits else ""
-        print(f"\n\t⚡ Random {component_type} detected → scanning registry for substitute")
+        if not filename:
+            return None
 
-        candidates = {}  # ✅ CHANGED: dict to store qubit_alloc → file_name
-        eval_suffix = f"_{self.st}" if "evaluator" in component_type.lower() else ""
-        pattern = re.compile(fr"\(\d+_\d+_\d+_\d+\){eval_suffix}")
-
-        try:
-            # 1. Generate 'Search Stem' by stripping the qubit tuple from the filename
-            if file_qubits: search_stem = filename.replace(f"_{file_qubits}", "").replace(file_qubits, "")
-            else:
-                match = pattern.search(filename)
-                if match: search_stem = filename.replace(f"_{match.group(0)}", "").replace(match.group(0), "")
-                else: search_stem = filename
-            
-            search_stem = search_stem.replace(".pkl", "")
-
-        except Exception as e:
-            print(f"\t  ⚠️ Error parsing filename {filename}: {e}")
-            return ""
-
-        # 2. Scan registry for candidates matching the stem
         registry_section = "framework_state"
-        
-        if registry_section in self.backup_registry:
-            for fname, path in self.backup_registry[registry_section].items():
-                # Must match the component type (Evaluator vs Runner)
-                if component_type not in fname: continue
-                
-                # Must be Random allocator
-                if "Random" not in fname and "random" not in fname.lower(): continue
-                
-                # Must contain a valid qubit tuple
-                match = pattern.search(fname)
-                if not match: continue
-                
-                # Create candidate stem to compare
-                candidate_qubits = match.group(0)
-                candidate_stem = fname.replace(f"_{candidate_qubits}", "").replace(candidate_qubits, "").replace(".pkl", "")
-                
-                # Fuzzy match: check if stems are effectively identical
-                if search_stem == candidate_stem: 
-                    candidates[candidate_qubits] = fname  # ✅ Store as dict
+        if registry_section not in self.backup_registry:
+            return None
 
-        # 3. Select a candidate - sort by file size (largest first)
-        if candidates:
-            print(f"\t  🔍 Found {len(candidates)} matching candidates")
-            
-            # ✅ NEW: Build list of (qubits, file_size) and sort by size
-            candidate_sizes = []
-            for qubits, fname in candidates.items():
-                try:
-                    file_path_str = self.backup_registry[registry_section].get(fname)
-                    if file_path_str:
-                        file_path = Path(file_path_str)
-                        if file_path.exists():
-                            file_size = file_path.stat().st_size
-                            candidate_sizes.append((qubits, file_size, fname))
-                            print(f"\t    - {qubits}: {file_size:,} bytes")
-                except Exception as e:
-                    print(f"\t    - {qubits}: Could not get size - {e}")
-            
-            if candidate_sizes:
-                # Sort by size (largest first) and pick the biggest
-                candidate_sizes.sort(key=lambda x: x[1], reverse=True)
-                selected = candidate_sizes[0][0]  # Get qubit allocation from largest
-                print(f"\t  ✅ Selected LARGEST: {selected} ({candidate_sizes[0][1]:,} bytes)")
-            else:
-                # Fallback to random if size check fails for all
-                print(f"\t  ⚠️ Size check failed for all candidates, using random fallback")
-                selected = random.choice(list(candidates.keys()))
-                print(f"\t  🎲 Random fallback: {selected}")
-            
-            # If this was the Evaluator, lock it in globally for this session
-            if component_type == "MultiRunEvaluator": self.random_runtime_qubits = selected
-            return f"_{selected}"
-        else:
-            print(f"\t  ❌ No matching {component_type} found in registry.")
-            # Fallback: return the original one (if it existed) or empty
-            return f"_{file_qubits}{eval_suffix}" if file_qubits else ""
+        def _stem_key(name: str) -> str:
+            # Remove legacy qubit tuple suffix if present, and ignore whitespace differences.
+            return re.sub(r"_\(\d+_\d+_\d+_\d+\)|\s+", "", name).replace(".pkl", "")
+
+        search_key = _stem_key(filename)
+        candidates: list[tuple[str, int]] = []  # (fname, size)
+
+        for fname, path in self.backup_registry[registry_section].items():
+            if component_type not in fname:
+                continue
+            if "random" not in fname.lower():
+                continue
+            if _stem_key(fname) != search_key:
+                continue
+            try:
+                p = Path(path)
+                size = p.stat().st_size if p.exists() else 0
+            except Exception:
+                size = 0
+            candidates.append((fname, size))
+
+        if not candidates:
+            return None
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        selected_fname, selected_size = candidates[0]
+        print(f"\t⚡ Random {component_type} stem match → selected '{selected_fname}' (size={selected_size:,} bytes)")
+        return selected_fname
 
 
     def _resolve_random_filename(self, item_v):
         """
-        If using Random Allocator, reconstruct the filename to match a valid 
-        random file from the registry (handling missing Runners or Evaluators).
+        If using Random Allocator, resolve an allocation-agnostic match
+        (supports legacy files that include a qubit tuple suffix).
         """
-        if not self.is_random_alloc:
+        if "random" not in item_v.lower():
             return item_v
             
         # Determine component type
@@ -754,24 +714,14 @@ class ExperimentConfiguration:
         elif "QuantumExperimentRunner" in item_v: comp_type = "QuantumExperimentRunner"
         else: return item_v # Models don't need this logic yet
             
-        # Extract existing qubits from item_v if present
-        eval_suffix = f"_{self.st}" if "evaluator" in comp_type.lower() else ""
-        pattern = re.compile(fr"\(\d+_\d+_\d+_\d+\){eval_suffix}")
-        match = pattern.search(item_v)
-        file_qubits = match.group(0) if match else None
-        
-        # Get a valid tuple (either existing global, or new random substitute)
-        resolved_suffix = self._get_random_runtime_qubits(item_v, file_qubits, comp_type)
-        
-        # Construct new filename
-        if not resolved_suffix: return item_v # Failed to resolve, try original
+        # If exact key exists, keep it.
+        registry_section = "framework_state"
+        if registry_section in self.backup_registry and item_v in self.backup_registry[registry_section]:
+            return item_v
 
-        # if file_qubits: 
-        new_item_v = item_v.replace(f"_{file_qubits}", resolved_suffix)
-        # else: new_item_v = item_v.replace(".pkl", f"{resolved_suffix}.pkl")
-            
-        # Cleanup potential double underscores
-        return re.sub(r"__", "_", new_item_v)
+        # Otherwise, try to find a legacy/alternate filename that matches the same stem.
+        resolved = self._get_random_runtime_qubits(filename=item_v, file_qubits=None, component_type=comp_type)
+        return resolved if resolved else item_v
 
 
     def get_latest_state(self, item_k, item_v):

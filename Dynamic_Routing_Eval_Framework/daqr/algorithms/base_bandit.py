@@ -103,8 +103,6 @@ class QuantumModel(ABC):
         self.allocator_id = str(getattr(self.configs, "allocator", "alloc"))
         self.env_id       = str(getattr(self.configs, "environment", "env"))
         self.attack_id    = str(getattr(self.configs, "attack_strategy", "None"))
-        alloc_str         = " ".join(str(v) for v in self.key_attrs.get("qubit_capacities", []))  # ✅ FIX: Add .get() with default
-        if "random" in str(self.configs.allocator).lower(): frame_no_str += f"_({re.sub(r'^_', '', alloc_str)})"
         self.file_name    = f"{self.id}({self.mode})_{int(self.capacity)}-{self.allocator_id}_{self.env_id }_{self.attack_id}-{frame_no_str}.pkl"
 
 
@@ -1022,4 +1020,3 @@ class NeuralUCB(RandomAlg):
             (skip_env_attack or self.attack_id == getattr(other, "attack_id", None)) and
             self.key_attrs == getattr(other, "key_attrs", None)
         )
-

@@ -74,8 +74,6 @@ class QuantumExperimentRunner:
         self.cap_id       = int(self.capacity*self.configs.scale)
         
         id_str            = str(self.id)
-        alloc_str         = "_".join(str(v) for v in qubit_cap)
-        if "random" in str(self.configs.allocator).lower(): id_str += f"_({re.sub(r'^_', '', alloc_str)})"
         self.file_name    = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id }_{self.attack_id}-{self.frames_count}_{id_str}.pkl"
 
         # Resume previous evaluator state if configured
@@ -97,7 +95,8 @@ class QuantumExperimentRunner:
         """Defines equality for evaluator or saved dict comparison."""
         if isinstance(other, dict):
             other_attrs = other.get("key_attrs", {}).copy()
-            
+            self_attrs = copy.deepcopy(self.key_attrs) if isinstance(self.key_attrs, dict) else {}
+
             # Model check - set flag if models differ
             needs_filtering = False
             saved_models = self._infer_saved_models(other)
@@ -114,20 +113,25 @@ class QuantumExperimentRunner:
                     needs_filtering = True
                     print(f"ℹ️  Will filter saved models to: {sorted(current_models)}")
 
-            # temp fix
-            temp_qubit_capacities = None
-            non_dflt_checks = ["runs", "actk_type", "noise_model", "fidelity_calculator", "external_topology", "external_contexts", "external_rewards"]
+            non_dflt_checks = [
+                "runs",
+                "actk_type",
+                "noise_model",
+                "fidelity_calculator",
+                "external_topology",
+                "external_contexts",
+                "external_rewards",
+            ]
 
-            if "seed" in other_attrs:                       del other_attrs["seed"]
+            other_attrs.pop("seed", None)
             for check in non_dflt_checks:
-                if check in other_attrs:                    del other_attrs[check]
-                if check in self.key_attrs:                 del self.key_attrs[check]
-            # if 'runs' in other_attrs:   del other_attrs['runs']
-            # if 'runs' in self.key_attrs: del self.key_attrs['runs']
-            if "random" in str(self.configs.allocator).lower(): 
-                temp_qubit_capacities = other_attrs['qubit_capacities']
-                del other_attrs['qubit_capacities']
-                del self.key_attrs['qubit_capacities']
+                other_attrs.pop(check, None)
+                self_attrs.pop(check, None)
+
+            # Random allocator: ignore qubit capacities in resume comparison
+            if "random" in str(self.configs.allocator).lower():
+                other_attrs.pop("qubit_capacities", None)
+                self_attrs.pop("qubit_capacities", None)
 
             # Normalize legacy/default values that may appear as string "None" in older pickles.
             def _norm_default_str(attrs: dict, key: str, default: str):
@@ -139,28 +143,25 @@ class QuantumExperimentRunner:
                     pass
 
             _norm_default_str(other_attrs, "entanglement_success_factor", "100")
-            _norm_default_str(self.key_attrs, "entanglement_success_factor", "100")
+            _norm_default_str(self_attrs, "entanglement_success_factor", "100")
 
             if (
-                self.id == other.get("id") and
-                self.allocator_id == other.get("allocator_id") and
-                self.env_id == other.get("env_id") and
-                self.attack_id == other.get("attack_id") and
-                self.cap_id == other.get("cap_id") and
-                self.key_attrs == other_attrs
+                self.id == other.get("id")
+                and self.allocator_id == other.get("allocator_id")
+                and self.env_id == other.get("env_id")
+                and self.attack_id == other.get("attack_id")
+                and self.cap_id == other.get("cap_id")
+                and self_attrs == other_attrs
             ):
-                if temp_qubit_capacities: 
-                    self.key_attrs['qubit_capacities'] = temp_qubit_capacities
-                
                 # Filter results if needed
-                if needs_filtering and 'results' in other:
-                    for model in list(other['results'].keys()):
+                if needs_filtering and "results" in other:
+                    for model in list(other["results"].keys()):
                         if model not in self.configs.models:
-                            del other['results'][model]
+                            del other["results"][model]
                     print(f"✅ Filtered results to: {list(other['results'].keys())}")
-                
+
                 return True
-            
+
             print(f"\n❌ {str(self).upper()} comparison failed:")
             print(f"  ID: {self.id} vs {other.get('id')}")
             print(f"  Allocator: {self.allocator_id} vs {other.get('allocator_id')}")
@@ -176,13 +177,13 @@ class QuantumExperimentRunner:
             return NotImplemented
 
         return (
-            self.id == getattr(other, "id", None) and
-            self.frames_count == getattr(other, "frames_count", None) and
-            self.allocator_id == getattr(other, "allocator_id", None) and
-            self.env_id == getattr(other, "env_id", None) and
-            self.attack_id == getattr(other, "attack_id", None) and
-            self.cap_id == getattr(other, "cap_id", None) and
-            self.key_attrs == getattr(other, "key_attrs", None)
+            self.id == getattr(other, "id", None)
+            and self.frames_count == getattr(other, "frames_count", None)
+            and self.allocator_id == getattr(other, "allocator_id", None)
+            and self.env_id == getattr(other, "env_id", None)
+            and self.attack_id == getattr(other, "attack_id", None)
+            and self.cap_id == getattr(other, "cap_id", None)
+            and self.key_attrs == getattr(other, "key_attrs", None)
         )
 
     def save(self):

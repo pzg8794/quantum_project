@@ -105,7 +105,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
         print(f"   🚶 Walking directory tree: {mode_dir}")
         dirs_processed = 0
         
-        for dirpath, _, filenames in os.walk(mode_dir):
+        for dirpath, dirnames, filenames in os.walk(mode_dir):
             dir_path = Path(dirpath)
 
             # Calculate relative path from mode base
@@ -119,6 +119,18 @@ class LocalBackupManager(GoogleDriveBackupManager):
             parts = relative_path.parts
             if not parts: continue            
             component = parts[0]
+
+            # Skip internal backup folders (these are not valid resume candidates and can
+            # override correct registry entries due to duplicate filenames).
+            #
+            # Example: framework_state/_key_attrs_backup_YYYYMMDD_HHMMSS/day_*/...
+            if any(p.startswith("_key_attrs_backup_") for p in parts):
+                # Prevent descending further once we hit the backup root.
+                dirnames[:] = []
+                continue
+            if any(p in {".ipynb_checkpoints", "__pycache__"} for p in parts):
+                dirnames[:] = []
+                continue
 
             # Extract date_str from path (e.g., day_20251128)
             date_str = None

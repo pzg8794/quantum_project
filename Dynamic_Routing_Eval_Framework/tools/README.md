@@ -9,6 +9,9 @@ This folder contains **framework test + repair utilities**.
 
 ## Quick commands
 
+- Run the small, fast test battery (no full runs):
+  - `bash tools/tests/run_small_tests.sh`
+
 - Naming + Random-resume invariants:
   - `python3 tools/tests/test_state_naming_and_resume.py`
 

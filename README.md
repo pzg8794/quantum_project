@@ -195,6 +195,7 @@ quantum_data_lake/
 - **scripts/**: Bash automation for running experiments
 - **Dynamic_Routing_Eval_Framework/tools/**: Framework utilities:
   - `tools/tests/`: small, fast invariants (e.g., Random allocator naming/resume)
+  - quick battery: `bash Dynamic_Routing_Eval_Framework/tools/tests/run_small_tests.sh`
   - `tools/state/`: audit/repair of saved `.pkl` state under `daqr/config/framework_state/`
 
 ### Notebooks & Interactive Development

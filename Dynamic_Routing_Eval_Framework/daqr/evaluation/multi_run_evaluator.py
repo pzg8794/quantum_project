@@ -248,6 +248,19 @@ class MultiRunEvaluator:
                 # if 'runs' in copied_attrs:                del copied_attrs['runs']
                 # if 'frame_length' in other_attrs:         del other_attrs['frame_length']
                 # if 'frame_length' in copied_attrs:        del copied_attrs['frame_length']
+
+                # Normalize legacy/default values that may appear as string "None" in older pickles.
+                # This prevents resume from failing when the effective runtime value is the default.
+                def _norm_default_str(attrs: dict, key: str, default: str):
+                    try:
+                        v = attrs.get(key, None)
+                        if v is None or str(v).strip().lower() == "none":
+                            attrs[key] = default
+                    except Exception:
+                        pass
+
+                _norm_default_str(other_attrs, "entanglement_success_factor", "100")
+                _norm_default_str(copied_attrs, "entanglement_success_factor", "100")
             except Exception as e: print(f"ERROR 2: {e}")
 
             try:
@@ -327,6 +340,15 @@ class MultiRunEvaluator:
                     self.key_attrs["qubit_capacities"] = stable_caps
                     if hasattr(self.configs, "_env_params") and isinstance(self.configs._env_params, dict):
                         self.configs._env_params["qubit_capacities"] = stable_caps
+
+                # Normalize legacy default: some older states stored this as "None".
+                esf = self.key_attrs.get("entanglement_success_factor", None)
+                if esf is None or str(esf).strip().lower() == "none":
+                    esf_default = 100
+                    if hasattr(self.configs, "_env_params") and isinstance(self.configs._env_params, dict):
+                        esf_default = self.configs._env_params.get("entanglement_success_factor") or 100
+                        self.configs._env_params["entanglement_success_factor"] = esf_default
+                    self.key_attrs["entanglement_success_factor"] = str(esf_default)
         except Exception as e:
             print(f"⚠️ Pre-save key_attrs qubit_capacities update failed: {e}")
 

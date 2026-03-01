@@ -129,6 +129,18 @@ class QuantumExperimentRunner:
                 del other_attrs['qubit_capacities']
                 del self.key_attrs['qubit_capacities']
 
+            # Normalize legacy/default values that may appear as string "None" in older pickles.
+            def _norm_default_str(attrs: dict, key: str, default: str):
+                try:
+                    v = attrs.get(key, None)
+                    if v is None or str(v).strip().lower() == "none":
+                        attrs[key] = default
+                except Exception:
+                    pass
+
+            _norm_default_str(other_attrs, "entanglement_success_factor", "100")
+            _norm_default_str(self.key_attrs, "entanglement_success_factor", "100")
+
             if (
                 self.id == other.get("id") and
                 self.allocator_id == other.get("allocator_id") and

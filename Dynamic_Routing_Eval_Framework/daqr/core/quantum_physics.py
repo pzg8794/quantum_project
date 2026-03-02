@@ -163,6 +163,119 @@ class FiberLossNoiseModel(QuantumNoiseModel):
 
 
 # ============================================================================
+# Paper 8: RL/Q-Learning testbed physics (graph attributes + purification/swaps)
+# ============================================================================
+
+class Paper8NoiseModel(QuantumNoiseModel):
+    """
+    Paper 8 noise/info provider.
+
+    Returns per-path edge attributes (fidelity/rate/pur_round) and intermediate
+    node swap success probabilities.
+
+    Note: This intentionally does not generate contexts/actions. Contexts are
+    provided by the caller (e.g., allocation vectors per edge).
+    """
+
+    def __init__(self, topology, paths):
+        self.topology = topology
+        self.paths = paths
+
+    def get_error_rates(self, path_idx, path_info=None):
+        if path_idx >= len(self.paths):
+            return {"edges": [], "swap_success": [], "path": []}
+
+        path = self.paths[path_idx]
+        edges = []
+        for i in range(len(path) - 1):
+            u, v = path[i], path[i + 1]
+            data = self.topology.get_edge_data(u, v) or {}
+            edges.append(
+                {
+                    "fidelity": float(data.get("fidelity", 0.75)),
+                    "rate": float(data.get("rate", 1.0)),
+                    "pur_round": int(data.get("pur_round", 0)),
+                }
+            )
+
+        # swap_success on intermediate nodes (excluding endpoints)
+        swap_success = []
+        for n in path[1:-1]:
+            swap_success.append(float(self.topology.nodes[n].get("swap_success", 1.0)))
+
+        return {"edges": edges, "swap_success": swap_success, "path": path}
+
+
+class Paper8FidelityCalculator(FidelityCalculator):
+    """
+    Paper 8 end-to-end fidelity calculator.
+
+    Implements (a simplified, deterministic) version of the paper's link
+    purification + swapping recursion.
+
+    Mapping from allocation (context) -> purification rounds:
+      rounds = min(edge_pur_round, floor(log2(qubits_on_edge)))
+    """
+
+    def __init__(self, *, min_fidelity: float = 0.0):
+        self.min_fidelity = float(min_fidelity)
+
+    def compute_path_fidelity(self, error_rates, context, success_factor):
+        edges = (error_rates or {}).get("edges", [])
+        if not edges:
+            return 0.0
+
+        # Normalize context allocations to per-edge integer budgets.
+        if context is None:
+            alloc = [1] * len(edges)
+        else:
+            try:
+                alloc = list(context.tolist()) if hasattr(context, "tolist") else list(context)
+            except TypeError:
+                alloc = [context]
+            alloc = [int(x) for x in alloc]
+
+        if len(alloc) < len(edges):
+            alloc = alloc + [1] * (len(edges) - len(alloc))
+        elif len(alloc) > len(edges):
+            alloc = alloc[: len(edges)]
+
+        fid_path = []
+        rate_path = []
+
+        for edge, q in zip(edges, alloc):
+            if q <= 0:
+                fid_path.append(0.0)
+                rate_path.append(0.0)
+                continue
+
+            F = float(edge["fidelity"])
+            R = float(edge["rate"])
+            max_rounds = int(edge.get("pur_round", 0))
+
+            rounds = int(min(max_rounds, max(0, math.floor(math.log(q, 2))))) if q > 0 else 0
+            for _ in range(rounds):
+                denom = (F**2 + (1.0 - F) ** 2)
+                if denom <= 0:
+                    break
+                R = 0.5 * R * denom
+                F = (F**2) / denom
+
+            fid_path.append(float(np.clip(F, 0.0, 1.0)))
+            rate_path.append(max(0.0, float(R)))
+
+        # Swapping recursion used in the paper code
+        FF = 1.0
+        for f in fid_path:
+            FF = 0.25 + (4.0 * FF - 1.0) * (4.0 * f - 1.0) / 12.0
+        FF = float(np.clip(FF, 0.0, 1.0))
+
+        if FF < self.min_fidelity:
+            return 0.0
+        return FF
+
+
+# ============================================================================
 # FIDELITY CALCULATORS (All already capacity-agnostic)
 # ============================================================================
 

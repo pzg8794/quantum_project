@@ -112,76 +112,83 @@ class Paper2TopologyGenerator(TopologyGenerator):
 
 class Paper8RandomConnectedTopologyGenerator(TopologyGenerator):
     """
-    Paper 8 (Adaptive entanglement routing with DQN) topology generator.
+    Paper 8 topology: random connected Erdos-Renyi graph with per-edge channel
+    attributes and per-node swap success probabilities.
 
-    Generates a connected Erdos-Renyi-style graph and assigns the paper's
-    per-edge/per-node attributes used by the reward model:
-      - edge: fidelity, rate, pur_round
-      - node: swap_success
+    This generator ONLY constructs the graph + attributes. Path enumeration and
+    allocation (contexts) remain separate concerns (same as Paper2/7/12).
     """
 
     def __init__(
         self,
         *,
-        num_nodes: int = 15,
-        edge_probability: float = 0.25,
-        fidelity_range: tuple[float, float] = (0.6, 0.99),
-        rate_range: tuple[float, float] = (0.7, 1.0),
-        pur_round_range: tuple[int, int] = (0, 3),
-        swap_success_range: tuple[float, float] = (0.8, 1.0),
+        num_nodes: int = 50,
+        connection_prob: float | None = None,
+        edge_probability: float | None = None,  # backward-compatible alias
         seed: int = 42,
-        testbed: str = "paper8",
+        fidelity_range: Tuple[float, float] = (0.6, 0.99),
+        rate_range: Tuple[float, float] = (0.7, 1.0),
+        pur_round_range: Tuple[int, int] = (0, 4),
+        swap_success_range: Tuple[float, float] = (0.7, 0.99),
+        distance_range: Tuple[float, float] = (1.0, 10.0),
         max_tries: int = 200,
+        testbed: str = "paper8",
     ):
         self.num_nodes = int(num_nodes)
-        self.edge_probability = float(edge_probability)
-        self.fidelity_range = fidelity_range
-        self.rate_range = rate_range
-        self.pur_round_range = pur_round_range
-        self.swap_success_range = swap_success_range
+        # Prefer connection_prob; accept legacy edge_probability if provided.
+        if connection_prob is None and edge_probability is None:
+            connection_prob = 0.08
+        self.connection_prob = float(connection_prob if connection_prob is not None else edge_probability)
         self.seed = int(seed)
-        self.testbed = str(testbed)
+        self.fidelity_range = (float(fidelity_range[0]), float(fidelity_range[1]))
+        self.rate_range = (float(rate_range[0]), float(rate_range[1]))
+        self.pur_round_range = (int(pur_round_range[0]), int(pur_round_range[1]))
+        self.swap_success_range = (float(swap_success_range[0]), float(swap_success_range[1]))
+        self.distance_range = (float(distance_range[0]), float(distance_range[1]))
         self.max_tries = int(max_tries)
+        self.testbed = str(testbed)
 
-    def _generate_connected_erdos_renyi(self) -> nx.Graph:
-        rng = np.random.default_rng(self.seed)
-
-        # Try repeated ER graphs first (fast + standard).
-        for _ in range(max(self.max_tries, 1)):
-            G = nx.erdos_renyi_graph(self.num_nodes, self.edge_probability, seed=int(rng.integers(0, 2**31 - 1)))
-            if self.num_nodes <= 1 or nx.is_connected(G):
-                return G
-
-        # Fallback: spanning tree + random extra edges (guarantees connectedness).
-        G = nx.random_tree(self.num_nodes, seed=int(rng.integers(0, 2**31 - 1)))
-        nodes = list(G.nodes())
-        for i in range(len(nodes)):
-            for j in range(i + 1, len(nodes)):
-                if G.has_edge(i, j):
-                    continue
-                if rng.random() < self.edge_probability:
-                    G.add_edge(i, j)
-        return G
+        if not (0.0 < self.connection_prob < 1.0):
+            raise ValueError("connection_prob must be in (0, 1).")
+        if self.num_nodes < 2:
+            raise ValueError("num_nodes must be >= 2.")
 
     def generate(self) -> nx.Graph:
         rng = np.random.default_rng(self.seed)
-        G = self._generate_connected_erdos_renyi()
 
-        # Assign Paper 8 attributes (plus a simple distance attribute for path enumeration).
+        G = None
+        for _ in range(max(1, self.max_tries)):
+            candidate = nx.erdos_renyi_graph(
+                self.num_nodes,
+                self.connection_prob,
+                seed=int(rng.integers(0, 2**31 - 1)),
+            )
+            if candidate.number_of_edges() > 0 and nx.is_connected(candidate):
+                G = candidate
+                break
+        if G is None:
+            raise RuntimeError(
+                f"Could not generate a connected ER graph after {self.max_tries} tries "
+                f"(n={self.num_nodes}, p={self.connection_prob})."
+            )
+
+        # Assign per-edge channel attributes expected by Paper 8 code.
         for u, v in G.edges():
-            G[u][v]["distance"] = 1.0
-            G[u][v]["fidelity"] = float(rng.uniform(self.fidelity_range[0], self.fidelity_range[1]))
-            G[u][v]["rate"] = float(rng.uniform(self.rate_range[0], self.rate_range[1]))
-            # Note: randint high is exclusive (matches the paper repo code).
-            G[u][v]["pur_round"] = int(rng.integers(self.pur_round_range[0], self.pur_round_range[1]))
+            G[u][v]["fidelity"] = float(rng.uniform(*self.fidelity_range))
+            G[u][v]["rate"] = float(rng.uniform(*self.rate_range))
+            # Keep numpy's semantics: low inclusive, high exclusive
+            pur_low, pur_high = self.pur_round_range
+            pur_high_excl = max(pur_low + 1, pur_high)
+            G[u][v]["pur_round"] = int(rng.integers(pur_low, pur_high_excl))
+            G[u][v]["distance"] = float(rng.uniform(*self.distance_range))
 
-        for node in G.nodes():
-            G.nodes[node]["swap_success"] = float(rng.uniform(self.swap_success_range[0], self.swap_success_range[1]))
+        # Assign per-node swapping success probabilities.
+        for n in G.nodes():
+            G.nodes[n]["swap_success"] = float(rng.uniform(*self.swap_success_range))
 
         G.graph["testbed"] = self.testbed
         G.graph["num_nodes"] = self.num_nodes
-        G.graph["edge_probability"] = self.edge_probability
-        G.graph["seed"] = self.seed
+        G.graph["connection_prob"] = self.connection_prob
 
         return G
 

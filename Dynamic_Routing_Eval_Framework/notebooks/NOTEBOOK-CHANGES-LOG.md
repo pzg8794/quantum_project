@@ -51,3 +51,4 @@ This log records **surgical notebook changes** (issues encountered, what was cha
 - **Goal:** run Paper 8 testbed using the paper’s own topology/physics settings first, then run the standardized sweep later.
 - **Upstream defaults captured in config cell:** `num_nodes=20`, `connection_prob=0.001`, `fidelity_range=(0.65,0.99)`, `rate_range=(0.75,1.0)`, `pur_round_range=(0,3)`, `swap_success_range=(0.23,0.8)`, `base_seed=10`.
 - **Framework run settings (minimal first pass):** `BASE_FRAMES=1000`, `FRAME_STEP=1000`, `RUNS=[1]`, `SCALES=[1]`, `ALLOCATORS=['Default']`.
+- **Refactor (flow only):** restructured the notebook into the same sectioned layout used by the other testbed notebooks (title → environment setup → config → helper functions → run), without changing the Paper 8 run parameters.

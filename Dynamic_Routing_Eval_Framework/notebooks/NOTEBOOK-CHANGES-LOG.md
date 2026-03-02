@@ -53,3 +53,4 @@ This log records **surgical notebook changes** (issues encountered, what was cha
 - **Framework run settings (minimal first pass):** `BASE_FRAMES=1000`, `FRAME_STEP=1000`, `RUNS=[1]`, `SCALES=[1]`, `ALLOCATORS=['Default']`.
 - **Refactor (flow only):** restructured the notebook into the same sectioned layout used by the other testbed notebooks (title → environment setup → config → helper functions → run), without changing the Paper 8 run parameters.
 - **Refactor (allocator flow):** added one **run cell per allocator** (`Default`, `Dynamic`, `ThompsonSampling`, `Random`) and enabled the same plotting-ready imports (`matplotlib`) in the setup cell, matching the flow of the Paper 2/7/12 notebooks.
+- **Scenario sweep:** expanded `test_scenarios` from `{none, stochastic}` to `{none, stochastic, markov, adaptive, onlineadaptive}` so the paper-config notebook runs **all threat regimes**.

@@ -206,6 +206,25 @@ class Paper8NoiseModel(QuantumNoiseModel):
         return {"edges": edges, "swap_success": swap_success, "path": path}
 
 
+# ============================================================================
+# FIDELITY CALCULATORS (All already capacity-agnostic)
+# ============================================================================
+
+class FidelityCalculator:
+    """Base interface for fidelity calculation."""
+    
+    def compute_path_fidelity(self, error_rates, context, success_factor):
+        """
+        Args:
+            error_rates: Per-link error rates
+            context: Qubit allocation (e.g., [3, 5])
+            success_factor: A parameter
+        Returns:
+            Fidelity (success probability)
+        """
+        raise NotImplementedError
+
+
 class Paper8FidelityCalculator(FidelityCalculator):
     """
     Paper 8 end-to-end fidelity calculator.
@@ -273,25 +292,6 @@ class Paper8FidelityCalculator(FidelityCalculator):
         if FF < self.min_fidelity:
             return 0.0
         return FF
-
-
-# ============================================================================
-# FIDELITY CALCULATORS (All already capacity-agnostic)
-# ============================================================================
-
-class FidelityCalculator:
-    """Base interface for fidelity calculation."""
-    
-    def compute_path_fidelity(self, error_rates, context, success_factor):
-        """
-        Args:
-            error_rates: Per-link error rates
-            context: Qubit allocation (e.g., [3, 5])
-            success_factor: A parameter
-        Returns:
-            Fidelity (success probability)
-        """
-        raise NotImplementedError
 
 
 class DefaultFidelityCalculator(FidelityCalculator):

@@ -54,4 +54,4 @@ This log records **surgical notebook changes** (issues encountered, what was cha
 - **Refactor (flow only):** restructured the notebook into the same sectioned layout used by the other testbed notebooks (title → environment setup → config → helper functions → run), without changing the Paper 8 run parameters.
 - **Refactor (allocator flow):** added one **run cell per allocator** (`Default`, `Dynamic`, `ThompsonSampling`, `Random`) and enabled the same plotting-ready imports (`matplotlib`) in the setup cell, matching the flow of the Paper 2/7/12 notebooks.
 - **Scenario sweep:** expanded `test_scenarios` from `{none, stochastic}` to `{none, stochastic, markov, adaptive, onlineadaptive}` so the paper-config notebook runs **all threat regimes**.
-- **Plotting:** added a post-run plotting cell that loads the saved `MultiRunEvaluator` state and generates scenario-vs-baseline comparison plots via `QuantumEvaluatorVisualizer`.
+- **Plotting:** restored plotting to `AllocatorRunner` (default ON) so all notebooks get plots without extra notebook cells; removed the notebook-specific plotting cell to keep the same flow as other testbeds.

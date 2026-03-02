@@ -65,6 +65,114 @@ class AllocatorRunner:
         env_flag = env_val not in {"0", "false", "no", "off"}
         return cfg_flag and env_flag
 
+    def _plots_enabled(self) -> bool:
+        """
+        Default behavior: ON.
+
+        Toggle OFF via:
+          - framework_config['enable_plots'] = False, or
+          - env var DAQR_ENABLE_PLOTS in {0,false,no,off}
+        """
+        cfg_flag = bool(self.framework_config.get("enable_plots", True))
+        env_val = os.getenv("DAQR_ENABLE_PLOTS", "1").strip().lower()
+        env_flag = env_val not in {"0", "false", "no", "off"}
+        return cfg_flag and env_flag
+
+    def _run_robustness_plots(self, comparison_results):
+        """
+        Generate the same robustness plots used by the older pipeline notebooks,
+        but from inside the AllocatorRunner so notebooks don't need custom cells.
+        """
+        try:
+            import importlib
+            from daqr.evaluation import visualizer as visualizer_mod
+            importlib.reload(visualizer_mod)
+            from daqr.evaluation.visualizer import QuantumEvaluatorVisualizer
+
+            print("=" * 70)
+            print("ROBUSTNESS ANALYSIS")
+            print("=" * 70)
+
+            allocator = self.allocator_obj
+            custom_config = self.custom_config
+            evaluator = self.evaluator
+            test_scenarios = self.test_scenarios or {}
+
+            viz = QuantumEvaluatorVisualizer(
+                comparison_results,
+                allocator=allocator,
+                config=custom_config,
+                framework_config=self.framework_config,
+                output_dir=self.framework_config.get("plots_dir", "results"),
+            )
+
+            # Full comparison plot (all scenarios together)
+            try:
+                viz.plot_stochastic_vs_adversarial_comparison(eval_results=comparison_results)
+            except Exception as e:
+                print(f"⚠️ Plotting (stochastic vs adversarial) failed: {e}")
+
+            # Plot each non-baseline scenario vs baseline
+            for scenario in list(test_scenarios.keys()):
+                if scenario.lower() in {"none", "baseline", "no_attack"}:
+                    continue
+                print(f"\n📊 Generating plots for scenario: {scenario.upper()}")
+                try:
+                    if evaluator is not None:
+                        evaluator.calculate_scenario_performance(scenario=scenario)
+                except Exception as e:
+                    print(f"⚠️ Scenario performance calc failed for '{scenario}': {e}")
+
+                try:
+                    viz.plot_scenarios_comparison(eval_results=comparison_results, scenario=scenario)
+                except Exception as e:
+                    print(f"⚠️ Scenario plot failed for '{scenario}': {e}")
+
+            print("\n✓ All scenario plots generated!")
+
+            # Print stochastic metrics summary if available
+            try:
+                stoch_data = viz.get_viz_data("stochastic_data")
+                if stoch_data and "averaged" in stoch_data:
+                    stoch_results = stoch_data["averaged"]
+                    winner = stoch_results.get("winner", "N/A")
+
+                    print("\n" + "=" * 70)
+                    print("STOCHASTIC PERFORMANCE METRICS")
+                    print("=" * 70)
+
+                    for alg in (self.models or []):
+                        if alg not in stoch_results.get("results", {}):
+                            continue
+                        model_data = stoch_results["results"][alg]
+                        stoch_reward = model_data.get("final_reward", 0)
+                        efficiency = model_data.get("efficiency", 0)
+                        gap = model_data.get("gap", float("inf"))
+
+                        print(f"\n{alg}:")
+                        print(f"  • Stochastic Performance: {stoch_reward:.3f}")
+                        print(f"  • Oracle Efficiency: {efficiency:.1f}%")
+                        print(f"  • Oracle Gap: {gap:.1f}%")
+
+                        if efficiency > 90:
+                            classification = "EXCELLENT"
+                        elif efficiency > 80:
+                            classification = "GOOD"
+                        elif efficiency > 70:
+                            classification = "MODERATE"
+                        else:
+                            classification = "NEEDS IMPROVEMENT"
+                        print(f"  • Classification: {classification}")
+                        if alg == winner:
+                            print("  ★ WINNER ★")
+                else:
+                    print("⚠ No stochastic averaged results available")
+            except Exception as e:
+                print(f"⚠️ Metrics summary failed: {e}")
+
+        except Exception as e:
+            print(f"⚠️ Robustness plotting failed (continuing): {e}")
+
     def _aggregate_state_dirs(self) -> bool:
         """
         Aggregate local state day directories into the current run day folder
@@ -320,6 +428,9 @@ class AllocatorRunner:
             comparison_results = self.evaluator.test_stochastic_environment(cal_winner=True, parellel=False)
             self.evaluator.calculate_scenarios_performance()
             print("✅ Evaluation completed!")
+
+            if self._plots_enabled():
+                self._run_robustness_plots(comparison_results)
 
             return True
 

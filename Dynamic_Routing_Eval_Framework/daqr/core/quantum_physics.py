@@ -459,6 +459,91 @@ class Paper7RewardFunction:
             raise ValueError(f"Unknown reward mode: {self.mode}")
 
 
+class Paper8RewardFunction:
+    """
+    Paper 8 (Adaptive entanglement routing with DQN) reward model.
+
+    Implements the repo's purification + swapping aggregation:
+      - Purification rounds update (F, R) per link
+      - End-to-end fidelity aggregated via the FF recursion
+      - End-to-end rate aggregated via swap-success bottleneck logic
+
+    Default `mode=3` yields a fidelity-only reward (monotone in fidelity).
+    """
+
+    def __init__(self, mode: int = 3):
+        self.mode = int(mode)
+        if self.mode == 1:
+            self.weight = [0, 100, 0]  # rate-only
+        elif self.mode == 2:
+            self.weight = [40, 60, 0]  # balanced
+        else:
+            self.mode = 3
+            self.weight = [100, 0, 0]  # fidelity-only
+
+    @staticmethod
+    def _apply_purification(F: float, R: float, rounds: int) -> tuple[float, float]:
+        rounds = max(int(rounds), 0)
+        for _ in range(rounds):
+            denom = (F**2) + ((1 - F) ** 2)
+            # halved due to measurement, then reduced by success probability
+            R = 0.5 * R * denom
+            F = (F**2) / denom if denom != 0 else 0.0
+        return float(F), float(R)
+
+    @staticmethod
+    def _compose_fidelity(FF: float, F_link: float) -> float:
+        # Repo recursion: FF = 0.25 + (4*FF-1) * (4*F-1) / 12
+        return float(0.25 + (4 * FF - 1) * (4 * F_link - 1) / 12)
+
+    def compute(
+        self,
+        topology,
+        path: list[int],
+        *,
+        pur_rounds_per_edge: int = 0,
+    ) -> tuple[float, float, float]:
+        """
+        Returns:
+            (reward, final_fidelity, final_rate)
+        """
+        if path is None or len(path) < 2:
+            return -100.0, 0.0, 0.0
+
+        FF = 1.0
+        fid_path: list[float] = []
+        rate_path: list[float] = []
+
+        for i in range(len(path) - 1):
+            u, v = path[i], path[i + 1]
+            edge = topology.get_edge_data(u, v) or {}
+            F = float(edge.get("fidelity", 0.5))
+            R = float(edge.get("rate", 0.0))
+            F, R = self._apply_purification(F, R, pur_rounds_per_edge)
+            fid_path.append(F)
+            rate_path.append(R)
+            FF = self._compose_fidelity(FF, F)
+
+        final_fidelity = float(FF)
+
+        # Rate aggregation (replicates repo logic exactly)
+        swap_probs = [
+            float(topology.nodes[path[i]].get("swap_success", 1.0))
+            for i in range(1, len(path) - 1)
+        ]
+        curr_rate = float(rate_path[0]) if rate_path else 0.0
+        for i in range(max(len(swap_probs) - 1, 0)):
+            curr_rate = float(swap_probs[i]) * float(min(rate_path[i + 1], curr_rate))
+        final_rate = float(curr_rate)
+
+        if final_fidelity <= 0.5:
+            reward = -100.0
+        else:
+            reward = float(5.0 * np.dot(self.weight, [final_fidelity, final_rate, -len(path)]))
+
+        return reward, final_fidelity, final_rate
+
+
 class TimeDecayFidelityModel:
     """
     ✅ Fidelity decays exponentially with time (already capacity-agnostic).

@@ -110,6 +110,82 @@ class Paper2TopologyGenerator(TopologyGenerator):
         }
 
 
+class Paper8RandomConnectedTopologyGenerator(TopologyGenerator):
+    """
+    Paper 8 (Adaptive entanglement routing with DQN) topology generator.
+
+    Generates a connected Erdos-Renyi-style graph and assigns the paper's
+    per-edge/per-node attributes used by the reward model:
+      - edge: fidelity, rate, pur_round
+      - node: swap_success
+    """
+
+    def __init__(
+        self,
+        *,
+        num_nodes: int = 15,
+        edge_probability: float = 0.25,
+        fidelity_range: tuple[float, float] = (0.6, 0.99),
+        rate_range: tuple[float, float] = (0.7, 1.0),
+        pur_round_range: tuple[int, int] = (0, 3),
+        swap_success_range: tuple[float, float] = (0.8, 1.0),
+        seed: int = 42,
+        testbed: str = "paper8",
+        max_tries: int = 200,
+    ):
+        self.num_nodes = int(num_nodes)
+        self.edge_probability = float(edge_probability)
+        self.fidelity_range = fidelity_range
+        self.rate_range = rate_range
+        self.pur_round_range = pur_round_range
+        self.swap_success_range = swap_success_range
+        self.seed = int(seed)
+        self.testbed = str(testbed)
+        self.max_tries = int(max_tries)
+
+    def _generate_connected_erdos_renyi(self) -> nx.Graph:
+        rng = np.random.default_rng(self.seed)
+
+        # Try repeated ER graphs first (fast + standard).
+        for _ in range(max(self.max_tries, 1)):
+            G = nx.erdos_renyi_graph(self.num_nodes, self.edge_probability, seed=int(rng.integers(0, 2**31 - 1)))
+            if self.num_nodes <= 1 or nx.is_connected(G):
+                return G
+
+        # Fallback: spanning tree + random extra edges (guarantees connectedness).
+        G = nx.random_tree(self.num_nodes, seed=int(rng.integers(0, 2**31 - 1)))
+        nodes = list(G.nodes())
+        for i in range(len(nodes)):
+            for j in range(i + 1, len(nodes)):
+                if G.has_edge(i, j):
+                    continue
+                if rng.random() < self.edge_probability:
+                    G.add_edge(i, j)
+        return G
+
+    def generate(self) -> nx.Graph:
+        rng = np.random.default_rng(self.seed)
+        G = self._generate_connected_erdos_renyi()
+
+        # Assign Paper 8 attributes (plus a simple distance attribute for path enumeration).
+        for u, v in G.edges():
+            G[u][v]["distance"] = 1.0
+            G[u][v]["fidelity"] = float(rng.uniform(self.fidelity_range[0], self.fidelity_range[1]))
+            G[u][v]["rate"] = float(rng.uniform(self.rate_range[0], self.rate_range[1]))
+            # Note: randint high is exclusive (matches the paper repo code).
+            G[u][v]["pur_round"] = int(rng.integers(self.pur_round_range[0], self.pur_round_range[1]))
+
+        for node in G.nodes():
+            G.nodes[node]["swap_success"] = float(rng.uniform(self.swap_success_range[0], self.swap_success_range[1]))
+
+        G.graph["testbed"] = self.testbed
+        G.graph["num_nodes"] = self.num_nodes
+        G.graph["edge_probability"] = self.edge_probability
+        G.graph["seed"] = self.seed
+
+        return G
+
+
 
 
 # class Paper2TopologyGenerator(TopologyGenerator):

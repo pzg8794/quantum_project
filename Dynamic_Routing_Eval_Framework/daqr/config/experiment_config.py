@@ -977,6 +977,7 @@ class ExperimentConfiguration:
                 'frame_length': int(frames_no),
                 'seed': int(seed),
                 'allocator': self.allocator,
+                'test_bed': self.testbed_id,
                 'env_type': env_type,
                 'actk_type': attack_type,
                 # ✅ NEW: Quantum physics objects

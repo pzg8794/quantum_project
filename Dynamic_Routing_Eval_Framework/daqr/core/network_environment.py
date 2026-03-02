@@ -66,6 +66,7 @@ class QuantumEnvironment:
 
         # 🆕 NEW: Store metadata for logging/traceability
         self.metadata = metadata or {}
+        self.test_bed = test_bed
 
         # Store quantum objects
         self.noise_model = noise_model
@@ -115,7 +116,26 @@ class QuantumEnvironment:
         self.frame_length = int(frame_length)
         self.rng = np.random.default_rng(seed)
         self.num_paths = len(self.qubit_capacities)
-        
+
+        # Paper8: ensure we have a stable set of paths ("arms") attached to this environment.
+        if self.test_bed and str(self.test_bed).lower() == "paper8":
+            paths = self.metadata.get("paper8_paths")
+            if not isinstance(paths, list) or len(paths) == 0:
+                raise ValueError("Paper8 requires metadata['paper8_paths'] to be provided.")
+            if len(paths) != self.num_paths:
+                # Keep behavior deterministic: truncate or pad by duplicating the first path.
+                base = [int(x) for x in paths[0]]
+                if len(paths) > self.num_paths:
+                    paths = paths[: self.num_paths]
+                else:
+                    while len(paths) < self.num_paths:
+                        paths.append(base)
+                self.metadata["paper8_paths"] = paths
+
+            # If contexts were not supplied externally, replace dummy contexts with Paper8 path features now.
+            if external_contexts is None:
+                self.contexts = self._generate_contexts()
+
         # Update contexts if allocator changed the number of paths
         if external_contexts is None and len(self.contexts) != self.num_paths:
             self.contexts = [[np.array([1.0])] for _ in range(self.num_paths)]
@@ -129,7 +149,6 @@ class QuantumEnvironment:
         else: self.reward_list = self._calculate_path_rewards() # Path 3: Default physics-based
         
         self.state = state
-        self.test_bed = test_bed
         self.update_capacity()
 
     def update_capacity(self):
@@ -224,6 +243,9 @@ class QuantumEnvironment:
 
     def _generate_contexts(self):
         """Generate contexts (qubit allocations) for each path."""
+        if getattr(self, "test_bed", None) and str(self.test_bed).lower() == "paper8":
+            return self._generate_paper8_contexts()
+
         ctxs = []
         qubit_capacities = self._normalize_qubit_capacities(self.qubit_capacities)
         for path_idx, capacity in enumerate(qubit_capacities):
@@ -248,12 +270,71 @@ class QuantumEnvironment:
                 ctxs.append(np.array([]))
         return ctxs
 
+    def _generate_paper8_contexts(self):
+        """
+        Paper8 contexts are per-path feature vectors (one per path), not combinatorial
+        capacity splits. This keeps plug-in compatibility with our existing models.
+        """
+        if self.topology is None:
+            raise ValueError("Paper8 contexts require external_topology.")
+
+        paths = self.metadata.get("paper8_paths") or []
+        features = self.metadata.get("paper8_path_features") or []
+
+        qubit_capacities = self._normalize_qubit_capacities(self.qubit_capacities)
+        ctxs: list[list[np.ndarray]] = []
+
+        for idx, cap in enumerate(qubit_capacities):
+            capacity = int(cap)
+            path = paths[idx] if idx < len(paths) else None
+
+            if isinstance(features, list) and idx < len(features) and isinstance(features[idx], dict):
+                f = features[idx]
+            else:
+                f = {}
+                if path and len(path) >= 2:
+                    edges = list(zip(path[:-1], path[1:]))
+                    fidelities = [float((self.topology.get_edge_data(u, v) or {}).get("fidelity", 0.5)) for u, v in edges]
+                    rates = [float((self.topology.get_edge_data(u, v) or {}).get("rate", 0.0)) for u, v in edges]
+                    pur_rounds = [float((self.topology.get_edge_data(u, v) or {}).get("pur_round", 0)) for u, v in edges]
+                    swap_probs = [float(self.topology.nodes[n].get("swap_success", 1.0)) for n in path[1:-1]]
+                    f = {
+                        "hops": float(len(path) - 1),
+                        "min_fidelity": float(min(fidelities) if fidelities else 0.0),
+                        "mean_fidelity": float(np.mean(fidelities) if fidelities else 0.0),
+                        "min_rate": float(min(rates) if rates else 0.0),
+                        "mean_rate": float(np.mean(rates) if rates else 0.0),
+                        "min_pur_round": float(min(pur_rounds) if pur_rounds else 0.0),
+                        "swap_success_prod": float(np.prod(swap_probs) if swap_probs else 1.0),
+                    }
+
+            # Context vector: [capacity, hops, min_fid, mean_fid, min_rate, mean_rate, min_pur_round, swap_prod]
+            ctx = np.array(
+                [
+                    float(capacity),
+                    float(f.get("hops", 0.0)),
+                    float(f.get("min_fidelity", 0.0)),
+                    float(f.get("mean_fidelity", 0.0)),
+                    float(f.get("min_rate", 0.0)),
+                    float(f.get("mean_rate", 0.0)),
+                    float(f.get("min_pur_round", 0.0)),
+                    float(f.get("swap_success_prod", 1.0)),
+                ],
+                dtype=float,
+            )
+            ctxs.append([ctx])
+
+        return ctxs
+
     def _calculate_path_rewards(self):
         """
         *** CORRECTED REWARD LOGIC ***
         Uses the new 'entanglement_success_factor' constant instead of 'self.frame_length'.
         This ensures base rewards are consistent across all experiments.
         """
+        if getattr(self, "test_bed", None) and str(self.test_bed).lower() == "paper8":
+            return self._calculate_paper8_path_rewards()
+
         try:
             # The 'A' factor is now a fixed hyperparameter of the environment, not the experiment length.
             A = self.entanglement_success_factor
@@ -281,6 +362,49 @@ class QuantumEnvironment:
             return [r1, r2, r3, r4]
         except Exception as e: print(f"\t Error Calculating Path Rewards for {self}\n\t\t{e}")
         return []
+
+    def _calculate_paper8_path_rewards(self):
+        """
+        Paper8 rewards are computed from the external topology + fixed candidate paths,
+        and depend on the current per-path qubit capacities (allocator choice matters).
+
+        Returns reward_list as list-of-lists (one action per path) to remain compatible
+        with Oracle + existing model interfaces: [[r0], [r1], ...].
+        """
+        if self.topology is None:
+            raise ValueError("Paper8 rewards require external_topology.")
+        paths = self.metadata.get("paper8_paths") or []
+        if not isinstance(paths, list) or len(paths) == 0:
+            raise ValueError("Paper8 rewards require metadata['paper8_paths'].")
+
+        from daqr.core.quantum_physics import Paper8RewardFunction
+
+        mode = int(self.metadata.get("paper8_mode", 3))
+        reward_func = Paper8RewardFunction(mode=mode)
+
+        rewards: list[list[float]] = []
+        qubit_capacities = self._normalize_qubit_capacities(self.qubit_capacities)
+
+        for idx, cap in enumerate(qubit_capacities):
+            capacity = int(cap)
+            path = paths[idx] if idx < len(paths) else paths[0]
+
+            n_edges = max(len(path) - 1, 1)
+            per_link_budget = max(1, capacity // n_edges)
+            pur_budget = int(np.floor(np.log2(per_link_budget))) if per_link_budget > 0 else 0
+
+            # Cap purification by the minimum allowed rounds on this path's edges
+            edge_pur_max = []
+            for u, v in zip(path[:-1], path[1:]):
+                edge = self.topology.get_edge_data(u, v) or {}
+                edge_pur_max.append(int(edge.get("pur_round", 0)))
+            pur_rounds = min([pur_budget] + edge_pur_max) if edge_pur_max else pur_budget
+            pur_rounds = max(int(pur_rounds), 0)
+
+            reward, _, _ = reward_func.compute(self.topology, path, pur_rounds_per_edge=pur_rounds)
+            rewards.append([float(reward)])
+
+        return rewards
 
     def _calculate_path_rewards_from_physics(self):
         """

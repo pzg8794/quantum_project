@@ -156,21 +156,29 @@ class Paper8RandomConnectedTopologyGenerator(TopologyGenerator):
     def generate(self) -> nx.Graph:
         rng = np.random.default_rng(self.seed)
 
-        G = None
-        for _ in range(max(1, self.max_tries)):
-            candidate = nx.erdos_renyi_graph(
-                self.num_nodes,
-                self.connection_prob,
-                seed=int(rng.integers(0, 2**31 - 1)),
-            )
-            if candidate.number_of_edges() > 0 and nx.is_connected(candidate):
-                G = candidate
-                break
-        if G is None:
-            raise RuntimeError(
-                f"Could not generate a connected ER graph after {self.max_tries} tries "
-                f"(n={self.num_nodes}, p={self.connection_prob})."
-            )
+        # Paper8 upstream code uses a "connected ER-like" generator that guarantees
+        # connectivity by adding one mandatory edge per node, then adding additional
+        # edges with probability p. This avoids rejection-sampling failures for
+        # very small p (e.g., p=0.001).
+        G = nx.Graph()
+        G.add_nodes_from(range(self.num_nodes))
+        p = self.connection_prob
+        if p <= 0.0:
+            # Match upstream semantics: return an empty graph (disconnected).
+            # (Paper8 configs use p>0.)
+            return G
+        if p >= 1.0:
+            G = nx.complete_graph(self.num_nodes, create_using=G)
+        else:
+            for i in range(self.num_nodes - 1):
+                node_edges = [(i, j) for j in range(i + 1, self.num_nodes)]
+                # Mandatory edge ensures at least one "forward" connection for i
+                u, v = node_edges[int(rng.integers(0, len(node_edges)))]
+                G.add_edge(u, v)
+                # Additional edges with probability p
+                for u, v in node_edges:
+                    if float(rng.random()) < p:
+                        G.add_edge(u, v)
 
         # Assign per-edge channel attributes expected by Paper 8 code.
         for u, v in G.edges():

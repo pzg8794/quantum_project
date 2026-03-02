@@ -45,3 +45,9 @@ This log records **surgical notebook changes** (issues encountered, what was cha
 - **Goal:** run Paper 8 testbed under our standard run configuration (base `4000` frames, `2000` step, runs `3` and `5`) using the same `AllocatorRunner + get_physics_params(...)` flow as the other testbeds.
 - **Design constraint:** Paper 8 components come from core modules (`Paper8RandomConnectedTopologyGenerator`, `Paper8NoiseModel`, `Paper8FidelityCalculator`); notebook wiring only (no framework code changes).
 - **Default safety:** `SMOKE_TEST=True` (runs `[3]`, scales `[1]`) to avoid accidental long runs; set `SMOKE_TEST=False` for the full standardized sweep.
+
+### Paper 8 — Paper-config-first notebook created (run this before standardized sweep)
+- **New file:** `H-MABs_Eval-Testbed-Paper8-PaperRunConfig.ipynb`
+- **Goal:** run Paper 8 testbed using the paper’s own topology/physics settings first, then run the standardized sweep later.
+- **Upstream defaults captured in config cell:** `num_nodes=20`, `connection_prob=0.001`, `fidelity_range=(0.65,0.99)`, `rate_range=(0.75,1.0)`, `pur_round_range=(0,3)`, `swap_success_range=(0.23,0.8)`, `base_seed=10`.
+- **Framework run settings (minimal first pass):** `BASE_FRAMES=1000`, `FRAME_STEP=1000`, `RUNS=[1]`, `SCALES=[1]`, `ALLOCATORS=['Default']`.

@@ -37,3 +37,11 @@ This log records **surgical notebook changes** (issues encountered, what was cha
   - `frame_step = FRAMEWORK_CONFIG['frame_step']`
   - `current_experiments = FRAMEWORK_CONFIG['exp_num']`
   - `RUNS = [3, 5]`
+
+## 2026-03-02
+
+### Paper 8 — Standardized run configuration notebook created
+- **New file:** `H-MABs_Eval-Testbed-Paper8-StandardizedRunConfig.ipynb`
+- **Goal:** run Paper 8 testbed under our standard run configuration (base `4000` frames, `2000` step, runs `3` and `5`) using the same `AllocatorRunner + get_physics_params(...)` flow as the other testbeds.
+- **Design constraint:** Paper 8 components come from core modules (`Paper8RandomConnectedTopologyGenerator`, `Paper8NoiseModel`, `Paper8FidelityCalculator`); notebook wiring only (no framework code changes).
+- **Default safety:** `SMOKE_TEST=True` (runs `[3]`, scales `[1]`) to avoid accidental long runs; set `SMOKE_TEST=False` for the full standardized sweep.

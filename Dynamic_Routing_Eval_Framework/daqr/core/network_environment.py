@@ -164,8 +164,9 @@ class QuantumEnvironment:
         if self.test_bed is None:
             return
         
-        # Paper2 (Huang et al.) testbed
-        if self.test_bed.lower() == 'paper2':
+        # Paper2_extended: state-based capacities (BUSY/IDLE)
+        # Note: Paper2 (default) uses 8-path symmetric allocation and should NOT be overridden here.
+        if self.test_bed.lower() == 'paper2_extended':
             capacity_map = {
                 'busy': (8, 10, 8, 9),
                 'idle': (9, 11, 11, 12)

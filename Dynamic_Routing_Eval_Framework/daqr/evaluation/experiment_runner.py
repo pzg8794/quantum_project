@@ -500,7 +500,7 @@ class QuantumExperimentRunner:
                         pass
                         # del model
                         # gc.collect()
-                self.configs.use_last_backup = False    
+                # Do not disable resume globally; config is shared across the pipeline.
             except Exception as e:
                 print(f"\t❌ Failed to create {alg_name}: {e}")
                 results = {'final_reward': 0.0, 'error': str(e), 'retries': 0}
@@ -751,7 +751,7 @@ class QuantumExperimentRunner:
 
                 if failed_attempts['under_threshold'] >= 3 or (hasattr(temp_model, 'resumed') and temp_model.resumed): break
                 # if failed_attempts['under_threshold'] >= 3 or temp_model.state == 1:break
-            self.configs.use_last_backup = False
+            # Do not disable resume globally; config is shared across the pipeline.
 
         # 🔐 Save best model after loop (not last model)
         if model is not None:

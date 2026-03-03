@@ -1243,10 +1243,25 @@ class ExperimentConfiguration:
                 if not do_overwrite:
                     if self.verbose:
                         print(f"\t⊘ {obj} Skipping save (existing file is larger)")
+                    # Ensure in-memory registry still points at the most current location so
+                    # same-process resume can "see" this file without a full rescan.
+                    try:
+                        self.backup_mgr.backup_registry.setdefault(comp, {})[file_name] = str(save_path)
+                        if hasattr(self.backup_mgr, "new_entries"):
+                            self.backup_mgr.new_entries.setdefault(comp, {})[file_name] = str(save_path)
+                    except Exception:
+                        pass
                     return str(save_path)  # Return existing path, don't write
                 
                 # Only write if do_overwrite is True
                 with open(save_path, "wb") as f: f.write(new_bytes)
+                # Update in-memory registry immediately (critical for resume within the same run).
+                try:
+                    self.backup_mgr.backup_registry.setdefault(comp, {})[file_name] = str(save_path)
+                    if hasattr(self.backup_mgr, "new_entries"):
+                        self.backup_mgr.new_entries.setdefault(comp, {})[file_name] = str(save_path)
+                except Exception:
+                    pass
                 if self.verbose:
                     print(f"\t✓ {obj} State overwritten")
                     print(f"\t  → {save_path}")
@@ -1255,6 +1270,13 @@ class ExperimentConfiguration:
                 new_bytes = pickle.dumps(save_dict)
                 with open(save_path, "wb") as f:
                     f.write(new_bytes)
+                # Update in-memory registry immediately (critical for resume within the same run).
+                try:
+                    self.backup_mgr.backup_registry.setdefault(comp, {})[file_name] = str(save_path)
+                    if hasattr(self.backup_mgr, "new_entries"):
+                        self.backup_mgr.new_entries.setdefault(comp, {})[file_name] = str(save_path)
+                except Exception:
+                    pass
                 if self.verbose:
                     print(f"\t✓ {obj} New state saved")
                     print(f"\t  → {save_path}")

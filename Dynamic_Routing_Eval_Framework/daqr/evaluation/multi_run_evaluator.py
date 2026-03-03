@@ -6,7 +6,12 @@ import pathlib
 from pathlib import Path
 import pickle
 import threading
-import numpy as np, copy
+import copy
+# Keep optional heavy deps lazy-importable so resume logic can be unit-tested without numpy installed.
+try:
+    import numpy as np
+except Exception:
+    np = None
 import time, gc, re, json
 
 
@@ -112,8 +117,11 @@ class MultiRunEvaluator:
         except Exception as e:  print(f"⚠️ {self} Resume failed: {e}")
 
         if not self.resumed:
-            self.configs.use_last_backup = False
-            print("No state found for MultiRunEvaluator, disabling resume for Experiment Runners")
+            # IMPORTANT: do NOT disable resume globally. This config object is shared across the pipeline
+            # (AllocatorRunner → Evaluator → Runners). Even if no evaluator state exists yet, runner/model
+            # states may still be resumable, and later scales/horizons in the same process must still be
+            # able to discover freshly-saved states.
+            print("No state found for MultiRunEvaluator (continuing; resume remains enabled)")
 
         print("Multi-Run Evaluator Initialized")
         print(f"Environment Type: {attack_type}")
@@ -467,7 +475,6 @@ class MultiRunEvaluator:
                 print(f"❌ Multi-run resume failed: {e}")
         
         self.resumed = False
-        self.configs.use_last_backup = False    
         print("[Resume-Supersets] ❌ No valid supersets found for resume")
         return False
 
@@ -510,7 +517,6 @@ class MultiRunEvaluator:
                 print("[Resume] exact failed → Looking for supersets")
                 sub_registry = self._get_superset_subregistry()
                 return self._resume_from_supersets(sub_registry)
-        self.configs.use_last_backup = False
         self.resumed = False
         return self.resumed
 
@@ -1308,7 +1314,8 @@ class MultiRunEvaluator:
             raise
 
         finally:
-            self.configs.use_last_backup = runner.resumed
+            # Never toggle global resume based on whether THIS runner resumed.
+            # That can disable resume for subsequent experiments/scales within the same process.
             del runner
             if gc: gc.collect()
             self.save()

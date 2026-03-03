@@ -494,7 +494,9 @@ class AllocatorRunner:
                 )
 
                 # Run experiments for all scales and runs
-                for exp_num in self.runs:
+                # Run larger horizons first so smaller horizons can resume as a strict subset
+                # (avoids redundant work and aligns with the "resume from supersets" design).
+                for exp_num in sorted(set(self.runs), reverse=True):
                     for scale in self.scales:
                         success = self.run_single_evaluator(
                             physics_model=physics_model,

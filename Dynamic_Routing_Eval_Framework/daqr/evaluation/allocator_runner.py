@@ -2,25 +2,18 @@ import os
 import sys
 import gc
 import subprocess
-import torch
 import warnings
-import networkx as nx
-import numpy as np
-import itertools
 import traceback
 import time
 
 from pathlib import Path
-from daqr.evaluation.multi_run_evaluator import MultiRunEvaluator
-from daqr.config.experiment_config import ExperimentConfiguration
-from daqr.core.qubit_allocator import (
-    QubitAllocator, 
-    RandomQubitAllocator, 
-    DynamicQubitAllocator, 
-    ThompsonSamplingAllocator
-)
 
 warnings.filterwarnings('ignore')
+
+try:
+    import torch
+except Exception:
+    torch = None
 
 
 class AllocatorRunner:
@@ -236,6 +229,14 @@ class AllocatorRunner:
         
         Now extracts and validates ALL required parameters including testbed.
         """
+        # Lazy import keeps this module importable in lightweight test environments.
+        from daqr.core.qubit_allocator import (
+            QubitAllocator,
+            RandomQubitAllocator,
+            DynamicQubitAllocator,
+            ThompsonSamplingAllocator,
+        )
+
         # Get config for this physics model
         config = self.framework_config.get(physics_model, self.framework_config.get('default', {}))
         if self.custom_config is not None: self.custom_config.testbed_config = config
@@ -348,13 +349,11 @@ class AllocatorRunner:
 
         if self.evaluator is not None:
             try:
-                if hasattr(self.evaluator, 'configs') and hasattr(self.evaluator.configs, 'backup_mgr'):
+                if hasattr(self.evaluator, "configs") and hasattr(self.evaluator.configs, "backup_mgr"):
                     backup_mgr = self.evaluator.configs.backup_mgr
-                    if hasattr(backup_mgr, 'stop_logging_redirect'):
+                    if hasattr(backup_mgr, "stop_logging_redirect"):
                         backup_mgr.stop_logging_redirect()
-                    if hasattr(backup_mgr, 'backup_registry'):
-                        backup_mgr.backup_registry.clear()
-                cleanup_log.append("✅ Backup manager cleaned")
+                cleanup_log.append("✅ Backup manager detached")
             except Exception as e:
                 cleanup_log.append(f"⚠️ Backup cleanup: {e}")
 
@@ -366,23 +365,23 @@ class AllocatorRunner:
                         del env.topology
                     if hasattr(env, 'paths'):
                         env.paths = []
+                    # Detach environment from the (shared) config to avoid memory growth across runs.
+                    self.evaluator.configs.environment = None
                 cleanup_log.append("✅ Environment cleared")
             except Exception as e:
                 cleanup_log.append(f"⚠️ Environment cleanup: {e}")
 
             try:
-                if hasattr(self.evaluator, 'configs'):
-                    if hasattr(self.evaluator.configs, 'backup_mgr'):
-                        self.evaluator.configs.backup_mgr = None
-                    if hasattr(self.evaluator.configs, 'environment'):
-                        self.evaluator.configs.environment = None
+                # IMPORTANT: do NOT mutate the shared ExperimentConfiguration object (self.custom_config)
+                # by clearing its backup manager. Only detach it from the evaluator instance.
+                if hasattr(self.evaluator, "configs"):
                     self.evaluator.configs = None
-                cleanup_log.append("✅ Circular refs broken")
+                cleanup_log.append("✅ Evaluator detached from config")
             except Exception as e:
                 cleanup_log.append(f"⚠️ Reference cleanup: {e}")
 
         try:
-            if torch.cuda.is_available():
+            if torch is not None and torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
             cleanup_log.append("✅ Torch CUDA cleared")
@@ -393,7 +392,7 @@ class AllocatorRunner:
         cleanup_log.append(f"✅ GC: {sum(collected)} objects")
 
         self.evaluator = None
-        self.custom_config = None
+        # Keep self.custom_config across runs; AllocatorRunner reuses it to set per-run settings.
 
         if verbose:
             print("\n" + "="*70)
@@ -408,6 +407,9 @@ class AllocatorRunner:
     def run_single_evaluator(self, physics_model, scale, experiment_num, physics_params, current_frames, frame_step):
         """Run single experiment with full cleanup."""
         try:
+            # Lazy import keeps AllocatorRunner importable in lightweight test environments.
+            from daqr.evaluation.multi_run_evaluator import MultiRunEvaluator
+
             self.run_count += 1
             print(f"\n{'='*70}")
             print(f"RUN {self.run_count} | Scale: {scale} | Exp: {experiment_num}")

@@ -47,6 +47,9 @@
 - [PAPER12_PARAMETERS_VALIDATION.md](paper12/PAPER12_PARAMETERS_VALIDATION.md) - Parameter validation
 - [PAPER12_UPDATES_CHECKLIST.md](paper12/PAPER12_UPDATES_CHECKLIST.md) - Updates checklist
 
+### Paper 8 (RL/Q-learning testbed)
+- Paper-config notebook: `Dynamic_Routing_Eval_Framework/notebooks/H-MABs_Eval-Testbed-Paper8-PaperRunConfig.ipynb`
+
 ---
 
 ## 🔧 Setup & Installation

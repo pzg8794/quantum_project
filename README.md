@@ -21,7 +21,7 @@ A **multi-testbed** research framework for evaluating quantum routing algorithms
 ## 🎯 What This Framework Does
 
 ✅ **Compare** neural bandit algorithms for quantum entanglement routing  
-✅ **Test** across **multiple quantum network testbeds** (Paper2, Paper12, Paper5, Paper7)  
+✅ **Test** across **multiple quantum network testbeds** (Paper2, Paper7, Paper8, Paper12)  
 ✅ **Stress-test** under different attack models (Stochastic, Markov, Adaptive, OnlineAdaptive)  
 ✅ **Run** from Colab (no install), local machine (dev), or GCP VMs (large-scale)  
 ✅ **Collaborate** via unified shared drive — no manual file copying  
@@ -140,6 +140,7 @@ bash scripts/dynamic_exp_runner.sh \
 |---------|--------|-----------|------|----------|
 | **Paper 2** | ✅ Production | [Paper2_Quick_Reference.md](docs/testbeds/Paper2_Quick_Reference.md) | Stochastic MAB | MATLAB |
 | **Paper 7** | ✅ Integrated | [Paper7_Quick_Reference.md](docs/testbeds/Paper7_Quick_Reference.md) | Online BGP | Python |
+| **Paper 8** | 🟡 Integrated (paper-config run); standardized pending | (paper-config notebook) `Dynamic_Routing_Eval_Framework/notebooks/H-MABs_Eval-Testbed-Paper8-PaperRunConfig.ipynb` | RL/Q-learning testbed | Python |
 | **Paper 12** | ✅ Integrated | [Paper12_Quick_Reference.md](docs/testbeds/Paper12_Quick_Reference.md) | Qubit Allocation | Python |
 
 **Central Hub**: [`docs/TESTBEDS_OVERVIEW.md`](docs/TESTBEDS_OVERVIEW.md) — Quick summary table, comparison matrix, and navigation to all paper-specific docs.
@@ -202,6 +203,12 @@ quantum_data_lake/
 - **notebooks/**: Production Colab notebooks
 - **sandbox_notebooks/**: Development and testing notebooks
 - **Dynamic_Routing_Eval_Framework/notebooks/**: Advanced evaluation notebooks
+
+### Plotting (AllocatorRunner)
+By default, `AllocatorRunner` generates comparison plots after each run (same behavior as the older pipeline notebooks).
+
+- Disable plots in code: set `framework_config["enable_plots"] = False`
+- Disable plots via env var: `export DAQR_ENABLE_PLOTS=0`
 
 ---
 

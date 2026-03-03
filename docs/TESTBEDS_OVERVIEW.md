@@ -1,19 +1,20 @@
 # Quantum Network Testbeds - Overview
 
 **Framework**: H-MABs Evaluation Framework  
-**Last Updated**: January 30, 2026
+**Last Updated**: March 3, 2026
 
 ---
 
 ## Quick Summary
 
-This framework integrates three quantum network routing research papers into a unified multi-testbed evaluation platform:
+This framework integrates multiple quantum network routing research papers into a unified multi-testbed evaluation platform:
 
 | Paper | Focus | Type | Status |
 |-------|-------|------|--------|
 | **Paper 2** (Chaudhary et al. 2023) | MAB-based quantum routing with entanglement swapping | MATLAB | ✅ Production |
 | **Paper 7** (Liu et al. 2024) | QBGP - Quantum BGP with online path selection | Python | ✅ Integrated |
 | **Paper 12** (Wang et al. 2024) | QuARC - Qubit allocation with fusion gates | Python | ✅ Integrated |
+| **Paper 8** | RL/Q-learning entanglement routing testbed | Python | 🟡 Integrated (paper-config run); standardized pending |
 
 ---
 
@@ -52,6 +53,12 @@ This framework integrates three quantum network routing research papers into a u
 - **Implementation**: Python
 - **Key Parameters**: fusion=0.9, entanglement=0.6 (54% baseline success)
 - **Unit Tests**: 6 tests, all passing
+
+### Paper 8 (RL/Q-learning testbed)
+**Focus**: RL/Q-learning-based entanglement routing testbed (integrated into the same scenario/allocator evaluation flow)
+
+- **Notebook (paper-config-first)**: `Dynamic_Routing_Eval_Framework/notebooks/H-MABs_Eval-Testbed-Paper8-PaperRunConfig.ipynb`
+- **Status**: 🟡 Integrated (paper-config run complete); standardized run pending
 
 ---
 
@@ -155,6 +162,7 @@ docs/
 ### 🔄 In Progress
 - Cross-testbed comparison analysis
 - Unified results reporting
+- Paper 8: Standardized run (post paper-config)
 
 ### 📋 Planned
 - Paper 5 integration

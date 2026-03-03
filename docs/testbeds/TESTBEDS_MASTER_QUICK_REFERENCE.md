@@ -1,18 +1,19 @@
 # Quantum Testbeds - Master Quick Reference
 
 **Framework**: H-MABs Evaluation Framework (Multi-Armed Bandits for Quantum Networks)  
-**Last Updated**: January 30, 2026  
-**Status**: ✅ All three testbeds integrated and organized
+**Last Updated**: March 3, 2026  
+**Status**: ✅ Core testbeds integrated; Paper 8 added (standardized run pending)
 
 ---
 
 ## Overview
 
-This project integrates three distinct quantum routing research papers into a unified evaluation framework:
+This project integrates multiple distinct quantum routing research papers into a unified evaluation framework:
 
 1. **Paper 2** (Chaudhary et al. 2023): MAB-based quantum network routing with entanglement swapping
 2. **Paper 7** (Liu et al. 2024): QBGP - Quantum BGP with online path selection
 3. **Paper 12** (Wang et al. 2024): QuARC - Qubit allocation with fusion gates
+4. **Paper 8**: RL/Q-learning entanglement routing testbed (paper-config notebook integrated; standardized pending)
 
 ---
 
@@ -25,6 +26,7 @@ This project integrates three distinct quantum routing research papers into a un
 | **Paper 2** | [Paper2_Quick_Reference.md](Paper2_Quick_Reference.md) | `docs/testbeds/` | ✅ Integrated |
 | **Paper 7** | [Paper7_Quick_Reference.md](Paper7_Quick_Reference.md) | `docs/testbeds/` | ✅ Integrated |
 | **Paper 12** | [Paper12_Quick_Reference.md](Paper12_Quick_Reference.md) | `docs/testbeds/` | ✅ Integrated |
+| **Paper 8** | (paper-config notebook) `Dynamic_Routing_Eval_Framework/notebooks/H-MABs_Eval-Testbed-Paper8-PaperRunConfig.ipynb` | `Dynamic_Routing_Eval_Framework/notebooks/` | 🟡 Integrated; standardized pending |
 
 ---
 

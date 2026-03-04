@@ -882,27 +882,28 @@ class QuantumExperimentRunner:
 
         for alg_name in models:
             if alg_name == base_model: continue
-            overwrite = self.configs.overwrite
-            already_ok = (
-                (not overwrite)
-                and alg_name in self.results
-                and float(self.results[alg_name].get("final_reward", 0.0) or 0.0) > 0.0
-            )
-            if already_ok:
-                # Resume/skip cleanly: don't call run_single_model (which prints "Starting ...").
-                print(f"\t⏩ {alg_name} already processed — skipping")
-            else:
-                self.run_single_model(alg_name, base_model, is_parallel=False)
+            # Always invoke the module entrypoint; each model/runner is responsible for
+            # internally deciding whether it must compute or can resume/skip.
+            self.run_single_model(alg_name, base_model, is_parallel=False)
 
-            under_thr = self.results[alg_name]['failed_attempts']['under_threshold']
-            threshold = self.results[alg_name]['failed_attempts']['threshold']
-            failed = self.results[alg_name]['failed_attempts']['failed']
-            total = self.results[alg_name]['failed_attempts']['total']
-            final_reward = self.results[alg_name]['final_reward']
-            efficiency = self.results[alg_name]['efficiency']
+            fa = self.results.get(alg_name, {}).get("failed_attempts", {}) if isinstance(self.results, dict) else {}
+            under_thr = fa.get("under_threshold", 0)
+            threshold = fa.get("threshold", 0)
+            failed = fa.get("failed", 0)
+            total = fa.get("total", 0)
+            final_reward = self.results.get(alg_name, {}).get("final_reward", 0.0)
+            efficiency = self.results.get(alg_name, {}).get("efficiency", 0.0)
 
             # NEEDS TO GO TO A HELPER METHOD
             print(f"\tEXP {self.id} {alg_name.upper():<20}: Reward={final_reward:07.2f}, Efficiency={efficiency:05.1f}% [Retries={total}, Failed={failed}, < Threshold={under_thr}, SCapacity={scaled_capacity}, Threshold={threshold}]")
+
+        # Ensure winner is consistent even when resuming/skipping work.
+        try:
+            non_oracle = {k: v for k, v in (self.results or {}).items() if k != base_model and isinstance(v, dict)}
+            if non_oracle:
+                self.winner = max(non_oracle, key=lambda k: float(non_oracle[k].get("final_reward", 0.0) or 0.0))
+        except Exception:
+            pass
 
         # NEEDS TO GO TO A HELPER METHOD
         self.display_experiment_conditions()

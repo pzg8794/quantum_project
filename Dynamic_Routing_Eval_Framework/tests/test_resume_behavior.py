@@ -215,6 +215,86 @@ class TestMultiRunResumeBehavior(unittest.TestCase):
             for exp in kept.values():
                 self.assertEqual(set(exp["results"].keys()), {"Oracle"})
 
+    def test_resume_prefers_highest_horizon_even_if_smaller_pickle(self):
+        """
+        Contract test: if both a 3-run and 8-run evaluator state exist for the same key,
+        resume must attempt the highest horizon first (8 → 3), regardless of on-disk pickle size.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+
+            # Make the 3-run file artificially large so a size-based ordering would pick it first.
+            subset_state = _make_saved_state(runs_id=3)
+            subset_state["_padding"] = "x" * 200_000
+            subset_file = td_path / "evaluator_3.pkl"
+            with open(subset_file, "wb") as f:
+                pickle.dump(subset_state, f)
+
+            superset_state = _make_saved_state(runs_id=8)
+            superset_file = td_path / "evaluator_8.pkl"
+            with open(superset_file, "wb") as f:
+                pickle.dump(superset_state, f)
+
+            backup_registry = {
+                "framework_state": {
+                    subset_file.name: str(subset_file),
+                    superset_file.name: str(superset_file),
+                }
+            }
+            cfg = _DummyConfigs(backup_registry)
+            cfg.runs = 5
+            ev = _make_evaluator(runs_id=5, configs=cfg)
+            ev._target_runs = 5
+
+            # Provide both candidates.
+            ev._get_superset_subregistry = lambda: {3: subset_file.name, 8: superset_file.name}
+
+            ok = ev.resume()
+            self.assertTrue(ok)
+            self.assertTrue(ev.resumed)
+            self.assertIn("stochastic", ev.env_experiments)
+            # If we resumed from the 8-run superset, subset reconstruction keeps runs 1..5.
+            self.assertEqual(set(ev.env_experiments["stochastic"].keys()), {1, 2, 3, 4, 5})
+
+    def test_resume_falls_back_when_highest_incompatible(self):
+        """
+        Contract test: if the highest-horizon candidate is incompatible, resume should
+        fall back to the next candidate.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+
+            subset_state = _make_saved_state(runs_id=3, cap_id=8000)
+            subset_file = td_path / "evaluator_3.pkl"
+            with open(subset_file, "wb") as f:
+                pickle.dump(subset_state, f)
+
+            # Make the 8-run candidate incompatible (cap_id mismatch).
+            superset_state = _make_saved_state(runs_id=8, cap_id=9999)
+            superset_file = td_path / "evaluator_8.pkl"
+            with open(superset_file, "wb") as f:
+                pickle.dump(superset_state, f)
+
+            backup_registry = {
+                "framework_state": {
+                    subset_file.name: str(subset_file),
+                    superset_file.name: str(superset_file),
+                }
+            }
+            cfg = _DummyConfigs(backup_registry)
+            cfg.runs = 5
+            ev = _make_evaluator(runs_id=5, configs=cfg, cap_id=8000)
+            ev._target_runs = 5
+
+            ev._get_superset_subregistry = lambda: {3: subset_file.name, 8: superset_file.name}
+
+            ok = ev.resume()
+            self.assertTrue(ok)
+            self.assertTrue(ev.resumed)
+            self.assertIn("stochastic", ev.env_experiments)
+            # Should have resumed from the 3-run candidate (1..3 only).
+            self.assertEqual(set(ev.env_experiments["stochastic"].keys()), {1, 2, 3})
+
     def test_resume_from_subset_and_extend_runs(self):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)

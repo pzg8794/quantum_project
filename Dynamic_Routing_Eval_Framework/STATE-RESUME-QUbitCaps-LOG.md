@@ -112,3 +112,59 @@ Confirm we do **not** overwrite/normalize random allocations:
   - `.venv-audit` (created previously for audits / state inspection)
 - The retrofit script is intentionally conservative and primarily useful for reporting / confirming stability:
   - `Dynamic_Routing_Eval_Framework/tools/state/fix_key_attrs_qubit_caps.py` (wrapper also exists at `tools/fix_key_attrs_qubit_caps.py`)
+
+---
+
+## 8) Resume Behavior Contract (Evaluator Priority)
+
+This section captures the **expected evaluator resume behavior** (the “contract” we must not break).
+
+### MultiRunEvaluator (`runs = 5` example)
+
+**Target:** resume must minimize redundant compute while keeping the *current run’s settings* authoritative.
+
+1) **Exact match first:** attempt to resume the evaluator’s own state (e.g., `5` runs).
+2) **If exact not found:** attempt to resume from other evaluator states that match all key attrs (allocator/env/attack/capacity/frames/scale/testbed/etc.).
+3) **If multiple candidates exist:** try horizons from **highest runs → lowest runs** (e.g., try `8` before `3`).
+4) **If highest works:** load it, then *reconstruct* a subset for the target horizon by:
+   - keeping only experiments `1..5`,
+   - discarding extra experiments beyond target (`6..8`),
+   - and allowing the run loop to skip already-computed experiments.
+5) **If highest fails but a lower horizon works:** load it and keep `1..3`, then ensure the evaluator remembers it must still run missing experiments (`4..5`) during execution.
+
+**Non-negotiable invariant:** resume must never override the caller-intended settings (target runs/models/scale/allocator/testbed).
+
+### QuantumExperimentRunner (note; defer deeper auditing)
+
+Runner states are intended to represent one concrete experiment instance (frames/seed/env/attack/allocator/capacity), so resume must be conservative. We will treat deeper runner/model “cross-horizon” resume rules as **deferred work** unless they block evaluator correctness.
+
+---
+
+## 9) Plan + TODO (Resume Hardening)
+
+**Priority now:** evaluator resume behavior (MultiRunEvaluator).
+
+### TODO (Evaluator)
+- ✅ Add unit test: when both `3` and `8` run states exist, evaluator tries `8` first even if the `3`-run pickle is larger on disk.
+- ✅ Add unit test: if the highest horizon candidate is incompatible (equality fails), evaluator falls back to the next candidate (e.g., use `3`).
+- ✅ Confirm run loop skips completed experiments (`1..k`) and runs only missing experiments (`k+1..target`) (validated via stubbed `run_experiment` in tests).
+
+### TODO (Deferred)
+- Runner cross-horizon resume semantics (only resume from “higher”, never from “lower”).
+- Model cross-horizon resume semantics (e.g., 4k → 2k subset) and fairness rules.
+
+### Logging / Notes
+- Every change to resume selection/order must be recorded here (this file) and mirrored in the relevant tracker/notes docs.
+
+---
+
+## 10) Resume Contract Unit Tests (Evaluator)
+
+Implemented in `Dynamic_Routing_Eval_Framework/tests/test_resume_behavior.py`:
+
+- `test_resume_prefers_highest_horizon_even_if_smaller_pickle`
+  - Verifies `runs=5` will try `8` before `3` even if the `3`-run pickle is larger on disk.
+- `test_resume_falls_back_when_highest_incompatible`
+  - Verifies if `8` is incompatible, resume falls back to `3`.
+- `test_resume_from_subset_and_extend_runs`
+  - Verifies resuming from `3` and then executing `runs=5` only runs missing experiments (`4,5`).

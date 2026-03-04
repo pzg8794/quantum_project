@@ -436,29 +436,32 @@ class MultiRunEvaluator:
         """
         Try to reconstruct this evaluator from any larger-horizon saved evaluator.
         Returns True if successful, False otherwise.
-        
-        MODIFIED: Iterates horizons sorted by FILE SIZE (largest first) instead of run number.
+
+        Resume contract: try candidate horizons from highest run-count → lowest run-count
+        (e.g., 8 → 3). This ordering must be independent of on-disk pickle size.
         """
         target_runs = self.runs_id
         print(f"[Resume-Supersets] target_runs={target_runs}, backups={sub_registry.keys()}")
-        
-        # ✅ NEW: Build list of (horizon, file_size) and sort by size
-        horizon_sizes = []
-        for horizon, file_name in sub_registry.items():
-            try:
-                file_path = Path(self.configs.backup_mgr.backup_registry[self.component][file_name])
+
+        sorted_horizons = sorted([int(h) for h in sub_registry.keys()], reverse=True)
+        # Optional diagnostic: log candidate file sizes (not used for ordering).
+        try:
+            for horizon in sorted_horizons:
+                file_name = sub_registry.get(horizon)
+                if not file_name:
+                    continue
+                file_path_str = self.configs.backup_mgr.backup_registry.get(self.component, {}).get(file_name)
+                if not file_path_str:
+                    continue
+                file_path = Path(file_path_str)
                 if file_path.exists():
-                    file_size = file_path.stat().st_size
-                    horizon_sizes.append((horizon, file_size))
-                    print(f"[Resume-Supersets] horizon={horizon}, size={file_size:,} bytes")
-            except Exception as e:
-                print(f"[Resume-Supersets] Could not get size for horizon={horizon}: {e}")
-        
-        # Sort by file size (largest first) instead of horizon number
-        sorted_horizons = [h for h, s in sorted(horizon_sizes, key=lambda x: x[1], reverse=True)]
-        print(f"[Resume-Supersets] Trying horizons in size order (largest first): {sorted_horizons}")
-        
-        # Iterate horizons from largest file to smallest file
+                    print(f"[Resume-Supersets] horizon={horizon}, size={file_path.stat().st_size:,} bytes")
+        except Exception:
+            pass
+
+        print(f"[Resume-Supersets] Trying horizons (high→low): {sorted_horizons}")
+
+        # Iterate horizons from highest run-count to lowest run-count
         for horizon in sorted_horizons:
             try:
                 file_name = sub_registry[horizon]

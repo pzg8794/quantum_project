@@ -66,7 +66,54 @@ class TestRunnerResumeCompare(unittest.TestCase):
 
         self.assertTrue(runner == saved_state)
 
+    def test_runner_eq_allows_partial_saved_model_set(self):
+        """
+        Regression test: runner resume should allow loading a saved runner state that
+        contains a *subset* of the current model set, so the runner can execute only
+        the missing models instead of forcing a full rerun.
+        """
+        cfg = _DummyCfg()
+        cfg.models = ["Oracle", "ModelA", "ModelB"]
+
+        runner = QuantumExperimentRunner.__new__(QuantumExperimentRunner)
+        runner.configs = cfg
+        runner.id = 1
+        runner.allocator_id = "Default"
+        runner.env_id = "Stochastic"
+        runner.attack_id = "Random"
+        runner.cap_id = 8000
+        runner.key_attrs = {
+            "attack": "None",
+            "qubit_capacities": "(8, 10, 8, 9)",
+            "frame_length": "4000",
+            "allocator": "Default",
+            "env_type": "stochastic",
+            "entanglement_success_factor": "100",
+        }
+
+        saved_state = {
+            "id": 1,
+            "allocator_id": "Default",
+            "env_id": "Stochastic",
+            "attack_id": "Random",
+            "cap_id": 8000,
+            "key_attrs": {
+                "attack": "None",
+                "qubit_capacities": "(8, 10, 8, 9)",
+                "frame_length": "4000",
+                "allocator": "Default",
+                "env_type": "stochastic",
+                "entanglement_success_factor": "100",
+            },
+            # Only a subset of models were run in the saved state.
+            "results": {
+                "Oracle": {"final_reward": 1.0},
+                "ModelA": {"final_reward": 1.0},
+            },
+        }
+
+        self.assertTrue(runner == saved_state)
+
 
 if __name__ == "__main__":
     unittest.main()
-

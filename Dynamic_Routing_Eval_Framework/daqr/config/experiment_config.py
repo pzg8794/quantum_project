@@ -1452,7 +1452,9 @@ class ExperimentConfiguration:
                 print(f"\t❌ Update failed: {e}")
                 return False
         else:
-            print(f"\t❌ Corrupted—deleting")
+            # Equality mismatch does not necessarily mean the pickle is corrupted; it can
+            # simply be incompatible with the current expected key attributes.
+            print(f"\t❌ Incompatible state—skipping resume")
             # self.delete_file(state_path, obj)
             return False
 

@@ -2,6 +2,14 @@ import sys
 import unittest
 from pathlib import Path
 
+try:
+    import numpy  # noqa: F401
+except Exception:
+    numpy = None
+
+if numpy is None:
+    raise unittest.SkipTest("numpy not installed; skipping environment-context tests")
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -55,4 +63,3 @@ class TestEnvironmentContexts(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

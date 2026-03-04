@@ -1,5 +1,6 @@
+from __future__ import annotations
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from daqr.config.experiment_config import ExperimentConfiguration
 from daqr.evaluation.experiment_runner import QuantumExperimentRunner
 
 import pathlib
@@ -38,7 +39,14 @@ class MultiRunEvaluator:
             models: List of models/algorithms to evaluate
             scenarios: Dictionary of scenarios to test {scenario_key: description}
         """
-        self.configs = configs if configs else ExperimentConfiguration()
+        if configs is None:
+            # Lazy import so unit-tests can validate resume behavior without importing
+            # the full ExperimentConfiguration dependency tree (e.g., numpy).
+            from daqr.config.experiment_config import ExperimentConfiguration
+
+            self.configs = ExperimentConfiguration()
+        else:
+            self.configs = configs
         self._save_lock = threading.Lock()  
         self.scenarios_stats = {}
         self.env_experiments = {}
@@ -218,18 +226,23 @@ class MultiRunEvaluator:
 
             try:
                 # -------------------------------------------------
-                # TEMP SAFETY CHECK: ensure model sets are compatible
+                # Model-set compatibility check (supports partial resumes)
                 # -------------------------------------------------
                 saved_models            = self._infer_models_from_state(other)
                 if saved_models:
                     current_set         = set(self.models or [])
                     saved_set           = set(saved_models)
-                    # This prevents: using a 3-model run as if it were a 5-model run.
-                    if not current_set.issubset(saved_set):
-                        print("\n❌ MODEL SET MISMATCH — forcing rerun")
+                    # Allow resuming when saved is a subset or superset of current.
+                    # Reject only when the sets are incomparable (both have unique models),
+                    # which suggests a materially different experiment definition.
+                    if not (saved_set.issubset(current_set) or current_set.issubset(saved_set)):
+                        print("\n❌ MODEL SET MISMATCH — incompatible state (skipping resume)")
                         print(f"   Current models: {sorted(current_set)}")
                         print(f"   Saved models:   {sorted(saved_set)}")
                         return False
+                    if saved_set.issubset(current_set) and saved_set != current_set:
+                        missing = sorted(current_set - saved_set)
+                        print(f"ℹ️  Partial evaluator resume: will run missing models: {missing}")
                 else:   print("ℹ️ Could not infer models from saved state — skipping model check")
             except Exception as e: print(f"ERROR 1: {e}")
 
@@ -269,6 +282,8 @@ class MultiRunEvaluator:
 
                 _norm_default_str(other_attrs, "entanglement_success_factor", "100")
                 _norm_default_str(copied_attrs, "entanglement_success_factor", "100")
+                _norm_default_str(other_attrs, "test_bed", "None")
+                _norm_default_str(copied_attrs, "test_bed", "None")
             except Exception as e: print(f"ERROR 2: {e}")
 
             try:
@@ -277,7 +292,6 @@ class MultiRunEvaluator:
                     self.frame_step == other.get("frame_step") and 
                     self.base_frames == other.get("base_frames") and
                     self.allocator_id == other.get("allocator_id") and 
-                    str(self.runs_id) <= str(other.get("runs_id")) and
                     # self.attack_id == other.get("attack_id") and 
                     # self.env_id == other.get("env_id") and
                     self.cap_id == other.get("cap_id") and
@@ -510,7 +524,24 @@ class MultiRunEvaluator:
 
     def resume(self):
         if not self.resumed: 
-            if self.configs.resume_obj(self): 
+            # Preserve caller-intended settings; resumed state must never override the
+            # current evaluation target (runs/models/etc.). This object is used as a
+            # shared configuration anchor across the pipeline.
+            target_runs = int(getattr(self, "_target_runs", None) or getattr(self, "runs_id", 0) or getattr(self.configs, "runs", 0))
+            target_models = list(self.models) if self.models is not None else list(getattr(self.configs, "models", []))
+
+            if self.configs.resume_obj(self):
+                # Restore invariants after dict-based resume_obj updates __dict__.
+                try:
+                    self.runs_id = target_runs
+                    if hasattr(self.configs, "runs"):
+                        self.configs.runs = target_runs
+                except Exception:
+                    pass
+                try:
+                    self.models = list(target_models)
+                except Exception:
+                    pass
                 self.resumed = True
                 return self.resumed
             if self.configs.use_last_backup:
@@ -541,11 +572,11 @@ class MultiRunEvaluator:
 
             for i in range(0, self.configs.runs):
                 exp_id = i + 1
-                # if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
-                    # scaled_cap = self.capacity * self.configs.scale
-                    # print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
-                    # self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
-                    # continue
+                if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
+                    scaled_cap = self.capacity * self.configs.scale
+                    print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
+                    self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
+                    continue
                 self.run_experiment(exp_no=i, attack_category=attack_category)
 
             self.total_time = time.time() - self.start_time

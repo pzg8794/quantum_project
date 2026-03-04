@@ -1,14 +1,29 @@
+from __future__ import annotations
+
 from    concurrent.futures import ThreadPoolExecutor, as_completed
-from    daqr.config.experiment_config import ExperimentConfiguration
 import pathlib
 from    pathlib import Path
-from    tqdm    import tqdm
+try:
+    from tqdm import tqdm
+except Exception:
+    # Lightweight fallback for environments without tqdm (e.g., unit-test runs).
+    def tqdm(iterable, **_kwargs):  # type: ignore
+        return iterable
 import  re
 import  pickle
-import  torch
+try:
+    import torch
+except Exception:
+    torch = None
 import  gc, time
 import  threading, json  
-import  numpy as np, copy
+import  copy
+# Keep optional heavy deps lazy-importable so resume/compare logic can be unit-tested
+# without numpy installed.
+try:
+    import numpy as np
+except Exception:
+    np = None
 import  multiprocessing as mp
 
 
@@ -21,13 +36,20 @@ class QuantumExperimentRunner:
     across various scenarios and models.
     """
     
-    def __init__(self, id=0, config: ExperimentConfiguration | None = None, frames_count=4000, base_seed=12345, 
+    def __init__(self, id=0, config=None, frames_count=4000, base_seed=12345,
              attack_type=None, attack_intensity=None, enable_progress=False, use_locks=False, 
              capacity=None, max_workers=None):
         
         self._save_lock = threading.Lock()
         self._model_lock = threading.Lock()
-        self.configs = config if config is not None else ExperimentConfiguration()
+        if config is None:
+            # Lazy import so unit-tests that only exercise resume/compare logic can run
+            # without importing the full ExperimentConfiguration dependency tree.
+            from daqr.config.experiment_config import ExperimentConfiguration
+
+            self.configs = ExperimentConfiguration()
+        else:
+            self.configs = config
         self.configs.base_seed = base_seed
         self.use_locks = use_locks
         
@@ -97,19 +119,30 @@ class QuantumExperimentRunner:
             other_attrs = other.get("key_attrs", {}).copy()
             self_attrs = copy.deepcopy(self.key_attrs) if isinstance(self.key_attrs, dict) else {}
 
-            # Model check - set flag if models differ
+            # Model check
+            # Allow resuming when:
+            #   - saved models are a superset of current models (filter extras), OR
+            #   - saved models are a subset of current models (partial resume; run missing models)
+            # Reject only when the sets are incomparable (both have unique models),
+            # because that suggests a materially different experiment definition.
             needs_filtering = False
             saved_models = self._infer_saved_models(other)
             current_models = set(self.configs.models)
             if saved_models:
                 saved_set = set(saved_models)
-                if not current_models.issubset(saved_set):
-                    print("\n❌ MODEL SET MISMATCH in Runner — forcing rerun")
+                if not (saved_set.issubset(current_models) or current_models.issubset(saved_set)):
+                    print("\n❌ MODEL SET MISMATCH in Runner — incompatible state (skipping resume)")
                     print(f"   Current models: {sorted(current_models)}")
                     print(f"   Saved models:   {sorted(saved_set)}")
                     return False
-                # If current is subset but not equal, we need to filter
-                if current_models != saved_set:
+
+                # Partial resume: saved has fewer models than current → run missing models
+                if saved_set.issubset(current_models) and saved_set != current_models:
+                    missing = sorted(current_models - saved_set)
+                    print(f"ℹ️  Partial runner resume: will run missing models: {missing}")
+
+                # Superset resume: saved has extra models → filter down to current set
+                if current_models.issubset(saved_set) and saved_set != current_models:
                     needs_filtering = True
                     print(f"ℹ️  Will filter saved models to: {sorted(current_models)}")
 
@@ -144,6 +177,8 @@ class QuantumExperimentRunner:
 
             _norm_default_str(other_attrs, "entanglement_success_factor", "100")
             _norm_default_str(self_attrs, "entanglement_success_factor", "100")
+            _norm_default_str(other_attrs, "test_bed", "None")
+            _norm_default_str(self_attrs, "test_bed", "None")
 
             if (
                 self.id == other.get("id")
@@ -298,7 +333,22 @@ class QuantumExperimentRunner:
 
     def resume(self):
         if not self.resumed: 
-            if self.configs.resume_obj(self): 
+            if self.configs.resume_obj(self):
+                # Resume loads a saved dict into this instance. Ensure we keep the
+                # *current* algorithm configs so partial resumes can run any missing models.
+                try:
+                    self.algorithm_configs = self.configs.get_models_configs()
+                except Exception as e:
+                    print(f"\t⚠️  Failed to rebuild algorithm_configs after resume: {e}")
+                # Also drop any stale results for models not in the current config.
+                try:
+                    current = set(self.configs.models)
+                    for model_name in list(getattr(self, "results", {}).keys()):
+                        if model_name not in current:
+                            del self.results[model_name]
+                except Exception:
+                    pass
+
                 self.resumed = True
                 return self.resumed
             if self.configs.use_last_backup:
@@ -406,8 +456,10 @@ class QuantumExperimentRunner:
             model_kwargs['transition_interval'] = getattr(self.configs, 'paper2_transition_interval', 50)
 
         algorithm_seed = self.experiment_seed + seed_offset
-        torch.manual_seed(algorithm_seed)
-        np.random.seed(algorithm_seed)
+        if torch is not None:
+            torch.manual_seed(algorithm_seed)
+        if np is not None:
+            np.random.seed(algorithm_seed)
 
         results = {'final_reward': 0.0}
         total_reward, attempts = 0.0, 0
@@ -548,7 +600,7 @@ class QuantumExperimentRunner:
             # PyTorch/GC cleanup (keep as-is)
             try:
                 import torch
-                if torch.cuda.is_available():
+                if torch is not None and torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     torch.cuda.synchronize()
                     cleanup_items.append("CUDA cache")
@@ -963,7 +1015,7 @@ class QuantumExperimentRunner:
             system_resources = {
                 'cpu_cores': mp.cpu_count(),
                 'memory_gb': self.estimate_available_memory(),
-                'gpu_available': torch.cuda.is_available() if 'torch' in globals() else False
+                'gpu_available': bool(torch is not None and torch.cuda.is_available())
             }
         
         # Model complexity estimation

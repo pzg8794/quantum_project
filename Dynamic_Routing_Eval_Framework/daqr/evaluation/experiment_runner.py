@@ -759,9 +759,26 @@ class QuantumExperimentRunner:
         oracle_reward = self.results[base_model].get('final_reward', 0.0)
 
         if alg_name == base_model: return base_model
-        print(f"\n\t🔄 {str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Starting {alg_name:<20} in {'parallel' if is_parallel else 'sequence'}...")
 
         overwrite = self.configs.overwrite
+        already_ok = (
+            (not overwrite)
+            and alg_name in self.results
+            and float(self.results[alg_name].get("final_reward", 0.0) or 0.0) > 0.0
+        )
+        if already_ok:
+            # True resume/skip: do not print "Starting ..." and do not re-save state.
+            if self.winner is None:
+                # Pick a winner from existing results (excluding Oracle).
+                try:
+                    existing = {k: v for k, v in self.results.items() if k != base_model and isinstance(v, dict)}
+                    if existing:
+                        self.winner = max(existing, key=lambda k: float(existing[k].get("final_reward", 0.0) or 0.0))
+                except Exception:
+                    pass
+            return alg_name
+
+        print(f"\n\t🔄 {str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Starting {alg_name:<20} in {'parallel' if is_parallel else 'sequence'}...")
         if alg_name not in self.results or self.results[alg_name]["final_reward"] <= 0:
             # self.configs.overwrite = True
             # results, model = self.run_algorithm(alg_name)
@@ -865,9 +882,18 @@ class QuantumExperimentRunner:
 
         for alg_name in models:
             if alg_name == base_model: continue
-            if alg_name in self.results.keys(): print(f"\t{alg_name} WAS ALREADY PROCESSED")
+            overwrite = self.configs.overwrite
+            already_ok = (
+                (not overwrite)
+                and alg_name in self.results
+                and float(self.results[alg_name].get("final_reward", 0.0) or 0.0) > 0.0
+            )
+            if already_ok:
+                # Resume/skip cleanly: don't call run_single_model (which prints "Starting ...").
+                print(f"\t⏩ {alg_name} already processed — skipping")
+            else:
+                self.run_single_model(alg_name, base_model, is_parallel=False)
 
-            self.run_single_model(alg_name, base_model, is_parallel=False)
             under_thr = self.results[alg_name]['failed_attempts']['under_threshold']
             threshold = self.results[alg_name]['failed_attempts']['threshold']
             failed = self.results[alg_name]['failed_attempts']['failed']

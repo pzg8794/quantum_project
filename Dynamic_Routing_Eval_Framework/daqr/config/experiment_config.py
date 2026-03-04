@@ -1197,9 +1197,10 @@ class ExperimentConfiguration:
         if self.verbose: print(f"\tℹ️ Existing size: {existing_size}, new size: {new_size}")
         # existing is larger → skip
         if existing_size > new_size:
-            # If the new state is "more complete" (e.g., contains more model results / runs),
-            # allow overwrite even if the pickle is smaller. Size alone is not a reliable proxy
-            # for completeness (older states can be bloated by extra cached attributes).
+            # Never overwrite a larger state with a smaller one.
+            # If we still need to persist new information (e.g., a missing model finished),
+            # merge the new dict into the existing on-disk dict, which preserves the larger
+            # state's payload and (typically) yields a pickle >= existing_size.
             try:
                 def _as_dict(obj):
                     if isinstance(obj, dict):
@@ -1208,91 +1209,47 @@ class ExperimentConfiguration:
                         return dict(getattr(obj, "__dict__", {}))
                     return {}
 
-                def _runner_models(d):
-                    try:
-                        r = d.get("results", None)
-                        if isinstance(r, dict):
-                            return set(r.keys())
-                    except Exception:
+                class Dummy:
+                    def __init__(self, *args, **kwargs):
                         pass
-                    return None
 
-                def _evaluator_coverage(d):
-                    try:
-                        env_exps = d.get("env_experiments", None)
-                        if not isinstance(env_exps, dict):
-                            return None
-                        exp_count = 0
-                        model_entries = 0
-                        model_set = set()
-                        for scenario, exps in env_exps.items():
-                            if not isinstance(exps, dict):
-                                continue
-                            exp_count += len(exps)
-                            for _exp_id, exp_obj in exps.items():
-                                if not isinstance(exp_obj, dict):
-                                    continue
-                                res = exp_obj.get("results", {})
-                                if isinstance(res, dict):
-                                    model_entries += len(res)
-                                    model_set.update(res.keys())
-                        return (exp_count, model_entries, len(model_set))
-                    except Exception:
-                        return None
+                class SafeUnpickler(pickle.Unpickler):
+                    def find_class(self, module, name):
+                        try:
+                            return super().find_class(module, name)
+                        except Exception:
+                            return Dummy
 
-                # Load existing state best-effort (it should be a dict of attributes).
                 existing_obj = None
                 try:
                     with open(save_path, "rb") as f:
                         existing_obj = pickle.load(f)
                 except Exception:
-                    # Safe unpickler: ignore missing module refs.
-                    class Dummy:
-                        def __init__(self, *args, **kwargs):
-                            pass
-
-                    class SafeUnpickler(pickle.Unpickler):
-                        def find_class(self, module, name):
-                            try:
-                                return super().find_class(module, name)
-                            except Exception:
-                                return Dummy
-
                     with open(save_path, "rb") as f:
                         existing_obj = SafeUnpickler(f).load()
 
                 existing_dict = _as_dict(existing_obj)
-                new_dict = _as_dict(save_dict)
 
-                # Runner completeness: prefer states with more model results.
-                old_models = _runner_models(existing_dict)
-                new_models = _runner_models(new_dict)
-                if old_models is not None and new_models is not None:
-                    if new_models.issuperset(old_models) and len(new_models) > len(old_models):
-                        if self.verbose:
-                            print(f\"\t↻ Overwriting: new runner state has more models ({len(new_models)} > {len(old_models)})\")
-                        return True, new_bytes
-                    if old_models.issuperset(new_models) and len(old_models) > len(new_models):
-                        if self.verbose:
-                            print(f\"\t⊘ Skip overwrite: existing runner state has more models ({len(old_models)} > {len(new_models)})\")
-                        return False, None
+                def _deep_merge(dst: dict, src: dict) -> dict:
+                    for k, v in src.items():
+                        if isinstance(v, dict) and isinstance(dst.get(k), dict):
+                            _deep_merge(dst[k], v)
+                        else:
+                            dst[k] = v
+                    return dst
 
-                # Evaluator completeness: prefer states with more experiments/model entries.
-                old_cov = _evaluator_coverage(existing_dict)
-                new_cov = _evaluator_coverage(new_dict)
-                if old_cov is not None and new_cov is not None:
-                    if new_cov > old_cov:
-                        if self.verbose:
-                            print(f\"\t↻ Overwriting: new evaluator state is more complete (cov {new_cov} > {old_cov})\")
-                        return True, new_bytes
-                    if old_cov > new_cov:
-                        if self.verbose:
-                            print(f\"\t⊘ Skip overwrite: existing evaluator state is more complete (cov {old_cov} > {new_cov})\")
-                        return False, None
+                merged = dict(existing_dict)
+                # Preserve existing payload; merge new values on top (including nested results).
+                _deep_merge(merged, save_dict if isinstance(save_dict, dict) else {})
+
+                merged_bytes = pickle.dumps(merged)
+                merged_size = len(merged_bytes)
+                if merged_size >= existing_size:
+                    if self.verbose:
+                        print(f"\t↻ Overwriting via merge: existing={existing_size}, merged={merged_size}")
+                    return True, merged_bytes
             except Exception:
-                # Fall back to conservative size-based behavior.
                 pass
-
             if self.verbose: print("\t⊘ Skip overwrite: existing file is larger")
             return False, None  # no overwrite, no payload reuse
 

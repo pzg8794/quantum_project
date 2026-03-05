@@ -112,6 +112,10 @@ Confirm we do **not** overwrite/normalize random allocations:
   - `.venv-audit` (created previously for audits / state inspection)
 - The retrofit script is intentionally conservative and primarily useful for reporting / confirming stability:
   - `Dynamic_Routing_Eval_Framework/tools/state/fix_key_attrs_qubit_caps.py` (wrapper also exists at `tools/fix_key_attrs_qubit_caps.py`)
+- Registry persistence (`local_backup_registry.json/.pkl`) is **debounced** and quiet by default:
+  - `GoogleDriveBackupManager.save_registry()` writes at most once per `registry_save_min_interval_s` (default `5s`) unless `force=True`
+  - `register_state_path()` only triggers persistence when the registry mapping actually changes
+  - Optional toggle: set `backup_mgr.registry_autosave = False` to defer writes (manual flush via `backup_mgr.save_registry(force=True)`)
 
 ---
 

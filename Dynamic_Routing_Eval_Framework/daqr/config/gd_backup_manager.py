@@ -61,6 +61,16 @@ class GoogleDriveBackupManager:
         self.mode                       = "drive" if self.in_share_drive else "local"
 
         # ------------------------------------------------------------
+        # Registry persistence policy
+        # ------------------------------------------------------------
+        # The registry can be large; writing it on every object save is expensive
+        # and can flood logs. Default to debounced autosave, configurable by callers.
+        self.registry_autosave = True
+        self.registry_save_min_interval_s = 5.0
+        self._last_registry_save_ts = 0.0
+        self._registry_dirty = False
+
+        # ------------------------------------------------------------
         # Credential auto-discovery
         # ------------------------------------------------------------
         creds_path = self._find_credentials()
@@ -331,15 +341,30 @@ class GoogleDriveBackupManager:
         return self.backup_registry
 
 
-    def save_registry(self, registry=None):
+    def save_registry(self, registry=None, *, force: bool = False):
         reg = registry or self.backup_registry
 
-        # Local JSON save
-        # Local pickle save
+        # Debounce registry writes (common hot path during model/runner saves).
+        try:
+            min_interval_s = float(getattr(self, "registry_save_min_interval_s", 0.0) or 0.0)
+        except Exception:
+            min_interval_s = 0.0
+        now = time.time()
+        last = float(getattr(self, "_last_registry_save_ts", 0.0) or 0.0)
+        if (not force) and min_interval_s > 0 and (now - last) < min_interval_s:
+            self._registry_dirty = True
+            return False
+
         file = str(self.registry_file_paths[self.mode])
-        with open(file, "wb") as f: pickle.dump(reg, f)
-        with open(file.replace(".pkl",".json"),"w") as f:json.dump(reg,f)
-        print(f"\t📦 {self} Registry Saved Locally in {self.mode.upper()}")
+        with open(file, "wb") as f:
+            pickle.dump(reg, f)
+        with open(file.replace(".pkl", ".json"), "w") as f:
+            json.dump(reg, f)
+
+        self._last_registry_save_ts = now
+        self._registry_dirty = False
+        if self.verbose:
+            print(f"\t📦 {self} Registry Saved Locally in {self.mode.upper()}")
         # Remote save
         # remote_status = self._save_registry_to_gcs()
         # if remote_status: print(f"\t☁️ {self} Registry synced to Google Drive")

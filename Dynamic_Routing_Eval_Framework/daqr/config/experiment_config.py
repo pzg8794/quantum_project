@@ -17,6 +17,7 @@ import  shutil, random
 from pathlib import Path
 from datetime import datetime
 from .local_backup_manager import LocalBackupManager
+from .state_registry import register_state_path
 
 
 class ExperimentConfiguration:
@@ -1280,6 +1281,15 @@ class ExperimentConfiguration:
         component_path = self.backup_mgr.quantum_data_paths["obj"][comp]
         save_path = component_path[mode] / self.day_str / file_name
 
+        def _register_and_persist_registry():
+            register_state_path(
+                config_registry=self.backup_registry,
+                backup_mgr=self.backup_mgr,
+                component=comp,
+                filename=file_name,
+                path=str(save_path),
+            )
+
         try:
             # # Fix corrupt directory-at-path case
             # if save_path.exists() and save_path.is_dir():
@@ -1296,25 +1306,12 @@ class ExperimentConfiguration:
                 if not do_overwrite:
                     if self.verbose:
                         print(f"\t⊘ {obj} Skipping save (existing file is larger)")
-                    # Ensure in-memory registry still points at the most current location so
-                    # same-process resume can "see" this file without a full rescan.
-                    try:
-                        self.backup_mgr.backup_registry.setdefault(comp, {})[file_name] = str(save_path)
-                        if hasattr(self.backup_mgr, "new_entries"):
-                            self.backup_mgr.new_entries.setdefault(comp, {})[file_name] = str(save_path)
-                    except Exception:
-                        pass
+                    _register_and_persist_registry()
                     return str(save_path)  # Return existing path, don't write
                 
                 # Only write if do_overwrite is True
                 with open(save_path, "wb") as f: f.write(new_bytes)
-                # Update in-memory registry immediately (critical for resume within the same run).
-                try:
-                    self.backup_mgr.backup_registry.setdefault(comp, {})[file_name] = str(save_path)
-                    if hasattr(self.backup_mgr, "new_entries"):
-                        self.backup_mgr.new_entries.setdefault(comp, {})[file_name] = str(save_path)
-                except Exception:
-                    pass
+                _register_and_persist_registry()
                 if self.verbose:
                     print(f"\t✓ {obj} State overwritten")
                     print(f"\t  → {save_path}")
@@ -1323,13 +1320,7 @@ class ExperimentConfiguration:
                 new_bytes = pickle.dumps(save_dict)
                 with open(save_path, "wb") as f:
                     f.write(new_bytes)
-                # Update in-memory registry immediately (critical for resume within the same run).
-                try:
-                    self.backup_mgr.backup_registry.setdefault(comp, {})[file_name] = str(save_path)
-                    if hasattr(self.backup_mgr, "new_entries"):
-                        self.backup_mgr.new_entries.setdefault(comp, {})[file_name] = str(save_path)
-                except Exception:
-                    pass
+                _register_and_persist_registry()
                 if self.verbose:
                     print(f"\t✓ {obj} New state saved")
                     print(f"\t  → {save_path}")

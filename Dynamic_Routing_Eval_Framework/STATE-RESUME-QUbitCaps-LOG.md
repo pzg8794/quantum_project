@@ -191,3 +191,5 @@ Implemented in `Dynamic_Routing_Eval_Framework/tests/test_resume_behavior.py`:
   - Verifies if `8` is incompatible, resume falls back to `3`.
 - `test_resume_from_subset_and_extend_runs`
   - Verifies resuming from `3` and then executing `runs=5` only runs missing experiments (`4,5`).
+- `test_run_experiments_uses_evaluation_results_when_env_experiments_missing`
+  - Verifies the evaluator will still skip completed experiments when results exist in `evaluation_results` but `env_experiments` is empty (legacy/partial states), preventing unnecessary runner regeneration/reruns.

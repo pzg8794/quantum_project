@@ -30,6 +30,7 @@ class _DummyConfigs:
         self.backup_mgr = _DummyBackupMgr(backup_registry)
         self.allocator = "Default"
         self.scale = 1
+        self.base_capacity = True
 
         # Used by run_experiments test
         self.runs = 1
@@ -340,6 +341,48 @@ class TestMultiRunResumeBehavior(unittest.TestCase):
             out = ev.run_experiments(runs=5, attack_type="stochastic", models=["Oracle"])
             self.assertEqual(created, [4, 5])
             self.assertEqual(set(out.keys()), {1, 2, 3, 4, 5})
+
+    def test_run_experiments_uses_evaluation_results_when_env_experiments_missing(self):
+        """
+        Regression test: evaluator may have results stored in `evaluation_results` (e.g., legacy states)
+        even if `env_experiments` is empty. In that case, we must still skip completed experiments
+        instead of generating new runners.
+        """
+        cfg = _DummyConfigs({"framework_state": {}})
+        cfg.runs = 5
+        ev = _make_evaluator(runs_id=5, configs=cfg, models=["Oracle"])
+
+        # Simulate legacy/partial state: only evaluation_results is populated.
+        ev.env_experiments = {"stochastic": {}}
+        ev.evaluation_results = {
+            "stochastic": {
+                1: {"exp_id": 1, "results": {"Oracle": {"final_reward": 1.0}}, "winner": "Oracle"},
+                2: {"exp_id": 2, "results": {"Oracle": {"final_reward": 2.0}}, "winner": "Oracle"},
+                3: {"exp_id": 3, "results": {"Oracle": {"final_reward": 3.0}}, "winner": "Oracle"},
+            }
+        }
+
+        created = []
+
+        def _run_experiment(exp_no, attack_category=None, **_kwargs):
+            exp_id = exp_no + 1
+            created.append(exp_id)
+            exp_data = {
+                "exp_id": exp_id,
+                "results": {"Oracle": {"final_reward": float(exp_id)}},
+                "winner": "Oracle",
+                "attack_category": attack_category,
+            }
+            ev.env_experiments[ev.configs.attack_type][exp_id] = exp_data
+            return exp_data
+
+        ev.run_experiment = _run_experiment
+        ev.save = lambda: None
+        ev.display_run_results = lambda *_args, **_kwargs: None
+
+        out = ev.run_experiments(runs=5, attack_type="stochastic", models=["Oracle"])
+        self.assertEqual(created, [4, 5])
+        self.assertEqual(set(out.keys()), {1, 2, 3, 4, 5})
 
 
 if __name__ == "__main__":

@@ -575,10 +575,29 @@ class MultiRunEvaluator:
 
             for i in range(0, self.configs.runs):
                 exp_id = i + 1
-                if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
+                # Prefer evaluator-stored results over runner resume:
+                # if the evaluator already has experiment results, we must skip the runner
+                # even if the runner pickle is missing/incompatible.
+                stored = None
+                if (self.configs.attack_type in self.env_experiments) and (exp_id in self.env_experiments[self.configs.attack_type]):
+                    stored = self.env_experiments[self.configs.attack_type]
+                elif (self.configs.attack_type in self.evaluation_results) and (exp_id in self.evaluation_results[self.configs.attack_type]):
+                    # Backfill env_experiments so subsequent logic stays consistent.
+                    try:
+                        self.env_experiments.setdefault(self.configs.attack_type, {})[exp_id] = copy.deepcopy(
+                            self.evaluation_results[self.configs.attack_type][exp_id]
+                        )
+                        stored = self.env_experiments[self.configs.attack_type]
+                    except Exception:
+                        stored = self.evaluation_results[self.configs.attack_type]
+
+                if stored is not None and exp_id in stored:
+                    # Keep printed "Frames" / scaled capacity consistent for skipped runs.
+                    self.frames_count = self.base_frames + (i * self.frame_step)
+                    self.capacity = self.base_frames if self.configs.base_capacity else self.frames_count
                     scaled_cap = self.capacity * self.configs.scale
                     print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
-                    self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
+                    self.display_run_results(exp_id, stored, scaled_cap)
                     continue
                 self.run_experiment(exp_no=i, attack_category=attack_category)
 
@@ -1281,6 +1300,24 @@ class MultiRunEvaluator:
         self.frames_count = self.base_frames + (exp_no * self.frame_step)
         self.capacity = self.base_frames if self.configs.base_capacity else self.frames_count
         exp_id = exp_no + 1
+
+        # If evaluator already has stored results for this experiment, do not spin up a runner.
+        stored = None
+        if (self.configs.attack_type in self.env_experiments) and (exp_id in self.env_experiments[self.configs.attack_type]):
+            stored = self.env_experiments[self.configs.attack_type]
+        elif (self.configs.attack_type in self.evaluation_results) and (exp_id in self.evaluation_results[self.configs.attack_type]):
+            try:
+                self.env_experiments.setdefault(self.configs.attack_type, {})[exp_id] = copy.deepcopy(
+                    self.evaluation_results[self.configs.attack_type][exp_id]
+                )
+                stored = self.env_experiments[self.configs.attack_type]
+            except Exception:
+                stored = self.evaluation_results[self.configs.attack_type]
+        if stored is not None and exp_id in stored:
+            scaled_cap = self.capacity * self.configs.scale
+            print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
+            self.display_run_results(exp_id, stored, scaled_cap)
+            return stored[exp_id]
 
         print("-" * 100)
         print(f"EXPERIMENT {exp_id}: {self.frames_count} frames  <>  SCALED-CAPACITY: "

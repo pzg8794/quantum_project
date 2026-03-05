@@ -136,7 +136,25 @@ This section captures the **expected evaluator resume behavior** (the “contrac
 
 ### QuantumExperimentRunner (note; defer deeper auditing)
 
-Runner states are intended to represent one concrete experiment instance (frames/seed/env/attack/allocator/capacity), so resume must be conservative. We will treat deeper runner/model “cross-horizon” resume rules as **deferred work** unless they block evaluator correctness.
+Runner states represent one concrete experiment instance (frames/seed/env/attack/allocator/capacity), so resume must be conservative about **core attrs**.
+
+However, **model-level completeness must not block resume**. Runner resume must support:
+
+- **Subset model-set resume:** if a saved runner state contains results for a *subset* of the current model list, resume is allowed and the run should execute **only the missing models**.
+- **Superset model-set resume:** if a saved runner state contains results for *extra* models, resume is allowed and results should be filtered down to the current model list.
+
+**This fixes the “false missing model” symptom** where runner resume would incorrectly skip a valid saved state and force a full rerun. Worst case, a truly missing model should resume from `model_state/` (if present) or rerun only that model—not rerun the entire experiment.
+
+**Before (bad):**
+```
+❌ MODEL SET MISMATCH in Runner — saved state missing required models (skipping resume)
+Missing models: ['iCPursuitNeuralUCB']
+```
+
+**After (correct):**
+```
+ℹ️  Partial runner resume: will run missing models: ['iCPursuitNeuralUCB']
+```
 
 ---
 
@@ -152,6 +170,7 @@ Runner states are intended to represent one concrete experiment instance (frames
 ### TODO (Deferred)
 - Runner cross-horizon resume semantics (only resume from “higher”, never from “lower”).
 - Model cross-horizon resume semantics (e.g., 4k → 2k subset) and fairness rules.
+- Runner/model-set compare: treat missing models as partial resume (do not skip resume).
 
 ### Logging / Notes
 - Every change to resume selection/order must be recorded here (this file) and mirrored in the relevant tracker/notes docs.

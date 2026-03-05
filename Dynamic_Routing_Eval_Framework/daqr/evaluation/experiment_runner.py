@@ -119,29 +119,30 @@ class QuantumExperimentRunner:
             other_attrs = other.get("key_attrs", {}).copy()
             self_attrs = copy.deepcopy(self.key_attrs) if isinstance(self.key_attrs, dict) else {}
 
-            # Model check
-            # Allow resuming when:
-            #   - saved models are a superset of current models (filter extras), OR
-            #   - saved models are a subset of current models (partial resume; run missing models)
-            # Reject only when the sets are incomparable (both have unique models),
-            # because that suggests a materially different experiment definition.
+            # Model-set policy for resume:
+            # - Saved results may be a subset (partial run / crash / new models added later).
+            #   This must NOT block resume; we can run only missing models.
+            # - Saved results may be a superset (more models were run previously).
+            #   Resume is allowed; we filter down to the currently requested set.
             needs_filtering = False
             saved_models = self._infer_saved_models(other)
-            current_models = set(self.configs.models)
-            if saved_models:
+            current_models = set()
+            try:
+                cfg_models = getattr(self.configs, "models", None)
+                if cfg_models:
+                    current_models = set(cfg_models)
+            except Exception:
+                pass
+            if not current_models:
+                try:
+                    alg_cfgs = getattr(self, "algorithm_configs", None)
+                    if isinstance(alg_cfgs, dict) and alg_cfgs:
+                        current_models = set(alg_cfgs.keys())
+                except Exception:
+                    pass
+            if saved_models and current_models:
                 saved_set = set(saved_models)
-                if not (saved_set.issubset(current_models) or current_models.issubset(saved_set)):
-                    print("\n❌ MODEL SET MISMATCH in Runner — incompatible state (skipping resume)")
-                    print(f"   Current models: {sorted(current_models)}")
-                    print(f"   Saved models:   {sorted(saved_set)}")
-                    return False
-
-                # Partial resume: saved has fewer models than current → run missing models
-                if saved_set.issubset(current_models) and saved_set != current_models:
-                    missing = sorted(current_models - saved_set)
-                    print(f"ℹ️  Partial runner resume: will run missing models: {missing}")
-
-                # Superset resume: saved has extra models → filter down to current set
+                # Superset resume: saved has extra models → filter down to current set.
                 if current_models.issubset(saved_set) and saved_set != current_models:
                     needs_filtering = True
                     print(f"ℹ️  Will filter saved models to: {sorted(current_models)}")
@@ -189,9 +190,9 @@ class QuantumExperimentRunner:
                 and self_attrs == other_attrs
             ):
                 # Filter results if needed
-                if needs_filtering and "results" in other:
+                if needs_filtering and current_models and isinstance(other.get("results"), dict):
                     for model in list(other["results"].keys()):
-                        if model not in self.configs.models:
+                        if model not in current_models:
                             del other["results"][model]
                     print(f"✅ Filtered results to: {list(other['results'].keys())}")
 
@@ -342,10 +343,32 @@ class QuantumExperimentRunner:
                     print(f"\t⚠️  Failed to rebuild algorithm_configs after resume: {e}")
                 # Also drop any stale results for models not in the current config.
                 try:
-                    current = set(self.configs.models)
-                    for model_name in list(getattr(self, "results", {}).keys()):
-                        if model_name not in current:
-                            del self.results[model_name]
+                    current = set()
+                    cfg_models = getattr(self.configs, "models", None)
+                    if cfg_models:
+                        current = set(cfg_models)
+                    if not current and isinstance(getattr(self, "algorithm_configs", None), dict):
+                        current = set(self.algorithm_configs.keys())
+                    if current:
+                        for model_name in list(getattr(self, "results", {}).keys()):
+                            if model_name not in current:
+                                del self.results[model_name]
+                except Exception:
+                    pass
+
+                # Informational: partial runner resume (saved state missing some models).
+                try:
+                    current = set()
+                    cfg_models = getattr(self.configs, "models", None)
+                    if cfg_models:
+                        current = set(cfg_models)
+                    if not current and isinstance(getattr(self, "algorithm_configs", None), dict):
+                        current = set(self.algorithm_configs.keys())
+                    saved = set(getattr(self, "results", {}).keys())
+                    if current:
+                        missing = sorted(current - saved)
+                        if missing:
+                            print(f"ℹ️  Partial runner resume: will run missing models: {missing}")
                 except Exception:
                     pass
 

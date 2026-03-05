@@ -138,13 +138,11 @@ This section captures the **expected evaluator resume behavior** (the “contrac
 
 **Non-negotiable invariant:** resume must never override the caller-intended settings (target runs/models/scale/allocator/testbed).
 
-### Debugging signal: runner pickle presence
+### Design guardrails (do not violate)
 
-When the evaluator skips an experiment because results are already present in evaluator state, it should still print whether the corresponding `QuantumExperimentRunner_*.pkl` exists. This helps distinguish:
-- “runner missing but evaluator has results” (safe skip), vs
-- “both missing” (real rerun/work needed).
-
-Implemented via `MultiRunEvaluator._log_runner_state_presence()` and printed alongside the `⏩ SKIPPING EXPERIMENT ...` line.
+- **State discovery happens at object creation/resume.** `MultiRunEvaluator`, `QuantumExperimentRunner`, and model objects are responsible for discovering/loading their own state via `ExperimentConfiguration.resume_obj()` and their internal `__eq__` contracts.
+- **Do not duplicate state-probing logic in other modules.** Avoid re-deriving filenames, scanning registries, or adding parallel “skip” heuristics outside the object that owns the state.
+- **Source of truth for “experiment already completed” is `env_experiments`.** We intentionally do not treat `evaluation_results` as authoritative for skip decisions; it is analysis/aggregation output and may include non-experiment keys.
 
 ### QuantumExperimentRunner (note; defer deeper auditing)
 
@@ -199,5 +197,3 @@ Implemented in `Dynamic_Routing_Eval_Framework/tests/test_resume_behavior.py`:
   - Verifies if `8` is incompatible, resume falls back to `3`.
 - `test_resume_from_subset_and_extend_runs`
   - Verifies resuming from `3` and then executing `runs=5` only runs missing experiments (`4,5`).
-- `test_run_experiments_uses_evaluation_results_when_env_experiments_missing`
-  - Verifies the evaluator will still skip completed experiments when results exist in `evaluation_results` but `env_experiments` is empty (legacy/partial states), preventing unnecessary runner regeneration/reruns.

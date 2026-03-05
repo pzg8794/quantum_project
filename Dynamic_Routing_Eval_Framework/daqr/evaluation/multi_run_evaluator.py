@@ -575,33 +575,10 @@ class MultiRunEvaluator:
 
             for i in range(0, self.configs.runs):
                 exp_id = i + 1
-                # Prefer evaluator-stored results over runner resume:
-                # if the evaluator already has experiment results, we must skip the runner
-                # even if the runner pickle is missing/incompatible.
-                stored = None
-                if (self.configs.attack_type in self.env_experiments) and (exp_id in self.env_experiments[self.configs.attack_type]):
-                    stored = self.env_experiments[self.configs.attack_type]
-                elif (self.configs.attack_type in self.evaluation_results) and (exp_id in self.evaluation_results[self.configs.attack_type]):
-                    # Backfill env_experiments so subsequent logic stays consistent.
-                    try:
-                        self.env_experiments.setdefault(self.configs.attack_type, {})[exp_id] = copy.deepcopy(
-                            self.evaluation_results[self.configs.attack_type][exp_id]
-                        )
-                        stored = self.env_experiments[self.configs.attack_type]
-                    except Exception:
-                        stored = self.evaluation_results[self.configs.attack_type]
-
-                if stored is not None and exp_id in stored:
-                    # Keep printed "Frames" / scaled capacity consistent for skipped runs.
-                    self.frames_count = self.base_frames + (i * self.frame_step)
-                    self.capacity = self.base_frames if self.configs.base_capacity else self.frames_count
+                if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
                     scaled_cap = self.capacity * self.configs.scale
                     print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
-                    try:
-                        self._log_runner_state_presence(exp_id=exp_id)
-                    except Exception:
-                        pass
-                    self.display_run_results(exp_id, stored, scaled_cap)
+                    self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
                     continue
                 self.run_experiment(exp_no=i, attack_category=attack_category)
 
@@ -618,83 +595,6 @@ class MultiRunEvaluator:
 
         finally:
             pass
-
-    def _expected_runner_state_filename(self, *, exp_id: int) -> str:
-        """
-        Compute the persisted Runner state filename for the given experiment id.
-
-        Note: persisted filenames include the config suffix (e.g., `_paper8`) if set.
-        """
-        allocator_id = str(getattr(self.configs, "allocator", "alloc"))
-        env_id = str(getattr(self.configs, "environment", "env"))
-        attack_id = str(getattr(self.configs, "attack_strategy", "None"))
-
-        cap_id = int(float(self.capacity) * float(self.configs.scale))
-        frame_no = int(float(self.frames_count))
-        file_name = f"QuantumExperimentRunner_{exp_id}_{cap_id}-{allocator_id}_{env_id}_{attack_id}-{frame_no}_{exp_id}.pkl"
-
-        suffix = getattr(self.configs, "suffix", None)
-        if suffix:
-            file_name = file_name.replace(".pkl", f"_{suffix}.pkl")
-        return file_name.replace("1.5", "1_5")
-
-    def _find_runner_state_path(self, *, filename: str) -> str | None:
-        """
-        Best-effort lookup for a runner state file path without forcing a full rescan or downloads.
-        """
-        # 1) Config-level registry (may be more up-to-date within a run)
-        for reg_attr in ("backup_registry",):
-            try:
-                reg = getattr(self.configs, reg_attr, None)
-                entry = reg.get("framework_state", {}).get(filename) if isinstance(reg, dict) else None
-                path = entry.get("local_path") if isinstance(entry, dict) else entry
-                if path and Path(path).exists():
-                    return str(path)
-            except Exception:
-                pass
-
-        # 2) Backup manager registry
-        try:
-            mgr = getattr(self.configs, "backup_mgr", None)
-            reg = getattr(mgr, "backup_registry", None)
-            entry = reg.get("framework_state", {}).get(filename) if isinstance(reg, dict) else None
-            path = entry.get("local_path") if isinstance(entry, dict) else entry
-            if path and Path(path).exists():
-                return str(path)
-        except Exception:
-            pass
-
-        # 3) Fast local check in today's directory (covers "saved but registry not updated yet")
-        try:
-            mgr = getattr(self.configs, "backup_mgr", None)
-            mode = getattr(mgr, "mode", None)
-            qdp = getattr(mgr, "quantum_data_paths", None)
-            if mode and qdp:
-                component_path = qdp["obj"]["framework_state"][mode]
-                candidate = Path(component_path) / self.configs.day_str / filename
-                if candidate.exists():
-                    return str(candidate)
-        except Exception:
-            pass
-
-        return None
-
-    def _log_runner_state_presence(self, *, exp_id: int) -> None:
-        """
-        Debug aid: when we skip an experiment due to evaluator-stored results,
-        also print whether the corresponding Runner pickle exists.
-        """
-        try:
-            fname = self._expected_runner_state_filename(exp_id=exp_id)
-        except Exception:
-            return
-
-        path = self._find_runner_state_path(filename=fname)
-        if path:
-            p = Path(path)
-            print(f"\t📦 Runner state: ✓ {p.parent.name}/{p.name}")
-        else:
-            print(f"\t📦 Runner state: ⊘ missing (expected: {fname})")
 
     def calculate_scenario_performance(self, scenario):
         """
@@ -1381,28 +1281,6 @@ class MultiRunEvaluator:
         self.frames_count = self.base_frames + (exp_no * self.frame_step)
         self.capacity = self.base_frames if self.configs.base_capacity else self.frames_count
         exp_id = exp_no + 1
-
-        # If evaluator already has stored results for this experiment, do not spin up a runner.
-        stored = None
-        if (self.configs.attack_type in self.env_experiments) and (exp_id in self.env_experiments[self.configs.attack_type]):
-            stored = self.env_experiments[self.configs.attack_type]
-        elif (self.configs.attack_type in self.evaluation_results) and (exp_id in self.evaluation_results[self.configs.attack_type]):
-            try:
-                self.env_experiments.setdefault(self.configs.attack_type, {})[exp_id] = copy.deepcopy(
-                    self.evaluation_results[self.configs.attack_type][exp_id]
-                )
-                stored = self.env_experiments[self.configs.attack_type]
-            except Exception:
-                stored = self.evaluation_results[self.configs.attack_type]
-        if stored is not None and exp_id in stored:
-            scaled_cap = self.capacity * self.configs.scale
-            print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
-            try:
-                self._log_runner_state_presence(exp_id=exp_id)
-            except Exception:
-                pass
-            self.display_run_results(exp_id, stored, scaled_cap)
-            return stored[exp_id]
 
         print("-" * 100)
         print(f"EXPERIMENT {exp_id}: {self.frames_count} frames  <>  SCALED-CAPACITY: "

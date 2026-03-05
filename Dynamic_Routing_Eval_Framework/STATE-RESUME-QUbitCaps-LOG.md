@@ -138,6 +138,14 @@ This section captures the **expected evaluator resume behavior** (the “contrac
 
 **Non-negotiable invariant:** resume must never override the caller-intended settings (target runs/models/scale/allocator/testbed).
 
+### Debugging signal: runner pickle presence
+
+When the evaluator skips an experiment because results are already present in evaluator state, it should still print whether the corresponding `QuantumExperimentRunner_*.pkl` exists. This helps distinguish:
+- “runner missing but evaluator has results” (safe skip), vs
+- “both missing” (real rerun/work needed).
+
+Implemented via `MultiRunEvaluator._log_runner_state_presence()` and printed alongside the `⏩ SKIPPING EXPERIMENT ...` line.
+
 ### QuantumExperimentRunner (note; defer deeper auditing)
 
 Runner states represent one concrete experiment instance (frames/seed/env/attack/allocator/capacity), so resume must be conservative about **core attrs**.

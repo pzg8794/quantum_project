@@ -77,6 +77,7 @@
 - [guides/RUN_NOTEBOOK_GUIDE.md](guides/RUN_NOTEBOOK_GUIDE.md) - Running notebooks
 - [guides/NOTEBOOK_READY_CHECKLIST.md](guides/NOTEBOOK_READY_CHECKLIST.md) - Notebook readiness checklist
 - [guides/DOCUMENTATION_STRUCTURE.md](guides/DOCUMENTATION_STRUCTURE.md) - Documentation structure
+- [guides/STATE_LAYERS_AND_RESUME.md](guides/STATE_LAYERS_AND_RESUME.md) - State layering + resume ladder (model/runner/evaluator/allocator-runner)
 
 ---
 
@@ -101,6 +102,7 @@
 ### Updates
 - [updates/UPDATE_SUMMARY.md](updates/UPDATE_SUMMARY.md) - Update summary
 - [updates/CRITICAL_CORRECTION_PARAMETER_REVERSION.md](updates/CRITICAL_CORRECTION_PARAMETER_REVERSION.md) - Critical corrections
+- [updates/FRAMEWORK_DESIGN_LOG.md](updates/FRAMEWORK_DESIGN_LOG.md) - Design decisions + working protocol (canonical narrative)
 
 ### Validated Logs
 - [validated_logs/validation_results.md](validated_logs/validation_results.md) - Validation results

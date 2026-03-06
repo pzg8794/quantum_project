@@ -143,6 +143,7 @@ This section captures the **expected evaluator resume behavior** (the “contrac
 - **State discovery happens at object creation/resume.** `MultiRunEvaluator`, `QuantumExperimentRunner`, and model objects are responsible for discovering/loading their own state via `ExperimentConfiguration.resume_obj()` and their internal `__eq__` contracts.
 - **Do not duplicate state-probing logic in other modules.** Avoid re-deriving filenames, scanning registries, or adding parallel “skip” heuristics outside the object that owns the state.
 - **Source of truth for “experiment already completed” is `env_experiments`.** We intentionally do not treat `evaluation_results` as authoritative for skip decisions; it is analysis/aggregation output and may include non-experiment keys.
+- **Mental model:** see `docs/guides/STATE_LAYERS_AND_RESUME.md` (sun/world/continent/country/worker narrative) to keep responsibilities clear and code minimal.
 
 ### QuantumExperimentRunner (note; defer deeper auditing)
 

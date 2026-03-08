@@ -80,7 +80,13 @@ class MultiRunEvaluator:
         # self.save_to_dir = self.configs.framework_state_path / self.configs.day_str
         
         # Update configs FIRST
-        self.update_configs(runs, models, attack_type, scenarios, attack_intensity)
+        self.update_configs(
+            runs=runs,
+            models=models,
+            attack_type=attack_type,
+            scenarios=scenarios,
+            intensity=attack_intensity,
+        )
 
         # ------------------------------------------------------------
         # Initial per-path qubit allocation (must be stable across threats)
@@ -340,6 +346,11 @@ class MultiRunEvaluator:
         )
     
     def save(self):
+        try:
+            self._normalize_scenario_storage()
+        except Exception as e:
+            print(f"⚠️ Pre-save scenario normalization failed: {e}")
+
         # Before saving, ensure the stored `key_attrs['qubit_capacities']` reflects
         # the allocations that actually produced the results (esp. important for resume).
         try:
@@ -376,6 +387,139 @@ class MultiRunEvaluator:
 
         # This now always writes to the config backup (safe, never corrupts data lake)
         return self.configs.save_obj(self)
+
+    def _configured_scenario_keys(self):
+        scenarios = getattr(self.configs, "test_scenarios", {}) or {}
+        if not isinstance(scenarios, dict):
+            return []
+        return [str(key) for key in scenarios.keys()]
+
+    def _normalize_scenario_storage(self):
+        configured = set(self._configured_scenario_keys())
+        if not configured:
+            return False
+
+        changed = False
+
+        def _prune(mapping, keep_scenarios_results=False):
+            nonlocal changed
+            if not isinstance(mapping, dict):
+                return mapping
+            allowed = set(configured)
+            if keep_scenarios_results:
+                allowed.add("scenarios_results")
+            for key in list(mapping.keys()):
+                if key not in allowed:
+                    del mapping[key]
+                    changed = True
+            return mapping
+
+        _prune(self.env_experiments)
+        _prune(self.runner_qubit_caps)
+        _prune(self.scenarios_stats)
+        _prune(self.evaluation_results, keep_scenarios_results=True)
+
+        scenario_results = self.evaluation_results.get("scenarios_results")
+        if isinstance(scenario_results, dict):
+            _prune(scenario_results)
+
+        return changed
+
+    def _extract_raw_scenario_experiments(self, scenario):
+        for source in (self.evaluation_results.get(scenario), self.env_experiments.get(scenario)):
+            if not isinstance(source, dict):
+                continue
+            experiments = {
+                exp_id: copy.deepcopy(exp_data)
+                for exp_id, exp_data in source.items()
+                if isinstance(exp_data, dict) and "results" in exp_data
+            }
+            if experiments:
+                return experiments
+        return {}
+
+    def _scenario_summary_complete(self, scenario):
+        required_summary_keys = {
+            "win_counts",
+            "total_experiments",
+            "all_model_metrics",
+            "overall_winner",
+            "winner_efficients",
+            "oracle_avg_reward",
+            "avg_gap",
+            "avg_reward",
+            "winner_avg_metrics",
+            "avg_efficiency",
+        }
+        required_winner_keys = {
+            "avg_reward",
+            "avg_gap",
+            "efficiency_list",
+            "wins",
+            "avg_efficiency",
+            "reward_list",
+            "creward_list",
+        }
+
+        summary = None
+        if isinstance(self.scenarios_stats, dict):
+            summary = self.scenarios_stats.get(scenario)
+        if not isinstance(summary, dict):
+            scenario_results = self.evaluation_results.get("scenarios_results", {})
+            if isinstance(scenario_results, dict):
+                summary = scenario_results.get(scenario)
+        if not isinstance(summary, dict):
+            return False
+        if not required_summary_keys.issubset(summary.keys()):
+            return False
+
+        winner_metrics = summary.get("winner_avg_metrics")
+        if not isinstance(winner_metrics, dict):
+            return False
+        return required_winner_keys.issubset(winner_metrics.keys())
+
+    def ensure_summary_contract(self, save_if_changed=False):
+        changed = self._normalize_scenario_storage()
+        configured = self._configured_scenario_keys()
+        if not configured:
+            return changed
+
+        scenario_results = self.evaluation_results.get("scenarios_results", {})
+        if isinstance(scenario_results, dict):
+            for scenario in configured:
+                if scenario in scenario_results and scenario not in self.scenarios_stats:
+                    self.scenarios_stats[scenario] = copy.deepcopy(scenario_results[scenario])
+                    changed = True
+
+        rebuilt = []
+        comparison_results = {}
+        for scenario in configured:
+            raw_experiments = self._extract_raw_scenario_experiments(scenario)
+            if raw_experiments:
+                comparison_results[scenario] = raw_experiments
+            if raw_experiments and not self._scenario_summary_complete(scenario):
+                if scenario not in self.evaluation_results or not isinstance(self.evaluation_results.get(scenario), dict):
+                    self.evaluation_results[scenario] = copy.deepcopy(raw_experiments)
+                self.calculate_scenario_winner(comparison_results, scenario, update_results=True)
+                rebuilt.append(scenario)
+                changed = True
+
+        if rebuilt:
+            print(f"ℹ️ Rebuilt evaluator summaries for: {', '.join(rebuilt)}")
+
+        if isinstance(self.scenarios_stats, dict):
+            fresh_results = {
+                scenario: copy.deepcopy(self.scenarios_stats[scenario])
+                for scenario in configured
+                if scenario in self.scenarios_stats
+            }
+            if self.evaluation_results.get("scenarios_results") != fresh_results:
+                self.evaluation_results["scenarios_results"] = fresh_results
+                changed = True
+
+        if save_if_changed and changed:
+            self.save()
+        return changed
 
 
     def _filter_models_from_experiments(self, experiments_dict, target_runs):
@@ -418,6 +562,9 @@ class MultiRunEvaluator:
             # Filter both using same method
             self.env_experiments = self._filter_models_from_experiments(src_env_experiments, target_runs)
             self.evaluation_results = self._filter_models_from_experiments(src_eval_results, target_runs)
+            scenario_results = self.evaluation_results.get("scenarios_results", {}) if isinstance(self.evaluation_results, dict) else {}
+            self.scenarios_stats = copy.deepcopy(scenario_results) if isinstance(scenario_results, dict) else {}
+            self._normalize_scenario_storage()
 
             print(f"[Subset] Reconstructed env_experiments: {list(self.env_experiments.keys())}")
             print(f"[Subset] Reconstructed evaluation_results: {list(self.evaluation_results.keys())}")
@@ -545,6 +692,11 @@ class MultiRunEvaluator:
                     self.models = list(target_models)
                 except Exception:
                     pass
+                try:
+                    self._normalize_scenario_storage()
+                    self.ensure_summary_contract(save_if_changed=False)
+                except Exception as e:
+                    print(f"⚠️ Post-resume summary normalization failed: {e}")
                 self.resumed = True
                 return self.resumed
             if self.configs.use_last_backup:
@@ -563,7 +715,7 @@ class MultiRunEvaluator:
         """
         Run experiments for a specific environment type.
         """
-        self.update_configs(runs, models, attack_type)
+        self.update_configs(runs=runs, models=models, attack_type=attack_type)
 
         try:
             print(f"\nSTARTING EXPERIMENTS: {self.configs.attack_type.upper()}")
@@ -934,7 +1086,7 @@ class MultiRunEvaluator:
         Wrapper to run comprehensive evaluation for a single scenario.
         """
         # ✅ KEEP: Update configs
-        self.update_configs(runs, models, attack_type)
+        self.update_configs(runs=runs, models=models, attack_type=attack_type)
 
         # ✅ FIX: Get scenario name safely (handles both dict and string)
         scenario_value = self.configs.test_scenarios.get(self.configs.attack_type)
@@ -1031,7 +1183,7 @@ class MultiRunEvaluator:
         print("\t• Stochastic:  \tNatural quantum decoherence and network failures")
         print("\t• Baseline:    \tOptimal conditions for validation")
         print("="*70)
-        self.update_configs(runs, models, attack_type, scenarios)
+        self.update_configs(runs=runs, models=models, attack_type=attack_type, scenarios=scenarios)
 
         print(f"Models to Test:             \t{', '.join(self.configs.models)}")
 
@@ -1194,7 +1346,14 @@ class MultiRunEvaluator:
     
 
     def update_configs(self, runs=None, models=None, scenarios=None, attack_type=None, intensity=None, attack_rate=None):
-        self.configs.update_configs(runs, models, scenarios, attack_rate, intensity, attack_rate)
+        self.configs.update_configs(
+            runs=runs,
+            models=models,
+            scenarios=scenarios,
+            attack_type=attack_type,
+            attack_intensity=intensity,
+            attack_rate=attack_rate,
+        )
         if self.configs.attack_type not in self.env_experiments:
             self.env_experiments[self.configs.attack_type] = {}
         
@@ -1205,7 +1364,7 @@ class MultiRunEvaluator:
         
         Provides comprehensive model evaluation for research purposes.
         """
-        self.update_configs(runs, models, attack_type, scenarios)
+        self.update_configs(runs=runs, models=models, attack_type=attack_type, scenarios=scenarios)
         
         # if len(self.evaluation_results) == 0:
         # Run the comprehensive evaluation
@@ -1438,7 +1597,7 @@ class MultiRunEvaluator:
             exps_num: Number of frame count experiments (default: 3)
             algorithms: List of algorithms to test
         """
-        self.update_configs(runs, models, attack_type)
+        self.update_configs(runs=runs, models=models, attack_type=attack_type)
 
         print(f"\nSTARTING EXPERIMENTS: {self.configs.attack_type.upper()}")
         attack_category = self.configs.category_map.get(self.configs.attack_type, 'Unknown')
@@ -1466,7 +1625,7 @@ class MultiRunEvaluator:
             models: List of algorithms to test
             max_workers: Number of parallel experiments
         """
-        self.update_configs(runs, models, attack_type)
+        self.update_configs(runs=runs, models=models, attack_type=attack_type)
 
         print(f"\nSTARTING PARALLEL MULTI-RUN EXPERIMENTS: {self.configs.attack_type.upper()}")
         attack_category = self.configs.category_map.get(self.configs.attack_type, 'Unknown')

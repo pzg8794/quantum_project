@@ -37,3 +37,16 @@ Source: `docs/guides/STATE_LAYERS_AND_RESUME.md`
 - We can implement entanglement-related behavior inside current modules, but we do not claim final conceptual ownership yet.
 - Stability first; entanglement architecture decisions are deferred until evidence constrains the right boundary.
 
+### 2026-03-06 — Evaluator-state consumer contract must be preserved
+
+**Decision**
+- Treat `state_analysis.py` as a regression harness for evaluator-state compatibility.
+- Do not weaken the consumer contract just because producer payload drifted.
+- Improve or migrate evaluator payloads compatibly; do not delete analysis-only attributes that downstream tooling still depends on.
+
+**Observed issue**
+- Current evaluator states include placeholder `env_experiments["n/a"]`, while `evaluation_results["scenarios_results"]` does not contain `n/a`.
+- The active extractor then fails on `all_model_metrics` depending on scenario iteration order.
+
+**Canonical reference**
+- `docs/guides/STATE_ANALYSIS_EVALUATOR_CONTRACT.md`

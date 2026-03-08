@@ -227,22 +227,36 @@ class FidelityCalculator:
 
 class Paper8FidelityCalculator(FidelityCalculator):
     """
-    Paper 8 end-to-end fidelity calculator.
+    Paper 8 end-to-end reward calculator.
 
     Implements (a simplified, deterministic) version of the paper's link
     purification + swapping recursion.
 
     Mapping from allocation (context) -> purification rounds:
       rounds = min(edge_pur_round, floor(log2(qubits_on_edge)))
+
+    Mode mapping follows the upstream Paper 8 code:
+      1 -> rate-only
+      2 -> balanced
+      3 -> fidelity-only
     """
 
-    def __init__(self, *, min_fidelity: float = 0.0):
+    def __init__(self, *, min_fidelity: float = 0.0, mode: int = 3):
         self.min_fidelity = float(min_fidelity)
+        self.mode = int(mode)
+        if self.mode == 1:
+            self.weight = np.array([0.0, 100.0, 0.0], dtype=float)
+        elif self.mode == 2:
+            self.weight = np.array([40.0, 60.0, 0.0], dtype=float)
+        else:
+            self.mode = 3
+            self.weight = np.array([100.0, 0.0, 0.0], dtype=float)
 
     def compute_path_fidelity(self, error_rates, context, success_factor):
         edges = (error_rates or {}).get("edges", [])
         if not edges:
             return 0.0
+        swap_success = (error_rates or {}).get("swap_success", [])
 
         # Normalize context allocations to per-edge integer budgets.
         if context is None:
@@ -287,11 +301,20 @@ class Paper8FidelityCalculator(FidelityCalculator):
         FF = 1.0
         for f in fid_path:
             FF = 0.25 + (4.0 * FF - 1.0) * (4.0 * f - 1.0) / 12.0
-        FF = float(np.clip(FF, 0.0, 1.0))
+        final_fidelity = float(np.clip(FF, 0.0, 1.0))
 
-        if FF < self.min_fidelity:
+        curr_rate = float(rate_path[0]) if rate_path else 0.0
+        for i in range(max(len(swap_success) - 1, 0)):
+            curr_rate = float(swap_success[i]) * float(min(rate_path[i + 1], curr_rate))
+        final_rate = float(curr_rate)
+
+        if final_fidelity < self.min_fidelity:
             return 0.0
-        return FF
+        if final_fidelity <= 0.5:
+            return -100.0
+
+        reward = float(5.0 * np.dot(self.weight, [final_fidelity, final_rate, -len(edges)]))
+        return reward
 
 
 class DefaultFidelityCalculator(FidelityCalculator):

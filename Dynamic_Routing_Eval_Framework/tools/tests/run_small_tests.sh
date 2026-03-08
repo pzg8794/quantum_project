@@ -14,6 +14,7 @@ python3 tools/tests/test_task2b_duplicate_filename_policy_static.py
 python3 tools/tests/test_task2c_aggregation_eliminates_cross_day_duplicates.py
 python3 tools/tests/test_paper8_testbed_build.py
 python3 tools/tests/test_paper8_environment_rewards.py
+python3 tools/tests/test_state_analysis_evaluator_contract.py
 
 echo "============================================================"
 echo "PASS: all small tests"

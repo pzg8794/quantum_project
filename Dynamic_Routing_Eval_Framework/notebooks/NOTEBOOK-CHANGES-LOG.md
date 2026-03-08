@@ -26,8 +26,8 @@ This log records **surgical notebook changes** (issues encountered, what was cha
 
 ### Paper 7 — Fix path-count mismatch (prevents GNeuralUCB index error)
 - **Issue:** Paper 7 config had `num_paths=4`, but the Paper 7 path generator used `k=5` and `n_qisps=3`, which yields `5 * C(3,2) = 15` paths/contexts/rewards. Models infer `num_groups = len(reward_list)`, so they could select a path index ≥4 while the allocator/attack arrays are sized for 4 paths → runtime errors like `index 4 is out of bounds for axis 0 with size 4`.
-- **Fix (settings only, standardized notebook):** set `paper7.k=4` and `paper7.n_qisps=2` so the generator produces exactly 4 paths (matching `num_paths=4`).
-- **Applied in:** `H-MABs_Eval-Testbed-Paper7-StandardizedRunConfig.ipynb`.
+- **Fix (settings only):** set `paper7.k=4` and `paper7.n_qisps=2` so the generator produces exactly 4 paths (matching `num_paths=4`).
+- **Applied in:** `H-MABs_Eval-Testbed-Paper7.ipynb`, `H-MABs_Eval-Testbed-Paper7-StandardizedRunConfig.ipynb`.
 
 ### Paper 12 — Standardized run configuration notebook created
 - **New file:** `H-MABs_Eval-Testbed-Paper12-StandardizedRunConfig.ipynb` (copied from `H-MABs_Eval-Testbed-Paper12.ipynb`)

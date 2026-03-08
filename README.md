@@ -43,6 +43,7 @@ A **multi-testbed** research framework for evaluating quantum routing algorithms
 | **[TROUBLESHOOTING.md](docs/setup/TROUBLESHOOTING.md)** | Common issues & fixes | Everyone |
 | **[Framework Tools](Dynamic_Routing_Eval_Framework/tools/README.md)** | Small tests + state repair tools (naming/resume, qubit-cap metadata) | Developers |
 | **[State/Resume Log](Dynamic_Routing_Eval_Framework/STATE-RESUME-QUbitCaps-LOG.md)** | Issue → diagnosis → fixes for state/resume metadata | Developers |
+| **[State Analysis Contract](docs/guides/STATE_ANALYSIS_EVALUATOR_CONTRACT.md)** | Canonical evaluator-state payload contract for `state_analysis.py` | Developers |
 | **[Assessments](docs/assessments/)** | Assessment reports and corrections | Researchers |
 | **[Planning](docs/planning/)** | Project planning and schedules | Team |
 | **[Updates](docs/updates/)** | Change logs and summaries | Everyone |
@@ -198,6 +199,7 @@ quantum_data_lake/
   - `tools/tests/`: small, fast invariants (e.g., Random allocator naming/resume)
   - quick battery: `bash Dynamic_Routing_Eval_Framework/tools/tests/run_small_tests.sh`
   - `tools/state/`: audit/repair of saved `.pkl` state under `daqr/config/framework_state/`
+- **Analysis contract**: `docs/guides/STATE_ANALYSIS_EVALUATOR_CONTRACT.md` defines the evaluator payload expected by `state_analysis.py` and the observed 2026-03-06 drift (`n/a` in `env_experiments` without matching `scenarios_results` payload).
 
 ### Notebooks & Interactive Development
 - **notebooks/**: Production Colab notebooks

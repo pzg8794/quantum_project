@@ -136,6 +136,17 @@ class QuantumEnvironment:
             if external_contexts is None:
                 self.contexts = self._generate_contexts()
 
+        # If contexts were not supplied externally and we're using the default routing reward model
+        # (i.e., no external rewards and no physics objects), we must generate split contexts.
+        # Dummy single-element contexts (Paper2 compatibility) break `_calculate_path_rewards()`.
+        if (
+            external_contexts is None
+            and external_rewards is None
+            and not (self.noise_model and self.fidelity_calculator)
+            and not (self.test_bed and str(self.test_bed).lower() == "paper8")
+        ):
+            self.contexts = self._generate_contexts()
+
         # Update contexts if allocator changed the number of paths
         if external_contexts is None and len(self.contexts) != self.num_paths:
             self.contexts = [[np.array([1.0])] for _ in range(self.num_paths)]

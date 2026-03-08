@@ -1419,12 +1419,19 @@ def convert_pkl_to_json(root_dir, keyword="MultiRunEvaluator", ext=".pkl"):
 def _load_any_pickle(path: Path):
     """Best-effort loader: pickle → cloudpickle → SafeUnpickler."""
     data = None
+    # Expose last load method for clearer logs (read by extract_data_from_state_file)
+    # Methods: "pickle" (attempt 1), "cloudpickle" (attempt 2), "safe" (attempt 3), "failed"
+    global _LAST_UNPICKLE_METHOD, _LAST_UNPICKLE_ATTEMPT
+    _LAST_UNPICKLE_METHOD = "failed"
+    _LAST_UNPICKLE_ATTEMPT = 0
 
 
     # 1) Standard pickle
     try:
         with open(path, "rb") as f:
             data = pickle.load(f)
+        _LAST_UNPICKLE_METHOD = "pickle"
+        _LAST_UNPICKLE_ATTEMPT = 1
         return data
     except Exception:
         pass
@@ -1435,6 +1442,8 @@ def _load_any_pickle(path: Path):
         try:
             with open(path, "rb") as f:
                 data = cloudpickle.load(f)
+            _LAST_UNPICKLE_METHOD = "cloudpickle"
+            _LAST_UNPICKLE_ATTEMPT = 2
             return data
         except Exception:
             pass
@@ -1444,9 +1453,13 @@ def _load_any_pickle(path: Path):
     try:
         with open(path, "rb") as f:
             data = SafeUnpickler(f).load()
+        _LAST_UNPICKLE_METHOD = "safe"
+        _LAST_UNPICKLE_ATTEMPT = 3
         return data
     except Exception as e:
         print(f"      ❌ Unpickle failed: {e}")
+        _LAST_UNPICKLE_METHOD = "failed"
+        _LAST_UNPICKLE_ATTEMPT = 0
         return None
 
 
@@ -1457,6 +1470,7 @@ def extract_data_from_state_file(state_file_path):
     Returns: list of dicts, each representing one model's performance in one experiment
     """
     print(f"Loading: {Path(state_file_path).name}")
+    all_rows = []
     
     # Load the state (handles both JSON and pickle)
     # if str(state_file_path).endswith('.json'):
@@ -1465,11 +1479,13 @@ def extract_data_from_state_file(state_file_path):
     # else:
     try:
         state = _load_any_pickle(state_file_path)
+        if _LAST_UNPICKLE_METHOD in ("cloudpickle", "safe"):
+            print(
+                f"  ✅ Loaded successfully on attempt {_LAST_UNPICKLE_ATTEMPT} ({_LAST_UNPICKLE_METHOD})"
+            )
         if state is None:
             print(f"  ❌ Could not load state")
             return []
-        
-        all_rows = []
         
         # Extract metadata (handle both dict and object)
         def get_val(obj, key, default=None):
@@ -1505,7 +1521,7 @@ def extract_data_from_state_file(state_file_path):
         
         # Get experiment data
         eval_scen_qubits_caps = get_val(state, "runner_qubit_caps", {})
-        if eval_scen_qubits_caps: print(json.dumps(eval_scen_qubits_caps, indent=2))
+        # if eval_scen_qubits_caps: print(json.dumps(eval_scen_qubits_caps, indent=2))
         
         # env_experiments:  dict_keys(['markov', 'stochastic', 'adaptive', 'onlineadaptive', 'none'])
         env_experiments = get_val(state, 'env_experiments', {})
@@ -1526,15 +1542,18 @@ def extract_data_from_state_file(state_file_path):
         # print("scenarios_results: ", eval_scenrios_results.keys())
 
         for scenario_name, experiments in env_experiments.items():
-            if not isinstance(experiments, dict): continue
+            if not isinstance(experiments, dict):
+                continue
             # scenario_res = evaluation_results.get(scenario_name, {})
             cenario_qubit_caps = None
             scenerio_attrs = eval_scenrios_results.get(scenario_name, {})
+            if not isinstance(scenerio_attrs, dict) or not scenerio_attrs:
+                continue
             scenario_qubits_caps = eval_scen_qubits_caps.get(scenario_name, {})
             if scenario_qubits_caps: 
-                print(json.dumps(scenario_qubits_caps, indent=2))
+                # print(json.dumps(scenario_qubits_caps, indent=2))
                 cenario_qubit_caps = next(iter(scenario_qubits_caps.values()))
-                print(cenario_qubit_caps)
+                # print(cenario_qubit_caps)
 
             # [1, 2, 3, 4, 5, 'avg_efficiency_stats']
             # print(f"scenarios_results for scenario {scenario_name}: ", scenario_res.keys())
@@ -1548,7 +1567,10 @@ def extract_data_from_state_file(state_file_path):
             # ['Oracle', 'GNeuralUCB', 'EXPUCB', 'EXPNeuralUCB']
             # print(scenerio_attrs["all_model_metrics"].keys())
             # print(scenario_res["avg_efficiency_stats"]["all_model_metrics"].keys())
-            del scenerio_attrs["all_model_metrics"]
+            all_model_metrics = scenerio_attrs.get("all_model_metrics")
+            winner_avg_metrics = scenerio_attrs.get("winner_avg_metrics")
+            if not isinstance(all_model_metrics, dict) or not isinstance(winner_avg_metrics, dict):
+                continue
 
             # ['avg_reward', 'avg_gap', 'efficiency_list', 'wins', 'avg_efficiency', 'reward_list', 'creward_list']
             # print(f"evaluation_results for scenario {scenario_name}: ", scenerio_attrs["winner_avg_metrics"].keys())
@@ -1560,10 +1582,11 @@ def extract_data_from_state_file(state_file_path):
             # print(f"scenarios_results for scenario {scenario_name}: ", scenario_res["avg_efficiency_stats"].keys())
 
             # ['avg_reward', 'avg_gap', 'efficiency_list', 'wins', 'avg_efficiency', 'reward_list', 'creward_list']
-            del scenerio_attrs["winner_avg_metrics"]["reward_list"]
-            del scenerio_attrs["winner_avg_metrics"]["creward_list"]
-            del scenerio_attrs["winner_avg_metrics"]["efficiency_list"]
-            attack_winner_attrs = scenerio_attrs["winner_avg_metrics"]
+            attack_winner_attrs = {
+                key: value
+                for key, value in winner_avg_metrics.items()
+                if key not in {"reward_list", "creward_list", "efficiency_list"}
+            }
 
 
             # {
@@ -1658,7 +1681,7 @@ def extract_data_from_state_file(state_file_path):
                     continue
                 
                 exp_qubits_caps = scenario_qubits_caps.get(exp_id_str) or cenario_qubit_caps
-                if exp_qubits_caps: print(exp_qubits_caps)
+                # if exp_qubits_caps: print(exp_qubits_caps)
                 # exp_data = env_experiments[scenario_name][exp_id_str]
                 
                 # Extract data for each model
@@ -1724,8 +1747,15 @@ def extract_data_from_state_file(state_file_path):
                         'scen_winner_gap': attack_winner_attrs["avg_gap"],         # Scenario winner's avg gap
                     }
                     all_rows.append(row)
-    except:
-         print(f"Loading: {Path(state_file_path).name} FAILED")
+    except Exception as e:
+        # Important: "FAILED" here historically did not always mean "unusable" because extraction may
+        # have already collected valid rows before a non-critical KeyError late in the process.
+        if all_rows:
+            print(
+                f"  ⚠️ Extraction warning (recovered): extracted {len(all_rows)} rows; {type(e).__name__}: {e}"
+            )
+        else:
+            print(f"  ❌ Extraction failed: {type(e).__name__}: {e}")
 
     
     return all_rows
@@ -1754,7 +1784,7 @@ def convert_state_files_to_csv(pkl_files):
             rows = extract_data_from_state_file(pkl_file)
             
             if not rows:
-                print(f"  ⚠️  No data extracted from {pkl_file.name}")
+                print(f"  ℹ️  Skipping (no evaluation payload): {pkl_file.name}")
                 continue
             
             # Create DataFrame for this file
@@ -1823,18 +1853,31 @@ if __name__ == "__main__":
     # print(files)
     # df = convert_state_files_to_csv(path, keyword="MultiRunEvaluator", ext=".pkl")
 
-    key = "EXP3"
+    # key = "EXP3"
+    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key}.csv"
+    # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
+
+    # key = "iCMABs"
+    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key.replace("i", "")}.csv"
+    # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
+
+    # key = "iCMABs2"
+    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key.replace("2", "")}.csv"
+    # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
+
+    # key = r"(3|5)_(\(18_9_6_2\)_)?S\d+([._]\d+)?Tb?"
+    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_Hybrid.csv"
+    # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
+
+    key = "paper8"
     output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key}.csv"
     convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
 
-    key = "iCMABs"
-    output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key.replace("i", "")}.csv"
-    convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
+    # key = "4000_2000_5_S"
+    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_paper2_4000_2000_5_ST.csv"
+    # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key+'.*_paper2'}\.pkl)")
 
-    key = "iCMABs2"
-    output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key.replace("2", "")}.csv"
-    convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
 
-    key = r"(3|5)_(\(18_9_6_2\)_)?S\d+([._]\d+)?Tb?"
-    output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_Hybrid.csv"
-    convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
+    # key = "50_50_5_S.*T"
+    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_paper8{key}.csv"
+    # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key+'paper8'}\.pkl)")

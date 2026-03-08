@@ -416,11 +416,15 @@ class AllocatorRunner:
             print('='*70)
             
             if self.custom_config:
+                model_config = self.framework_config.get(physics_model, {})
+                state_suffix = model_config.get("state_suffix", physics_model)
                 self.custom_config.physics_params = physics_params
-                self.custom_config.suffix = physics_model
+                self.custom_config.suffix = state_suffix
                 self.custom_config.runs = experiment_num
                 self.custom_config.scale = scale
                 self.custom_config.allocator = self.allocator_obj  # ← FIX!
+                if state_suffix != physics_model:
+                    print(f"ℹ️ State suffix alias: {physics_model} → {state_suffix}")
             
             self.evaluator = MultiRunEvaluator(configs=self.custom_config, base_frames=current_frames, frame_step=frame_step)
             self.evaluator.configs.set_log_name(base_frames=current_frames, frame_step=frame_step)
@@ -428,6 +432,11 @@ class AllocatorRunner:
 
             print("⚙ Running evaluation...")
             comparison_results = self.evaluator.test_stochastic_environment(cal_winner=True, parellel=False)
+            try:
+                if self.evaluator.ensure_summary_contract(save_if_changed=True):
+                    print("ℹ️ Evaluator summary contract repaired and saved")
+            except Exception as e:
+                print(f"⚠️ Evaluator summary contract check failed: {e}")
             self.evaluator.calculate_scenarios_performance()
             print("✅ Evaluation completed!")
 

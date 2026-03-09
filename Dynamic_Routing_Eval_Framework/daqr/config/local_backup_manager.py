@@ -20,7 +20,9 @@ class LocalBackupManager(GoogleDriveBackupManager):
         # Load registry from Drive if available
         # ------------------------------------------------------------
         self.backup_registry = self.build_registry()
-        if self.in_share_drive:
+        self.reset_shared_drive_state_cache = os.environ.get("DAQR_RESET_SHARED_DRIVE_STATE_CACHE", "0") == "1"
+
+        if self.in_share_drive and self.reset_shared_drive_state_cache:
             for component, comp_path in self.quantum_data_paths["obj"].items():
                 if self.mode not in comp_path: continue
                 mode_comp_path = pathlib.Path(comp_path[self.mode])
@@ -294,18 +296,70 @@ class LocalBackupManager(GoogleDriveBackupManager):
         try:
             with open(file_path, "wb") as f:
                 pickle.dump(file_data, f)
-            # Verify save worked
+
+            # -------------------------------------------------------
+            # 1. Verify local staged save worked
+            # -------------------------------------------------------
             file_size = file_path.stat().st_size
             if file_size == 0:
                 raise IOError("Saved file is empty - rollback!")
             
             print(f"✓ Saved: {component}/{filename} ({file_size/1024/1024:.2f} MB)")
-            
-            # Update registry
-            self.backup_registry.setdefault(component, {})[filename] = str(file_path)
-            self.new_entries.setdefault(component, {})[filename] = str(file_path)
-            
-            return str(file_path)
+
+            drive_path = self.quantum_data_paths["obj"][component]["drive"] / self.date_str / filename
+
+            # -------------------------------------------------------
+            # 2. If Drive is unavailable, keep local staged file
+            # -------------------------------------------------------
+            if not self.remote_available:
+                self.backup_registry.setdefault(component, {})[filename] = str(file_path)
+                self.new_entries.setdefault(component, {})[filename] = str(file_path)
+                self.save_registry()
+                return str(file_path)
+
+            # -------------------------------------------------------
+            # 3. Try persisting staged file to Drive
+            # -------------------------------------------------------
+            uploaded = self._upload_file_to_drive(
+                component=component,
+                date_str=self.date_str,
+                local_path=str(file_path),
+                filename=filename,
+            )
+
+            # -------------------------------------------------------
+            # 4. If upload fails, keep local staged file
+            # -------------------------------------------------------
+            if not uploaded:
+                self.backup_registry.setdefault(component, {})[filename] = str(file_path)
+                self.new_entries.setdefault(component, {})[filename] = str(file_path)
+                self.save_registry()
+                return str(file_path)
+
+            # -------------------------------------------------------
+            # 5. Verify Drive-backed file exists and is non-empty
+            # -------------------------------------------------------
+            verified = drive_path.exists() and drive_path.stat().st_size > 0
+            if not verified:
+                self.backup_registry.setdefault(component, {})[filename] = str(file_path)
+                self.new_entries.setdefault(component, {})[filename] = str(file_path)
+                self.save_registry()
+                return str(file_path)
+
+            # -------------------------------------------------------
+            # 6. Verified Drive copy → registry points to Drive
+            # -------------------------------------------------------
+            self.backup_registry.setdefault(component, {})[filename] = str(drive_path)
+            self.new_entries.setdefault(component, {})[filename] = str(drive_path)
+            self.save_registry()
+
+            # -------------------------------------------------------
+            # 7. Delete local staged file only after verified success
+            # -------------------------------------------------------
+            if file_path.exists():
+                file_path.unlink()
+
+            return str(drive_path)
         except Exception as e:
             # Emergency rollback if save fails
             if backup_path and backup_path.exists():
@@ -316,7 +370,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
 
 
     def get_latest_state(self, component, filename):
-        """Backward-compatible until registry is fully cleaned."""
+        """Resolve a usable filesystem path for a saved state."""
         entry = self.backup_registry.get(component, {}).get(filename)
 
         if not entry:
@@ -325,41 +379,69 @@ class LocalBackupManager(GoogleDriveBackupManager):
             return None
 
         # -------------------------------------------------------
-        # 1. Try Google Drive first (if available)
-        # -------------------------------------------------------
-        if self.remote_available:
-            result = super().get_latest_state(component, filename)
-            if result is not None:
-                # If Drive still returns old structure {local_path: ..., date: ...}
-                if isinstance(result, dict): return result.get("local_path", None)
-                # Else Drive returns a direct path
-                return str(result)
-
-        # -------------------------------------------------------
-        # 2. Local fallback (backward compatible)
+        # 1. Start from the registry path
         # -------------------------------------------------------
         # entry may be:
         #   A) old style → {"local_path": "...", "date": "..."}
         #   B) new style → "/path/to/file.pkl"
-        local_path = entry.get("local_path") if isinstance(entry, dict) else entry
+        registry_path = entry.get("local_path") if isinstance(entry, dict) else entry
 
-        if local_path:
-            # FIX: Normalize path parts
+        local_root = Path(self.quantum_data_paths["obj"][component]["local"])
+        drive_root = Path(self.quantum_data_paths["obj"][component]["drive"])
+
+        candidate_paths = []
+
+        # -------------------------------------------------------
+        # 2. Try the exact registry path first
+        # -------------------------------------------------------
+        if registry_path:
+            registry_path = Path(registry_path)
+            candidate_paths.append(registry_path)
+
+            # ---------------------------------------------------
+            # 3. If registry points to local, try mirrored drive
+            # ---------------------------------------------------
             try:
-                parts = Path(local_path).parts
-                fixed_parts = []
-                for p in parts:
-                    # if "day_" in p: fixed_parts.append(self.normalize_day_prefix(p))
-                    if "day_" in p: fixed_parts.append(p)
-                    else: fixed_parts.append(p)
-                local_path = str(Path(*fixed_parts))
-            except Exception as e: print(f"⚠️ Path normalization failed: {e}")
+                rel = registry_path.relative_to(local_root)
+                candidate_paths.append(drive_root / rel)
+            except Exception:
+                pass
 
-        if local_path and Path(local_path).exists():
-            if self.verbose: print(f"\t✓ Found: {component}/{filename} → {local_path}")
-            return local_path  # Return string path only
+            # ---------------------------------------------------
+            # 4. If registry points to drive, try mirrored local
+            # ---------------------------------------------------
+            try:
+                rel = registry_path.relative_to(drive_root)
+                candidate_paths.append(local_root / rel)
+            except Exception:
+                pass
 
-        if self.verbose: print(f"\t⚠️ Missing local file: {local_path}")
+        # -------------------------------------------------------
+        # 5. Return the first existing candidate path
+        # -------------------------------------------------------
+        seen = set()
+        for candidate in candidate_paths:
+            key = str(candidate)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            if candidate.exists():
+                if self.verbose:
+                    print(f"\t✓ Resolved: {component}/{filename} → {candidate}")
+                return str(candidate)
+
+        # -------------------------------------------------------
+        # 6. Last resort: recover/download from drive
+        # -------------------------------------------------------
+        recovered = self._download_file_from_drive(self.date_str, component, filename)
+        if recovered:
+            if self.verbose:
+                print(f"\t☁️ Recovered from Drive: {recovered}")
+            return str(recovered)
+
+        if self.verbose:
+            print(f"\t⚠️ No usable state path found for {component}/{filename}")
         return None
 
     def load_state_data(self, component, filename):

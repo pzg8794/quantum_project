@@ -730,3 +730,24 @@ Scope:
 Registry follow-up:
 
 - live registry cache was cleared again after the rename so the next resume scan rebuilds from the post-rename filesystem state.
+
+### Drive-backed GA-Work mirror and automatic filesystem fallback (2026-03-08)
+
+The backup manager now auto-detects a mirrored `GA-Work` under macOS Google Drive Desktop when the same repo tree exists there.
+
+Current behavior:
+
+- local runs keep `mode = local`,
+- the mirrored Drive workspace is treated as a filesystem fallback source,
+- `download_any_date(...)` checks the Drive mirror before falling back to the Drive API,
+- running from the mirrored Drive workspace no longer implies destructive cache cleanup by default.
+
+Safety change:
+
+- `LocalBackupManager` will only clear shared-drive state directories when `DAQR_RESET_SHARED_DRIVE_STATE_CACHE=1` is explicitly set.
+
+Reason:
+
+- support multi-PC work from the mirrored Drive workspace,
+- allow local runs to recover missing states directly from the Drive replica,
+- remove the old risk of wiping shared-drive state directories on manager initialization.

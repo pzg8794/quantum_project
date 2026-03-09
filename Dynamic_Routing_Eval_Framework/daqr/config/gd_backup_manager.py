@@ -16,7 +16,7 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 class GoogleDriveBackupManager:
     """Unified JSON registry backup to Google Drive Shared Drive."""
 
-    DRIVE_FOLDER_ID = "0APT9hcMpvuHYUk9PVA"
+    DEFAULT_DRIVE_FOLDER_ID = "0AK0VchnNyM-xUk9PVA"
 
     def __init__(self, date_str, config_dir, verbose=False):
         self.drive = None
@@ -25,21 +25,53 @@ class GoogleDriveBackupManager:
         self.verbose = verbose
         self.backup_registry = {}
         self.in_share_drive = True
+        self.drive_folder_id = os.environ.get(
+            "DAQR_DRIVE_FOLDER_ID",
+            self.DEFAULT_DRIVE_FOLDER_ID,
+        )
         
         self.obj_query = {}
         self.dir = config_dir
         self.date_str = date_str
 
         # self.date_str = self.normalize_day_prefix(date_str)
-        self.drive_datalake_base            = Path("/content/drive/Shareddrives/ai_quantum_computing")
+        self.workspace_root = self._find_workspace_root(Path(self.dir).resolve())
+        self.relative_config_dir = (
+            Path(self.dir).resolve().relative_to(self.workspace_root)
+            if self.workspace_root is not None else None
+        )
+        self.drive_workspace_root = self._find_drive_workspace_root()
+        self.drive_config_dir = (
+            self.drive_workspace_root / self.relative_config_dir
+            if self.drive_workspace_root is not None and self.relative_config_dir is not None
+            else None
+        )
+        if self.verbose:
+            print(f"\tDrive folder id: {self.drive_folder_id}")
+            print(f"\tDrive workspace root: {self.drive_workspace_root}")
+            print(f"\tDrive config dir: {self.drive_config_dir}")
+
+        self.drive_datalake_base            = (
+            self.drive_workspace_root
+            if self.drive_workspace_root is not None
+            else Path("/content/drive/Shareddrives/ai_quantum_computing")
+        )
         self.quantum_logs_file_name         = f"quantum_quick-run_log_{self.date_str}.txt"
 
         self.quantum_data_paths             = {"drive":"", "local":"", "datalake":""}
         self.quantum_data_paths["local"]    = self.dir
-        self.quantum_data_paths["drive"]    = self.drive_datalake_base / "quantum_data_lake"
+        self.quantum_data_paths["drive"]    = (
+            self.drive_config_dir
+            if self.drive_config_dir is not None
+            else self.drive_datalake_base / "quantum_data_lake"
+        )
         
         self.quantum_data_paths["logs"]             = {}
-        self.quantum_data_paths["logs"]["drive"]    = self.drive_datalake_base / "quantum_logs"
+        self.quantum_data_paths["logs"]["drive"]    = (
+            self.drive_config_dir / "quantum_logs"
+            if self.drive_config_dir is not None
+            else self.drive_datalake_base / "quantum_logs"
+        )
         self.quantum_data_paths["logs"]["local"]    = self.dir / "quantum_logs"
 
         self.quantum_data_paths["obj"]                              = {"obj":{}}
@@ -47,9 +79,17 @@ class GoogleDriveBackupManager:
         self.quantum_data_paths["obj"]["model_state"]               = {}
         self.quantum_data_paths["obj"]["framework_state"]           = {}
         self.quantum_data_paths["obj"]["model_state"]["local"]      = self.dir / "model_state"
-        self.quantum_data_paths["obj"]["model_state"]["drive"]      = self.dir / "model_state"
+        self.quantum_data_paths["obj"]["model_state"]["drive"]      = (
+            self.drive_config_dir / "model_state"
+            if self.drive_config_dir is not None
+            else self.dir / "model_state"
+        )
         self.quantum_data_paths["obj"]["framework_state"]["local"]  = self.dir / "framework_state"
-        self.quantum_data_paths["obj"]["framework_state"]["drive"]  = self.dir / "framework_state"
+        self.quantum_data_paths["obj"]["framework_state"]["drive"]  = (
+            self.drive_config_dir / "framework_state"
+            if self.drive_config_dir is not None
+            else self.dir / "framework_state"
+        )
         
 
         self.registry_file_paths            = {'drive':"", "local":"", "datalake":""}
@@ -57,7 +97,8 @@ class GoogleDriveBackupManager:
         self.registry_file_paths["local"]   = self.dir / "local_backup_registry.json"
         self.registry_file_paths["datalake"]= drive_path / "backup_registry.json"
 
-        self.in_share_drive             = True if self.quantum_data_paths["logs"]["drive"].exists() else False
+        self.in_share_drive             = self._is_running_from_drive_workspace()
+        self.drive_filesystem_available = bool(self.drive_config_dir and self.drive_config_dir.exists())
         self.mode                       = "drive" if self.in_share_drive else "local"
 
         # ------------------------------------------------------------
@@ -95,6 +136,67 @@ class GoogleDriveBackupManager:
 
         if self.verbose: print(f"\t📁 Registry loaded: {len(self.backup_registry)} components")
 
+    def _find_workspace_root(self, start_path: Path):
+        start_path = Path(start_path).resolve()
+        for parent in [start_path, *start_path.parents]:
+            if parent.name == "GA-Work":
+                return parent
+        return None
+
+    def _find_drive_workspace_root(self):
+        override = os.environ.get("DAQR_DRIVE_WORKSPACE_ROOT")
+        if override:
+            override_path = Path(override).expanduser()
+            if override_path.exists():
+                return override_path.resolve()
+
+        if self.workspace_root is None or self.relative_config_dir is None:
+            return None
+
+        cloud_root = Path.home() / "Library" / "CloudStorage"
+        if not cloud_root.exists():
+            return None
+
+        workspace_name = self.workspace_root.name
+        local_root = self.workspace_root.resolve()
+        local_parts = local_root.parts
+        suffix_lengths = range(2, min(len(local_parts), 7) + 1)
+
+        for drive_root in sorted(cloud_root.glob("GoogleDrive*")):
+            shortcut_base = drive_root / ".shortcut-targets-by-id"
+            if shortcut_base.exists():
+                for shortcut_root in sorted(shortcut_base.iterdir()):
+                    for suffix_len in suffix_lengths:
+                        candidate = shortcut_root / Path(*local_parts[-suffix_len:])
+                        try:
+                            candidate = candidate.resolve()
+                        except Exception:
+                            continue
+                        if candidate == local_root:
+                            continue
+                        if not (candidate / self.relative_config_dir).exists():
+                            continue
+                        return candidate
+
+            direct_candidate = drive_root / workspace_name
+            if direct_candidate.exists():
+                try:
+                    direct_candidate = direct_candidate.resolve()
+                except Exception:
+                    direct_candidate = direct_candidate
+                if direct_candidate != local_root and (direct_candidate / self.relative_config_dir).exists():
+                    return direct_candidate
+
+        return None
+
+    def _is_running_from_drive_workspace(self):
+        if self.drive_config_dir is None:
+            return False
+        try:
+            return Path(self.dir).resolve() == self.drive_config_dir.resolve()
+        except Exception:
+            return False
+
 
     # ------------------------------------------------------------
     # Find credentials (same behavior as your GCP code)
@@ -124,7 +226,7 @@ class GoogleDriveBackupManager:
             print("Drive is not available!")
             return None
         
-        data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.DRIVE_FOLDER_ID)
+        data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.drive_folder_id)
         if not data_lake_id: return None
 
         query = f"name='{name}' and '{data_lake_id}' in parents"
@@ -219,7 +321,7 @@ class GoogleDriveBackupManager:
             print("⚠️ Drive NOT available -> cannot fetch registry")
             return self.metadata
 
-        print(f"→ Looking for 'backup_registry.json' in Drive folder: {self.DRIVE_FOLDER_ID}")
+        print(f"→ Looking for 'backup_registry.json' in Drive folder: {self.drive_folder_id}")
         file_id = self._find_drive_file("backup_registry.json")
 
         if not file_id:
@@ -407,7 +509,7 @@ class GoogleDriveBackupManager:
         if not self.remote_available or not self.drive or not parent_id: return None
 
         try:
-            is_drive_root = (parent_id == self.DRIVE_FOLDER_ID)
+            is_drive_root = (parent_id == self.drive_folder_id)
 
             if is_drive_root:
                 parent_clause = "trashed = false"
@@ -474,7 +576,7 @@ class GoogleDriveBackupManager:
         # 1. Root folder (quantum_data_lake or quantum_logs)
         # ---------------------------------------------------------------
         date_str                =   re.sub(r'.*?(day_\d{8})$', r'\1', str(date_str))
-        root_id                 =   self._ensure_drive_folder(parent_dir, self.DRIVE_FOLDER_ID)
+        root_id                 =   self._ensure_drive_folder(parent_dir, self.drive_folder_id)
 
         # ---------------------------------------------------------------
         # 2. Component folder — ONLY IF USING quantum_data_lake
@@ -538,7 +640,7 @@ class GoogleDriveBackupManager:
         # ---------------------------------------------------------------
         # 1. Resolve quantum_data_lake root
         # ---------------------------------------------------------------
-        data_lake_id = self._ensure_drive_folder(storage_dir, self.DRIVE_FOLDER_ID)
+        data_lake_id = self._ensure_drive_folder(storage_dir, self.drive_folder_id)
         
         # ---------------------------------------------------------------
         # 2. Resolve component folder
@@ -736,10 +838,21 @@ class GoogleDriveBackupManager:
                         if self.verbose: print(f"✓ Found: {file_path}")
                     return str(file_path)
             return None
+
+        drive_component_dir = self.quantum_data_paths["obj"][component].get("drive")
+        if drive_component_dir is not None and Path(drive_component_dir).exists():
+            for day_folder in Path(drive_component_dir).iterdir():
+                if not day_folder.is_dir() or not day_folder.name.startswith("day_"):
+                    continue
+                file_path = day_folder / filename
+                if file_path.exists():
+                    if self.verbose:
+                        print(f"✓ Found via Drive mirror: {file_path}")
+                    return str(file_path)
         
         if not self.remote_available or not self.drive: return None
         # Drive API for non-shared-drive environments
-        data_lake_id= self._ensure_drive_folder("quantum_data_lake", self.DRIVE_FOLDER_ID)
+        data_lake_id= self._ensure_drive_folder("quantum_data_lake", self.drive_folder_id)
         comp_id     = self._ensure_drive_folder(component, data_lake_id)
         if not comp_id: return None
         

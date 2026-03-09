@@ -79,6 +79,7 @@
 - [guides/DOCUMENTATION_STRUCTURE.md](guides/DOCUMENTATION_STRUCTURE.md) - Documentation structure
 - [guides/STATE_LAYERS_AND_RESUME.md](guides/STATE_LAYERS_AND_RESUME.md) - State layering + resume ladder (model/runner/evaluator/allocator-runner)
 - [guides/STATE_ANALYSIS_EVALUATOR_CONTRACT.md](guides/STATE_ANALYSIS_EVALUATOR_CONTRACT.md) - Expected evaluator payload vs current observed structure for `state_analysis.py`
+- [guides/PAPER8_MASTER_DATASET_REPORT_WORKFLOW.md](guides/PAPER8_MASTER_DATASET_REPORT_WORKFLOW.md) - How to generate the Paper 8 master dataset and integrate it into the report
 
 ---
 

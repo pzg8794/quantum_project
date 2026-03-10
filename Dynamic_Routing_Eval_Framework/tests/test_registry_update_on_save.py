@@ -9,7 +9,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
-from daqr.config.state_registry import register_state_path
+from daqr.config.state_registry import register_state_path, get_registered_state_path
 
 
 class _DummyBackupMgr:
@@ -86,6 +86,64 @@ class TestRegistryUpdateOnSave(unittest.TestCase):
             self.assertEqual(config_registry["framework_state"]["Any.pkl"], str(base / "framework_state" / "day_20990101" / "Any.pkl"))
             self.assertEqual(mgr.backup_registry["framework_state"]["Any.pkl"], str(base / "framework_state" / "day_20990101" / "Any.pkl"))
             self.assertEqual(len(mgr.saved_registries), 0)
+
+    def test_get_registered_state_path_reads_legacy_string_entry(self):
+        registry = {
+            "framework_state": {
+                "Runner.pkl": "/tmp/framework_state/day_20990101/Runner.pkl",
+            }
+        }
+
+        self.assertEqual(
+            get_registered_state_path(
+                config_registry=registry,
+                component="framework_state",
+                filename="Runner.pkl",
+            ),
+            "/tmp/framework_state/day_20990101/Runner.pkl",
+        )
+
+    def test_get_registered_state_path_reads_canonical_state_entry(self):
+        registry = {
+            "state": {
+                "Runner.pkl": {
+                    "active_path": "/tmp/framework_state/day_20990101/Runner.pkl",
+                    "drive_path": "/drive/framework_state/day_20990101/Runner.pkl",
+                    "offload_status": "active",
+                    "ready_for_offload": False,
+                }
+            }
+        }
+
+        self.assertEqual(
+            get_registered_state_path(
+                config_registry=registry,
+                component="framework_state",
+                filename="Runner.pkl",
+            ),
+            "/tmp/framework_state/day_20990101/Runner.pkl",
+        )
+
+    def test_get_registered_state_path_falls_back_to_drive_path(self):
+        registry = {
+            "state": {
+                "Runner.pkl": {
+                    "active_path": "",
+                    "drive_path": "/drive/framework_state/day_20990101/Runner.pkl",
+                    "offload_status": "uploaded",
+                    "ready_for_offload": True,
+                }
+            }
+        }
+
+        self.assertEqual(
+            get_registered_state_path(
+                config_registry=registry,
+                component="framework_state",
+                filename="Runner.pkl",
+            ),
+            "/drive/framework_state/day_20990101/Runner.pkl",
+        )
 
 
 if __name__ == "__main__":

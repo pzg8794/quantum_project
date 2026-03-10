@@ -1869,9 +1869,9 @@ if __name__ == "__main__":
     # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_Hybrid.csv"
     # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
 
-    key = "paper8"
-    output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key}.csv"
-    convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
+    key = "1000_1000_1"
+    output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key}_paper8.csv"
+    convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}_S.*T_paper8.*\.pkl)")
 
     # key = "4000_2000_5_S"
     # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_paper2_4000_2000_5_ST.csv"

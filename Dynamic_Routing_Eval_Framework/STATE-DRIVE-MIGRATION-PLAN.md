@@ -317,6 +317,100 @@ The migration strategy should now focus on:
 
 ---
 
+## 5.3) Legacy reader compatibility map
+
+The current runtime still has several direct string-path readers. These are the
+main compatibility points that must be handled before the canonical `registry["state"]`
+schema can replace the old structure.
+
+### A) `state_registry.py`
+
+File:
+
+- `/Users/pitergarcia/DataScience/Semester4/GA-Work/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/config/state_registry.py`
+
+Current assumption:
+
+- `register_state_path(..., path: str)` writes a plain string path into:
+  - `config_registry[component][filename]`
+  - `backup_mgr.backup_registry[component][filename]`
+  - `backup_mgr.new_entries[component][filename]`
+
+Compatibility requirement:
+
+- either keep this helper writing the legacy structure during transition
+- or introduce a schema-aware adapter that can write both legacy and canonical forms
+
+### B) `experiment_config.py`
+
+File:
+
+- `/Users/pitergarcia/DataScience/Semester4/GA-Work/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/config/experiment_config.py`
+
+Current assumption:
+
+- `self.backup_registry[item_k][item_v]` is treated as a direct path string
+- the method then converts it to `Path(...)`, reconstructs local/drive variants,
+  and may overwrite the registry entry with a new string path
+
+Compatibility requirement:
+
+- `get_latest_state()` / resume lookup needs a schema-aware read path before the
+  registry value can stop being a plain string
+
+### C) `experiment_runner.py`
+
+File:
+
+- `/Users/pitergarcia/DataScience/Semester4/GA-Work/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/evaluation/experiment_runner.py`
+
+Current assumption:
+
+- reads `self.configs.backup_mgr.backup_registry.get(self.component, {}).get(file_name)`
+- treats the returned value as a plain path string
+- wraps it directly in `Path(...)`
+
+Compatibility requirement:
+
+- resume logic needs a read adapter that returns the active usable path from the
+  canonical registry entry
+
+### D) `multi_run_evaluator.py`
+
+File:
+
+- `/Users/pitergarcia/DataScience/Semester4/GA-Work/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/evaluation/multi_run_evaluator.py`
+
+Current assumption:
+
+- reads `self.configs.backup_mgr.backup_registry[self.component][file_name]`
+- treats the returned value as a plain path string
+- uses it for `Path(...)`, `exists()`, and size-based candidate ordering
+
+Compatibility requirement:
+
+- candidate enumeration can keep using file names, but path resolution must be
+  routed through a canonical accessor instead of assuming the registry value is a string
+
+### Migration conclusion
+
+The safest transition order is:
+
+1. **dual-read**
+   - add schema-aware accessors that can read either:
+     - legacy string entries, or
+     - canonical `registry["state"][file_name]` entries
+2. **dual-write**
+   - once reads are safe, write both:
+     - legacy component buckets
+     - canonical `registry["state"]`
+3. **cleanup**
+   - after validation, remove legacy direct-string assumptions
+
+This minimizes breakage and avoids a flag-day schema cutover.
+
+---
+
 ## 6) Target behavior contract
 
 ### Save path behavior
@@ -462,6 +556,24 @@ Contract tests included:
 - `test_failed_drive_persist_does_not_delete_local_staged_file`
 - `test_failed_drive_verification_does_not_delete_local_staged_file`
 - `test_registry_records_drive_path_after_successful_offload`
+
+Additional schema-transition tests have now been added in:
+
+- `/Users/pitergarcia/DataScience/Semester4/GA-Work/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/tests/test_registry_update_on_save.py`
+
+These new tests define the first dual-read contract for a future registry accessor:
+
+- read legacy `registry[component][file_name] = "/path"`
+- read canonical `registry["state"][file_name] = {...}`
+- prefer `active_path`, then fall back to `drive_path`
+
+Current status of those new tests:
+
+- the test file syntax is valid
+- the test run currently fails at import time because
+  `get_registered_state_path` has not been implemented yet
+- this is expected and desirable at this stage because the tests now define the
+  next patch boundary
 
 Current status:
 

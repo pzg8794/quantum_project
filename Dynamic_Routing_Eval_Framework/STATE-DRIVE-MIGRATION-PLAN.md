@@ -277,6 +277,7 @@ The current preferred direction is:
 - keep a **single flat canonical section**
 - avoid adding another traversal object/layer
 - use the file name itself to infer state type
+- treat `state` as the structure that should eventually replace the legacy registry buckets
 
 ### Canonical target shape
 
@@ -284,10 +285,19 @@ Preferred canonical section:
 
 - `registry["state"][file_name] = {...}`
 
+Naming note:
+
+- the enclosing object may still be called `backup_registry` for compatibility
+- but `state` is the canonical internal structure and should eventually replace:
+  - `framework_state`
+  - `model_state`
+  - other legacy bucket-style registry sections used for active lookups
+
 Preferred entry shape:
 
 ```python
 registry["state"][file_name] = {
+    "component": "framework_state" | "model_state",
     "active_path": "...",
     "drive_path": "...",
     "offload_status": "active",
@@ -295,15 +305,44 @@ registry["state"][file_name] = {
 }
 ```
 
-### File-name classification rule
+### Component classification rule
 
-The framework naming convention is treated as explicit and sufficient:
+Component should be stored explicitly in the canonical state entry, but derived
+from a configurable classification map so the rule can grow over time.
 
-- file names containing `Evaluator` or `Runner` → `framework_state`
+Preferred strategy:
+
+- keep a key-based component registry/config structure
+- use regex patterns to classify filenames into components
+- default unmatched files to `model_state`
+
+Current matching rule:
+
+- filenames matching `Evaluator|Runner` → `framework_state`
 - everything else → `model_state`
 
-This keeps the registry lookup simple and avoids carrying a separate `component`
-field when the file name already encodes that meaning.
+Example shape:
+
+```python
+STATE_COMPONENT_PATTERNS = {
+    "framework_state": [r"Evaluator", r"Runner"],
+}
+```
+
+Classification behavior:
+
+1. iterate component keys
+2. evaluate that component's regex patterns against `file_name`
+3. first match wins
+4. if nothing matches, use `model_state`
+
+This keeps the registry lookup simple:
+
+- lookup key = `file_name`
+- read path = `entry["active_path"]`
+
+and still preserves an explicit `component` field for routing, validation, and
+future component growth.
 
 ### Immediate implication
 
@@ -313,7 +352,8 @@ The migration strategy should now focus on:
 2. preserving compatibility for legacy readers that still expect:
    - `registry["framework_state"][file_name] = "/path"`
    - `registry["model_state"][file_name] = "/path"`
-3. deferring any code patch until that compatibility path is reviewed
+3. using `state` as the long-term replacement for those legacy lookup buckets
+4. deferring any code patch until that compatibility path is reviewed
 
 ---
 

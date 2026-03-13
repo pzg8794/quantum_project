@@ -660,3 +660,89 @@ Why this supersedes the earlier `Configuration Win Rate (%)` recommendation:
 - `TABLE VI` is being used to show which representative dominates the winner pool under adversarial threats, not to report a corpus-wide task win rate
 - `%` already conveys the share; `Win Dominance (%)` is more precise than an undefined `Win Share (%)` and more aligned with the argument than a generic `Win Rate (%)`
 - the manuscript change remains localized because the surrounding RQ2 prose does not depend on the old column values
+
+## RQ3a Validation Status
+
+Current artifact under audit:
+- `GA Papers/QuantumFaultTolerant/main.tex` `tab:rq3a_informative`
+
+Caption-faithful source lock:
+- source dataset: `Validated_Logs/Master_Dataset_Hybrid.csv`
+- models: `CPURSUITNEURALUCB`, `ICPURSUITNEURALUCB`
+- allocator: `Default` (paper wording: `Fixed`)
+- `cap_type = T`
+- `scale = 2.0`
+- `frames = 6000`
+- run suites: `3`, `5`
+- scenarios: `NONE`, `STOCHASTIC`, `MARKOV`, `ADAPTIVE`, `ONLINEADAPTIVE`
+
+Caption-faithful reconstruction result:
+- `CPursuitNeuralUCB`: `Bl 98.29`, `Sh 92.95`, `Mk 90.65`, `Ag 92.77`, `OA 85.71`, `Avg 92.08`, `CV_scen 4.41`
+- `iCPursuitNeuralUCB`: `Bl 98.10`, `Sh 86.40`, `Mk 91.60`, `Ag 93.12`, `OA 84.90`, `Avg 90.82`, `CV_scen 5.24`
+
+Source-backed statement check outcome:
+- `OnlineAdaptive lift = -0.807 pp` under the caption-faithful scope, not `+18.3 pp`
+- `Avg lift = -1.250 pp` under the caption-faithful scope, so the paper’s “higher overall average” statement is not supported there
+- `CV_scen delta = +0.834 pp`, so tighter cross-scenario dispersion is also not supported there
+- `Markov` remains effectively unchanged (`+0.955 pp`)
+- `Stochastic` does not remain effectively unchanged (`-6.553 pp`)
+
+Provenance diagnostic:
+- the closest source match to the manuscript table is:
+  - `allocator = Default`
+  - `cap_type = T`
+  - `scale = 2.0`
+  - `frames = 6000`
+  - `runs = 3` only
+- that candidate gives:
+  - `OA lift = +18.310 pp`
+  - `Avg lift = +3.666 pp`
+  - `Stochastic Δ = +0.040 pp`
+  - `Markov Δ = -0.035 pp`
+- implication: the paper values appear to have been derived from the `3-run` suite only, while the current caption says the table is averaged across the `3-run` and `5-run` suites
+
+Additional diagnostic branch requested during review:
+- test `6K horizon` as `4K base + 6K base+step`, `runs = 3`, same `Default / T / s=2` deployment
+- reconstructed result:
+  - `CPursuitNeuralUCB`: `Bl 99.83`, `Sh 94.34`, `Mk 92.83`, `Ag 92.99`, `OA 89.61`, `Avg 93.92`, `CV_scen 3.56`
+  - `iCPursuitNeuralUCB`: `Bl 92.99`, `Sh 94.62`, `Mk 92.80`, `Ag 92.98`, `OA 98.01`, `Avg 94.28`, `CV_scen 2.10`
+- comparison summary:
+  - `OA lift = +8.400 pp`
+  - `Avg lift = +0.360 pp`
+  - `MAE vs paper = 3.206`
+- interpretation:
+  - this alternative explains more of the paper’s directionality than the caption-faithful `3+5` mean, but it is still weaker than the `6000 / runs=3 only` provenance candidate
+
+Priority classification for RQ3a:
+- **High priority:** `CV_scen` claim
+- **High priority:** manuscript `iCPursuitNeuralUCB / OA = 99.1`
+- **High priority:** caption/derivation mismatch for `tab:rq3a_informative`
+
+`Tb` diagnostic extension:
+- checked the same provenance branches under `Tb`:
+  - `6000 / runs 3+5 mean`
+  - `6000 / runs 3 only`
+  - `6000 / runs 5 only`
+  - `4000 + 6000 / runs 3 only`
+- best `Tb` branch:
+  - `Tb / 6000 / runs 3 only`
+  - `OA lift = +0.911 pp`
+  - `Avg lift = -0.017 pp`
+  - `MAE vs paper = 4.534`
+- conclusion:
+  - `Tb` does not explain the manuscript table better than `T`
+  - `T / 6000 / runs 3 only` remains the strongest provenance candidate
+
+RQ3a paper correction applied:
+- corrected `tab:rq3a_informative` in `GA Papers/QuantumFaultTolerant/main.tex` to the strongest source-backed branch:
+  - `Hybrid`
+  - `Default` (`Fixed` in paper wording)
+  - `T`
+  - `s = 2`
+  - `frames = 6000`
+  - `runs = 3` only
+- patched the two manuscript claims that were highest priority:
+  - claim 1 (`OnlineAdaptive` lift) remains `+18.3 pp`
+  - claim 3 now states the validated dispersion improvement explicitly:
+    - `CV_scen: 6.5 -> 3.3`
+- updated the paper table scope text and caption so they no longer claim the values are averaged across the `3-run` and `5-run` suites

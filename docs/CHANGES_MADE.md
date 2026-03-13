@@ -507,3 +507,60 @@ Your Paper7 (QBGP) experiments can now run without oracle hangs!
   - `EXPNeuralUCB = 30.5`
   - `EXP3/UCB = 0.0`
 - updated `GA Papers/QuantumFaultTolerant/main.tex` accordingly and documented the localized manuscript impact
+
+### Validation notebook error-rate columns now use absolute magnitude
+- updated `H-MABs_MasterDataset_VerificationHub.ipynb` so normalized validation-rate columns are absolute:
+  - `|Δ| / Expected (%)`
+  - `|Δ| vs Paper Win Dominance`
+- kept the raw `Δ` column signed where the direction is still useful
+- re-executed the notebook under the GA-Work `.quantum` environment
+
+### Added source-first RQ3a audit to the verification hub
+- added a new `RQ3a` section to `H-MABs_MasterDataset_VerificationHub.ipynb`
+- locked the caption-faithful scope to:
+  - `Hybrid`
+  - `Default`
+  - `T`
+  - `scale = 2.0`
+  - `frames = 6000`
+  - run suites `3` and `5`
+- reconstructed `tab:rq3a_informative` from source and audited the surrounding manuscript statements
+- recorded that the caption-faithful reconstruction does not support the current paper table or the paper’s stated `+18.3 pp` OnlineAdaptive lift
+- added a provenance diagnostic showing the manuscript values line up best with the same deployment under the `3-run` suite only, which indicates a likely caption/derivation mismatch
+
+### Added alternative 6K horizon provenance branch for RQ3a
+- added a second RQ3a diagnostic branch for the interpretation:
+  - `6K horizon = 4K base + 6K base+step`
+  - `runs = 3`
+  - `Default / T / s=2`
+- recorded the reconstructed values and comparison summary directly in the notebook
+- documented that this branch is worth preserving, but it is still weaker than the `6000 / runs=3 only` candidate
+- marked the following as high priority:
+  - `CV_scen` claim
+  - the manuscript `iCPursuitNeuralUCB / OA = 99.1` value
+  - the caption/derivation mismatch itself
+
+### Added `Tb` provenance exclusion check for RQ3a
+- added the same RQ3a provenance search under `Tb`
+- checked:
+  - `6000 / runs 3+5 mean`
+  - `6000 / runs 3 only`
+  - `6000 / runs 5 only`
+  - `4000+6000 / runs 3 only`
+- confirmed the best `Tb` candidate (`Tb / 6000 / runs 3 only`) is still weaker than the best `T` candidate
+- recorded that `Tb` should not be used to explain the current manuscript table
+
+### Patched RQ3a claims 1 and 3 in the paper from the validated source branch
+- updated `GA Papers/QuantumFaultTolerant/main.tex` `tab:rq3a_informative` to the strongest source-backed provenance branch:
+  - `6K`
+  - `Fixed`
+  - `T`
+  - `s = 2`
+  - `3-run` suite
+- replaced the two table rows with the validated values:
+  - `CPursuitNeuralUCB = 99.8 / 94.7 / 93.0 / 92.8 / 81.5 / 92.4 / 6.5`
+  - `iCPursuitNeuralUCB = 99.9 / 94.8 / 93.0 / 92.8 / 99.8 / 96.0 / 3.3`
+- corrected the setup sentence and caption so they no longer claim the values are averaged across the `3-run` and `5-run` suites
+- corrected the two high-priority claims:
+  - claim 1: `OnlineAdaptive` lift remains `+18.3 pp`
+  - claim 3: tighter dispersion is now explicit as `CV_scen: 6.5 -> 3.3`

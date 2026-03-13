@@ -353,3 +353,70 @@ Source: `docs/guides/STATE_LAYERS_AND_RESUME.md`
   - `EXPNeuralUCB = 30.5`
   - `EXP3/UCB = 0.0`
 - The literature framing remains unchanged because this is a localized table-column correction, not a change to the paper’s external positioning.
+
+### 2026-03-13 — Validation-rate columns should be absolute-magnitude by default
+
+**Decision**
+- In the verification hub, normalized error-rate columns should use absolute magnitude unless the sign is itself analytically meaningful.
+
+**Applied result**
+- The RQ2 audit tables now use `|Δ| / Expected (%)`.
+- The RQ2 winner-accounting tables now use `|Δ| vs Paper Win Dominance`.
+- Raw `Δ` remains signed where it is still useful to see direction.
+
+### 2026-03-13 — RQ3a must be validated against the caption-faithful scope before provenance guessing
+
+**Decision**
+- `tab:rq3a_informative` must follow the same source-first workflow used for `TABLE V` and `TABLE VI`:
+  1. lock the caption-faithful source scope
+  2. reconstruct the paper-facing table from source
+  3. validate the surrounding statements from that reconstruction
+  4. only then run a provenance diagnostic if the paper values do not match
+
+**Applied result**
+- The verification notebook now contains an RQ3a section that does exactly that.
+- The caption-faithful reconstruction from `Hybrid / Default / T / s=2 / 6000 / runs 3+5 mean` does not support the current manuscript values or the `+18.3 pp` OnlineAdaptive claim.
+- The provenance diagnostic identifies `runs = 3` only as the closest matching source candidate, which strongly suggests a caption/derivation mismatch in the paper.
+
+### 2026-03-13 — RQ3a needs an explicit alternative 6K horizon diagnostic
+
+**Decision**
+- Because the paper text says `6K horizon` while the source corpus is organized as `4K base` with `2K` stepping, the verification hub must preserve an explicit alternative diagnostic branch for `4000 + 6000`, `runs = 3`, even if that branch is not the best provenance match.
+
+**Applied result**
+- The notebook now includes that branch and compares it directly against:
+  - the caption-faithful `6000 / runs 3+5 mean` reconstruction
+  - the best provenance candidate `6000 / runs 3 only`
+- The branch does not fully resolve the mismatch, but it is kept because it is a plausible interpretation of the paper wording and it narrows the provenance search cleanly.
+
+### 2026-03-13 — RQ3a also needs a `Tb` exclusion check
+
+**Decision**
+- Before correcting the paper, the RQ3a provenance search must also exclude the possibility that the table was accidentally drawn from `Tb` rather than `T`.
+
+**Applied result**
+- The notebook now contains the same branch search under `Tb`.
+- None of the `Tb` branches beats the best `T` candidate.
+- This narrows the likely source further:
+  - not `T / 6000 / runs 3+5 mean`
+  - not `Tb`
+  - strongest current candidate remains `T / 6000 / runs 3 only`
+
+### 2026-03-13 — RQ3a paper patch must follow the strongest source-backed provenance branch
+
+**Decision**
+- Correct `tab:rq3a_informative` using the strongest validated provenance branch instead of the caption-faithful but unsupported `3+5` mean.
+- For the current manuscript, that branch is:
+  - `Hybrid`
+  - `Default` / paper wording `Fixed`
+  - `T`
+  - `s = 2`
+  - `frames = 6000`
+  - `runs = 3` only
+
+**Applied result**
+- The paper now uses the 3-run suite wording in the RQ3a setup sentence and caption.
+- The two table rows were updated to the validated source values for that branch.
+- The high-priority claim fixes are now explicit:
+  - `OnlineAdaptive` lift remains `+18.3 pp`
+  - cross-scenario dispersion is stated as `CV_scen: 6.5 -> 3.3`

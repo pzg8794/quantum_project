@@ -329,3 +329,53 @@ This log records **surgical notebook changes** (issues encountered, what was cha
 - **Definition:** `Win Dominance (%)` is each displayed model’s share of aggregated scenario wins among the four displayed RQ2 representatives under the locked adversarial scope (`MARKOV`, `ADAPTIVE`, `ONLINEADAPTIVE`; `Default`; runs `3/5`; scales `1/1.5/2`; `T/T_b`).
 - **Source-backed values:** `CPursuit = 25.6`, `iCEpsilonGreedy = 43.9`, `EXPNeuralUCB = 30.5`, `EXP3/UCB = 0.0`.
 - **Paper action:** `main.tex` now uses `Win Dominance (%)` in `TABLE VI` with an explicit caption definition; this is a localized manuscript correction and does not change the literature framing.
+
+### Verification hub — validation error-rate columns now use absolute magnitude
+- **Issue:** signed error-rate columns were making the validation tables noisier than necessary.
+- **Fix:** converted the notebook’s validation-rate columns to absolute magnitude:
+  - `|Δ| / Expected (%)` in the RQ2 metric audits
+  - `|Δ| vs Paper Win Dominance` in the RQ2 winner-accounting tables
+- **Rule:** keep the raw `Δ` column signed where present, but make the normalized error-rate columns absolute for easier validation review.
+
+### Verification hub — RQ3a source-first audit added
+- **Added:** a full `RQ3a` section to `H-MABs_MasterDataset_VerificationHub.ipynb` covering:
+  - caption-faithful source scope
+  - caption-faithful reconstruction of `tab:rq3a_informative`
+  - source-backed statement checks
+  - manuscript-vs-source audit
+  - provenance diagnostic search
+- **Locked caption-faithful scope:** `Hybrid`, `Default`, `T`, `s=2`, `6000` horizon, runs `3` and `5`, all five scenarios.
+- **Finding:** the caption-faithful reconstruction does **not** support the manuscript RQ3a claims. The strongest mismatch is the paper’s reported `+18.3 pp` OnlineAdaptive lift; the audited source result under the stated caption scope is `-0.807 pp`.
+- **Provenance diagnostic:** the best source match to the manuscript table is the same deployment with `runs = 3` only, which reproduces the paper’s directional claims and yields the nearest value match (`MAE ≈ 1.805`). This suggests the current caption and the underlying derivation are inconsistent.
+
+### Verification hub — RQ3a alternative 6K horizon branch and priority notes added
+- **Added:** an explicit RQ3a diagnostic branch for the user-raised `6K horizon = 4K base + 6K base+step` interpretation under:
+  - `Hybrid`
+  - `Default`
+  - `T`
+  - `scale = 2.0`
+  - `runs = 3`
+  - frames aggregated over `4000` and `6000`
+- **Result:** this branch improves provenance plausibility over the caption-faithful `3+5` mean, but it is still weaker than the `6000 / runs=3 only` candidate (`MAE 3.206` vs `1.805`).
+- **Priority notes recorded in notebook:** high priority on:
+  - the `CV_scen` claim
+  - the `iCPursuitNeuralUCB / OA = 99.1` manuscript value
+  - the overall caption/derivation mismatch itself
+
+### Verification hub — RQ3a `Tb` provenance branches added
+- **Added:** the same RQ3a provenance checks under `Tb`:
+  - `6000 / runs 3+5 mean`
+  - `6000 / runs 3 only`
+  - `6000 / runs 5 only`
+  - `4000+6000 / runs 3 only`
+- **Finding:** none of the `Tb` branches outperforms the best `T` provenance candidate.
+- **Best `Tb` branch:** `Tb / 6000 / runs 3 only`
+  - `OA lift = +0.911 pp`
+  - `Avg lift = -0.017 pp`
+  - `MAE vs paper = 4.534`
+- **Implication:** the current RQ3a manuscript values are not being explained by an accidental `Tb` source choice; `T / 6000 / runs 3 only` remains the strongest provenance candidate.
+
+### Verification hub — RQ3a paper correction applied from the validated 3-run branch
+- **Decision:** patch the paper from the strongest source-backed provenance branch rather than the unsupported caption-faithful `3+5` mean.
+- **Applied paper branch:** `6K`, `Fixed`, `T`, `s=2`, `runs = 3`.
+- **Applied corrections:** the paper now uses the 3-run suite wording in the RQ3a setup sentence and caption, updates the two table rows to the validated source values, and makes the high-priority dispersion claim explicit as `CV_scen: 6.5 -> 3.3` while preserving the validated `+18.3 pp` OnlineAdaptive lift.

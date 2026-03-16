@@ -746,3 +746,83 @@ RQ3a paper correction applied:
   - claim 3 now states the validated dispersion improvement explicitly:
     - `CV_scen: 6.5 -> 3.3`
 - updated the paper table scope text and caption so they no longer claim the values are averaged across the `3-run` and `5-run` suites
+
+## Notebook Workflow Integrity / GitHub Variant Check
+
+- **Engine decision:** keep pandas as the canonical engine for all verification-hub data manipulation.
+- **Formatting/workflow decision:** pandas adoption must not remove the audit-review layer. The verification notebook is expected to preserve:
+  - discrepancy color coding
+  - `B - A` / `|B - A|` severity presentation
+  - end-of-analysis summaries
+  - `🔴 Pending high tasks` / `🟢 Solved high tasks`
+- **Current verified state:** the local notebook file now restores that workflow for the sections currently present (`RQ1`, `RQ2`).
+- **Current regression still open:** the GitHub notebook variant no longer contains the richer source-first sections previously built for:
+  - `RQ3a`
+  - `RQ3b`
+  - `RQ3c`
+  - `RQ3d`
+  - `Table X`
+  - `Table XI`
+- **Priority:** restoring notebook coverage parity with the already-approved paper/doc state is a high-priority workflow task.
+- **Paper check:** `GA Papers/QuantumFaultTolerant/main.tex` still reflects the approved paper-side fixes; the current mismatch is between the notebook file and the paper/docs, not a rollback in `main.tex`.
+
+### Recovery update
+
+- The missing validated sections have now been restored into `H-MABs_MasterDataset_VerificationHub.ipynb` using the approved snapshot bundle under `paper_validation/snapshots/20260315_001835`.
+- Restored coverage:
+  - `RQ3a`
+  - `RQ3b`
+  - `RQ3c`
+  - `RQ3d`
+  - `Table X`
+  - `Table XI`
+- The recovery preserves the required workflow layer on top of pandas:
+  - discrepancy color coding
+  - `B - A` / `|B - A|`
+  - end-of-analysis summaries
+  - `🔴 Pending high tasks` / `🟢 Solved high tasks`
+- The notebook now executes successfully again with those recovered sections present.
+
+## Winner Terminology Review Pass
+
+- **Trigger:** the validated table/breakdown backlog is now cleared at high priority, so the next pass is language integrity rather than numeric repair.
+- **Goal:** verify that all winner-related paper language is scoped and defined correctly, without conflating:
+  - experiment-level winners
+  - scenario champions
+  - displayed-model win-pool dominance
+  - aggregate gap-reduction leadership
+- **Primary review locations in `GA Papers/QuantumFaultTolerant/main.tex`:**
+  1. `fig:global_win_share`
+  2. `TABLE VI` / `tab:rq2_adversarial`
+  3. RQ2 in-family winner sentence
+  4. `TABLE X` intro / caption / legend / bullets
+  5. `TABLE XI` note / inter-family claims
+  6. standardized-testing and future-work wording that carries winner/dominance language forward
+- **Process lock:** each location will be handled one by one under the explicit review format:
+  - `Task`
+  - `Meaning`
+  - `Before`
+  - `After`
+- **Constraint:** no wording patch should be applied for this pass until that specific location has been reviewed under the above format.
+
+## Winner-Type Validation Extension
+
+- `Table X` and `Table XI` notebook sections now include explicit winner-type validation tables.
+- `Table X` winner types are now shown per testbed:
+  - `Experiment winner`
+  - `Aggregate gap-reduction winner`
+  - `Aggregate efficiency winner`
+- `Table XI` winner types are now shown per source world:
+  - `Experiment winner`
+  - `Aggregate gap-reduction winner`
+  - `Aggregate efficiency winner`
+  - `Allocator-level aggregate gap winner`
+- This extension is intended to keep the paper terminology pass grounded in the validated data rather than inferred from prose.
+
+## Winner wording rule — `cross-layer winner`
+- Use `cross-layer winner` only when the same model is validated as the winner across all relevant winner views for that section.
+- Always state the basis explicitly.
+
+## Winner wording rule — `cross-layer winner` vs gap-based leader
+- Use `cross-layer winner` when the same model wins across all validated winner layers for the section.
+- Use metric-specific wording when the validated basis is narrower, e.g. `strongest neural model by Oracle-relative gap reduction`.

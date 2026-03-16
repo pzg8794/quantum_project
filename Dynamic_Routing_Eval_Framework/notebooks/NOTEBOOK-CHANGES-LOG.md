@@ -314,9 +314,49 @@ This log records **surgical notebook changes** (issues encountered, what was cha
 - **Finding:** the global win-share figure defines its rule explicitly, but `TABLE VI` does not define the denominator for its `Win Share (%)` column
 - **Implication:** `TABLE VI` remains the highest-priority provenance issue
 
+## 2026-03-15
+
+### Verification hub — RQ3c proof snapshot evidence bundle finalized
+- **Issue:** the proof snapshot exporter prefixes filenames (`data__*`, `agg_used__*`). The initial RQ3c evidence objects were named with `data__...` / `agg__...`, causing double-prefixed exports (e.g., `data__data__rq3c_...`, `agg_used__agg__rq3c_...`) and making the evidence checks fail by pattern.
+- **Fix:** rewrote the RQ3c approved-branch proof-snapshot cell to use neutral variable names (`rq3c_approved_branch`, `rq3c_approved_allocator_*`), so exports land as:
+  - `data__rq3c_approved_branch.csv`
+  - `agg__rq3c_approved_branch.csv` + pivot variants
+  - `agg_used__rq3c_approved_allocator_scenario.csv`
+  - `agg_used__rq3c_approved_allocator_summary.csv`
+- **Evidence:** proof snapshot written to `paper_validation/snapshots/20260315_001835/`.
+
 ### Verification hub — `Win Share` severity assessment added
 - **Added:** a notebook section that separates correction priority from manuscript blast radius
 - **Finding:** `TABLE VI` `Win Share (%)` is high priority for correctness, but low-scope in terms of paper impact because the surrounding RQ2 prose does not materially rely on that numeric column
+
+### Verification hub — RQ1 `TABLE V` high-priority semantics made explicit
+- **Task:** make the RQ1 `TABLE V` audit semantics explicit directly in the notebook so review does not depend on implied meanings.
+- **Meaning:** “Pending high tasks” is a mismatch-severity indicator for specific model/run items (not a statement about overall claim support).
+- **Before:** manuscript `TABLE V` reported values for the listed model/run items.
+- **After:** pandas-recomputed values from the validated master slice used to reconstruct `TABLE V`.
+
+### Verification hub — RQ1 pending-high Before/After table fixed and rendered
+- **Issue:** the pending-high mini table initially expected `Status` and `Δ` columns, but the `TABLE V` audit tables expose discrepancy via `B - A` (and do not necessarily carry `Status`).
+- **Fix:** normalized the mini table to derive `Δ` from `B - A`, injected a simple `Status = pending (high)` label when absent, and included `Priority` for audit severity visibility.
+- **Result:** the notebook now renders an explicit “Before (Expected) vs After (Actual)” table directly under the RQ1 analysis summary.
+
+### Paper patch — RQ1 `TABLE V` values updated to match approved audit
+- **Task:** apply the approved “Before vs After” corrections to the compiled paper table.
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex` (`tab:rq1masterstochastic`).
+- **Changes applied (one-decimal rounding):**
+  - `GNeuralUCB` 3-run `85.2 → 86.2` (Avg `85.9 → 86.3`).
+  - `EXPNeuralUCB` 5-run `83.8 → 80.9` (Avg `83.1 → 81.5`).
+  - `iCPursuit` 3-run `68.7 → 67.2`, 5-run `69.0 → 67.5` (Avg `68.9 → 67.4`).
+- **Source of truth:** the notebook’s rendered `RQ1 Pending-High — Before (Expected) vs After (Actual)` table.
+
+## 2026-03-14
+
+### Verification hub — RQ3c “Before/After” semantics made explicit
+- **Issue:** the RQ3c section already had `Task / Meaning / Before / After`, but it was still easy to read the discrepancy tables as a generic “paper vs dataset” comparison without a clear mapping to the `Expected/Actual` columns.
+- **Fix:** updated the RQ3c scope markdown to explicitly define:
+  - `Expected` = paper-as-written values (**Before**)
+  - `Actual` = pandas-computed values (**After**, only for the approved branch)
+- **Added:** a short `Status (Pending vs Solved)` block so readers can see what is “doc-only solved” vs what still requires manuscript alignment + snapshot evidence.
 
 ### Verification hub — `TABLE VI` replacement recommendation added
 - **Added:** a notebook recommendation section for replacing the unsupported `Win Share (%)` column
@@ -379,3 +419,401 @@ This log records **surgical notebook changes** (issues encountered, what was cha
 - **Decision:** patch the paper from the strongest source-backed provenance branch rather than the unsupported caption-faithful `3+5` mean.
 - **Applied paper branch:** `6K`, `Fixed`, `T`, `s=2`, `runs = 3`.
 - **Applied corrections:** the paper now uses the 3-run suite wording in the RQ3a setup sentence and caption, updates the two table rows to the validated source values, and makes the high-priority dispersion claim explicit as `CV_scen: 6.5 -> 3.3` while preserving the validated `+18.3 pp` OnlineAdaptive lift.
+
+### Verification hub — RQ3b source-first audit added
+- **Added:** a full `RQ3b` section to `H-MABs_MasterDataset_VerificationHub.ipynb`.
+- **Clarified purpose:** `RQ3b` is being treated as an expansion of `RQ3a` under the same fixed-deployment claim, with scale as the only intended variable.
+- **Notebook wording updated:** the notebook now states explicitly that the table/caption semantics govern the audit purpose, and that any stray `Random` wording is legacy residue and not the controlling interpretation.
+- **Approved interpretation anchor (final):** `Hybrid`, `Default` (fixed deployment interpretation), `Tb`, `6K`, `runs = 3`, scenarios `Bl/Sh/Mk/Ag`.
+- **Result (manuscript/table claim):** under this anchor, both pursuit-based hybrids show an intermediate bump at `s=1.5` followed by regression at `s=2.0` (i.e., replay capacity is not a monotone “more is better” knob).
+- **Proof bundle exported:** `paper_validation/snapshots/20260314_224936/` (row slice + pandas aggregations/pivots used for the manuscript table).
+- **Provenance gap recorded:** under `T` anchoring at `6K` with `Default (=Fixed)`, the validated master is missing the full `s=1.5` grid; RQ3b is therefore reported using `Tb` until the master is repaired.
+- **High-priority wording patch status:** completed. RQ3b narrative remains anchored to fixed/default deployment interpretation; `Random` is no longer treated as an interpretive anchor.
+- **Paper sync status:** completed. Matching RQ3b wording in `GA Papers/QuantumFaultTolerant/main.tex` now uses the same fixed/default deployment anchor language.
+- **Task:** remove stray `Random` anchor wording from the RQ3b key finding and keep interpretation anchored to fixed/default deployment.
+- **Meaning:** RQ3b interpretation is deployment-anchor based (`Default/Fixed`), not `Random`-allocator based.
+- **Before:** manuscript wording used `allocator fixed (Random)` in the RQ3b key-finding sentence.
+- **After:** manuscript wording now uses `deployment anchor fixed (Default/Fixed)` in that same sentence.
+- **Before/after solution steps:**
+  1. locate the inconsistent RQ3b key-finding sentence in `main.tex`
+  2. replace `Random` anchor wording with `Default/Fixed` anchor wording
+  3. sync the same interpretation note into paper trackers and notebook log
+  4. verify the updated phrase exists in manuscript and trackers
+
+### Verification hub — discrepancy severity summaries added for RQ3a and RQ3b
+- **Added:** a notebook-wide discrepancy severity key:
+  - `High`: `|B - A| >= 1.0` percentage point
+  - `Medium`: `0.5 <= |B - A| < 1.0` percentage point
+  - `Low`: `0 < |B - A| < 0.5` percentage point
+- **Added:** row highlighting for the RQ3a and RQ3b discrepancy tables using light severity colors with black text for readability.
+- **Added:** end-of-analysis summary blocks that state:
+  - whether the claims are supported by the data
+  - the high-priority discrepancies
+  - the medium-priority discrepancies
+  - the low-priority discrepancies
+- **Updated:** the summary tables now show both:
+  - signed point change `B - A`
+  - absolute point change `|B - A|`
+  - normalized ratio `|B - A| / Expected`
+- **Decision:** severity is now driven by absolute point change, not the normalized ratio, because paper-facing replacement decisions are easier to defend in percentage-point terms.
+
+### Verification hub — discrepancy styling expanded across all audited tables
+- **Expanded coverage:** the shared discrepancy key and row-highlighting helpers now drive:
+  - `RQ1 TABLE V` flat and tiered audits
+  - `RQ2` runner/evaluator/per-run winner diagnostics
+  - `RQ2 Partial TABLE VI` metric audits plus `Win Dominance (%)`
+  - `RQ3a` raw audit table
+  - `RQ3b` best table-match audit
+- **Added:** end-of-analysis summary blocks for `RQ1` and `RQ2` so every completed artifact section now ends with:
+  - whether the claims are supported
+  - high-priority discrepancies
+  - medium-priority discrepancies
+  - low-priority discrepancies
+- **Added:** explicit high-task status lines after every completed analysis:
+  - `🔴 Pending high tasks`
+  - `🟢 Solved high tasks`
+- **Purpose:** make full-pass review of prior audit work consistent before moving on to additional tables/figures.
+
+### Verification hub — RQ3c allocator audit added
+- **Added:** source-first `RQ3c` sections for:
+  - source aggregation scope
+  - source-backed statement checks
+  - manuscript-faithful reconstruction
+  - provenance diagnostic
+  - analysis summary with discrepancy tiers and task-status lines
+- **Caption-faithful branch tested:** `CPursuitNeuralUCB / Tb / s=2 / 6K / runs=3+5 / all5`
+- **Result:** the printed allocator table is not source-backed under the caption-faithful branch.
+- **Answer-text branch tested:** `iCPursuitNeuralUCB / Tb / s=2 / 6K / runs=3 / all5`
+- **Result:** the allocator-direction claim is supported there:
+  - `Fixed` is best on average and floor
+  - `Thompson` is strongest in `Adaptive` but drops hard in `Baseline` / `Stochastic`
+- **High-priority issue isolated:** the table caption names `CPursuitNeuralUCB`, while the answer text argues about `iCPursuitNeuralUCB`.
+- **High-priority issue isolated:** no tested `6K / s=2` branch reproduces the printed allocator table well; best tested table-match is still weak (`MAE = 13.971`).
+
+### Verification hub — capacity-type option summaries added for non-aggregated RQ3 sections
+- **Added:** two explicit option tables at the end of the notebook:
+  - `T Option Summary`
+  - `Tb Option Summary`
+- **Coverage:** `RQ3a`, `RQ3b`, and `RQ3c`
+- **Purpose:** record, per section, whether `T` or `Tb` is closer to:
+  - the claims
+  - the reported paper data
+- **Use:** these tables are now the quick reasoning ledger before making capacity-type decisions in paper fixes.
+
+### Verification hub — RQ3d deployment-rule audit added
+- **Added:** source-first `RQ3d` sections for:
+  - source aggregation scope
+  - static-default audit
+  - switching-rule audit
+  - analysis summary with discrepancy tiers and task-status lines
+- **Strongest coherent branch identified:** `iCPursuitNeuralUCB / Fixed / T / s=2 / 6K / runs=3`
+- **Result:** the static-default identity is source-backed and stays above `85%` across all five scenarios.
+- **Mismatch:** the reported `95.5% / 88.5%` static-default metrics are not source-backed on that coherent branch; source-backed values are `96.0%` average and `92.8%` floor.
+- **Switching breakdown:** mostly source-backed on the same coherent `3-run` branch.
+- **Adaptive exception:** the reported `Thompson + (Tb, s=1.5)` row is absent from the coherent `3-run` branch but present on the `5-run` slice at `95.7%`; the reported `+2.9 pp` gain aligns with the `3-run` default baseline, so this row is now flagged as the top-priority mixed-run provenance issue and a rerun/correction candidate.
+
+### Verification hub — Table X cross-testbed audit added
+- **Added:** source-first `Table X` sections for:
+  - source aggregation scope
+  - per-testbed source tables
+  - reconstructed cross-testbed table
+  - source-backed claim checks
+  - manuscript-vs-source audit
+  - analysis summary with task-status lines
+- **Scope lock:** Papers 2, 7, and 12 use `runs=5`, `cap_type=T`, `s in {1.0, 1.5, 2.0}` across all five scenarios and 4 allocators; Paper 8 uses the paper-config `1K/1K/1R`, `runs=1`, `cap_type=T`, `s=1.0`.
+- **Result:** the printed cross-testbed table is source-backed under the manuscript scope.
+- **Claims:** the nearby cross-testbed observations are source-backed, including the Paper 8 EXP-vs-iCP split and the Paper 12 broad winner overlap.
+- **Priority:** no new high-priority discrepancies were introduced; remaining drift is limited to low rounding noise.
+- **Process correction:** each testbed now has its own source table and winner-layer diagnostics before the combined `Table X` view, so the notebook shows where the cross-testbed rows come from testbed by testbed.
+- **Validation structure correction:** the claim checks and manuscript-vs-source audits are now split per testbed (`Paper 2`, `Paper 7`, `Paper 12`, `Paper 8`) instead of one giant combined audit table.
+
+### Verification hub — Table XI model-family audit added
+- **Added:** source-first `Table XI` sections for:
+  - source aggregation scope
+  - per-source source tables
+  - per-source claim checks
+  - per-source manuscript-vs-source audits
+  - inter-family claim checks
+  - analysis summary with pending/solved high-task lines
+- **Process:** validation is split by source world (`CMABs`, `iCMABs`, `EXP3-based`, `Hybrid Neural`, `Paper 2`, `Paper 7`, `Paper 12`, `Paper 8`) instead of one combined audit table.
+- **Supported:** claim 1, claim 3, claim 4, and claim 5 in the nearby inter-family analysis are source-backed.
+- **Applied fix:** claim 2 now uses Oracle-relative aggregate gap reduction instead of literal experiment-winner wording.
+- **Applied fix:** the `Paper 8` floor values in `Table XI` were corrected to the source-backed values (`44.1 / 23.9 / 36.0 / 35.2`).
+- **Interpretive note:** the main scientific shift is `EXPNeuralUCB`'s `Paper 8` floor (`35.1 -> 23.9`), which strengthens the framework-level argument that narrow-scope success does not guarantee robust performance under broader variability.
+- **Medium-priority follow-up:** clarify in the paper that “best overall” should refer to aggregate cross-threat robustness / gap-reduction behavior under quantum variability, not to winning every evaluation setting individually.
+- **Gap-reduction proof added:** for `Hybrid Neural`, `Paper 2`, `Paper 7`, `Paper 12`, and `Paper 8`, the notebook now shows Oracle-relative gap tables with:
+  - all allocators aggregated across threats
+  - allocator-by-allocator aggregate gap tables
+- **Gap-reduction result:** `iCPursuitNeuralUCB` has the lowest Oracle-relative aggregate gap in every checked source world and in every allocator slice within those source worlds.
+- **Claim implication:** the intended aggregate gap-reduction interpretation is source-backed and is now the correct paper-facing formulation for claim 2.
+- **Low-priority follow-up:** add claim-to-artifact traceability so the final paper wording can link each claim back to the exact validated notebook/table/figure artifact that supports it.
+
+### Verification workflow — paper numeric include-file automation noted
+- **Recorded backlog item:** move paper-facing table/plot numbers out of hardcoded LaTeX and into generated text/TeX include files.
+- **Recorded workflow dependency:** `state_analysis.py` should refresh those generated numeric files, run the dependent reports, and leave the paper repo ready for a controlled commit/push after validation.
+
+### Verification hub — RQ3d deployment-rule block corrected
+- **Patched paper values/configs:** updated the RQ3d static-default metrics to the source-backed `96.0% / 92.8%` values and corrected the `Adaptive` switching rule to `Thompson + (T, s=1)`.
+- **Clarified provenance:** the paper now states that the deployment-rule block uses the coherent 6K `3-run` branch.
+- **Notebook sync:** updated the RQ3d expected values/configs in the verification hub and re-executed the notebook under `.quantum`.
+
+### Verification hub — pandas workflow retained, audit formatting restored, notebook coverage regression identified
+- **Confirmed engine choice:** pandas remains the canonical data-manipulation layer for the verification hub. The issue was not pandas; the issue was that a later rewrite removed the audit workflow layer that made review tractable.
+- **Restored in the current notebook file:** discrepancy color coding, `B - A` / `|B - A|` severity presentation, end-of-analysis summaries, and the `🔴 Pending high tasks` / `🟢 Solved high tasks` status lines for the sections currently present.
+- **Coverage finding:** the current GitHub notebook variant only contains the restored `RQ1` and `RQ2` sections. The richer source-first sections previously tracked here for `RQ3a`, `RQ3b`, `RQ3c`, `RQ3d`, `Table X`, and `Table XI` are not currently present in the notebook file.
+- **Ledger correction:** the notebook now explicitly marks those later artifacts as `restore required` instead of pretending they are still implemented in this file.
+- **Paper/doc check:** `GA Papers/QuantumFaultTolerant/main.tex` still carries the later approved paper-side fixes (`Win Dominance (%)`, RQ3 wording fixes, Table XI claim/floor fixes). The mismatch is notebook coverage parity, not a rollback in the paper text.
+
+### Verification hub — missing validated `RQ3` / `Table X` / `Table XI` sections restored on top of pandas
+- **Recovery source:** rebuilt the missing notebook sections from the approved snapshot bundle under `paper_validation/snapshots/20260315_001835`.
+- **Restored sections:** `RQ3a`, `RQ3b`, `RQ3c`, `RQ3d`, `Table X`, and `Table XI`.
+- **Workflow preserved:** the restored sections keep the same pandas-first audit layer used in `RQ1`/`RQ2`:
+  - discrepancy color coding
+  - `B - A` / `|B - A|` severity presentation
+  - end-of-analysis summaries
+  - `🔴 Pending high tasks` / `🟢 Solved high tasks`
+- **Structure preserved:** `Table X` is again split testbed-by-testbed for validation, and `Table XI` is again split source-by-source before the combined interpretation.
+- **Validation:** executed the full notebook successfully after the recovery patch.
+- **Parity result:** notebook coverage now matches the approved paper/doc state again for the validated table/breakdown artifacts.
+
+### Verification hub — explicit solved/pending status table added to analysis summaries
+- **Added:** each completed analysis summary now includes a small status table with:
+  - `✅` for solved items
+  - `🔴` for pending items
+- **Purpose:** make it easier to scan what has already been handled versus what remains open, without relying only on the markdown summary lines.
+- **Styling update:** discrepancy rows with `Priority = None` now render with an explicit white background so zero-delta / no-issue rows stay visually neutral.
+- **Validation:** re-executed the full notebook successfully after the summary/status styling change.
+
+### Verification hub — row-level discrepancy status added after `Priority`
+- **Added:** audit tables now include a `Status` column immediately after `Priority`.
+- **Meaning:** the row-level discrepancy status is now explicit:
+  - `✅` = discrepancy resolved in the approved paper/notebook state
+  - `🔴` = discrepancy still open
+  - blank/white = `Priority = None` / no discrepancy to resolve
+- **Styling:** the new `Status` column is color-coded independently of the severity band so resolution state and discrepancy size can be read separately.
+- **Validation:** re-executed the full notebook successfully after adding the row-level status column.
+
+### Verification hub — row highlight reverted; only target columns remain colored
+- **Correction:** removed the full-row background highlighting that had been introduced during the status-column update.
+- **Current behavior:** only the intended columns are color-coded:
+  - discrepancy columns (`B - A`, `|B - A|`, `|B - A| / Expected`, `Priority`)
+  - the row-level `Status` column
+  - statement-check `Result` where applicable
+- **Removed:** the extra summary status tables that were added by mistake; the notebook now keeps only:
+  - the row-level `Status` column
+  - the existing red/green summary lines
+- **Validation:** re-executed the full notebook successfully after reverting the unintended formatting change.
+
+### Verification hub — `Priority = None` rows now show solved status
+- **Updated rule:** rows with `Priority = None` now show `Status = ✅` instead of a blank status cell.
+- **Reason:** this makes the audit tables easier to scan by showing that zero-delta / no-discrepancy rows are already resolved and require no action.
+- **Styling preserved:** the discrepancy columns for `None` rows remain neutral white; only the `Status` cell changes to solved.
+- **Validation:** re-executed the full notebook successfully after the status-rule update.
+
+### Verification hub — row status labels made explicit
+- **Issue found during vetting:** `✅` was overloaded and could mean either:
+  - no discrepancy (`Priority = None`)
+  - or a previously fixed discrepancy
+- **Fix:** the row-level `Status` column now uses explicit labels:
+  - `✅ No issue`
+  - `✅ Fixed`
+  - `🔴 Open`
+- **Reason:** this separates “nothing to do here” from “this used to be a discrepancy but is now resolved.”
+- **Validation:** re-executed the full notebook successfully after the status-label clarification.
+
+### Verification hub — `RQ1 / TABLE V` status remapped from tracked paper fix
+- **Issue found during vetting:** `TABLE V` was still marking its historical high-delta rows as open even though the notebook log already recorded the paper patch that applied those values to `main.tex`.
+- **Tracked source used:** the existing notebook log entry `Paper patch — RQ1 TABLE V values updated to match approved audit`.
+- **Fix:** remapped the four approved `RQ1` high rows to `✅ Fixed`:
+  - `GNeuralUCB / 3 Runs`
+  - `EXPNeuralUCB / 5 Runs`
+  - `iCPursuit / 3 Runs`
+  - `iCPursuit / 5 Runs`
+- **Result:** `RQ1` now shows:
+  - `Open high priority discrepancies: None`
+  - the above four rows under `Resolved high priority discrepancies`
+- **Current real open-high set after vetting:** only `RQ2 / EXPNeuralUCB / CV (%)` remains open at high priority.
+
+### Paper patch — `RQ2 / TABLE VI / EXPNeuralUCB / CV (%)` corrected
+- **Task:** apply the approved `RQ2` CV correction in the manuscript table.
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex` (`tab:rq2_adversarial`).
+- **Before / After:** `EXPNeuralUCB / CV (%)` changed from `16.5` to `15.1` (paper-facing one-decimal rounding of the validated `15.08` source value).
+- **Notebook sync:** updated the `RQ2` expected value in the verification hub and marked the row as fixed so it no longer appears as an open high-priority discrepancy.
+- **Result:** after this patch, the vetted open-high backlog for the validated table/breakdown artifacts is cleared.
+
+### Winner terminology review plan recorded
+- **Scope:** after clearing the open high-priority table/breakdown fixes, the next review pass is a paper-wide terminology check for how `winning`, `winner`, `Win Dominance`, `Win Share`, `Exp. Winner`, `scenario_winner`, `best overall`, and `dominance` are used.
+- **Reason:** these terms now span multiple distinct meanings in the paper:
+  - configuration-level experiment winners
+  - scenario champions
+  - displayed-model winner-pool dominance
+  - aggregate gap-reduction leadership
+- **Planned review locations in `GA Papers/QuantumFaultTolerant/main.tex`:**
+  - `fig:global_win_share`
+  - `TABLE VI` / `tab:rq2_adversarial`
+  - RQ2 in-family winner sentence
+  - `TABLE X` intro/caption/legend/bullets
+  - `TABLE XI` note + inter-family claim block
+  - standardized-testing / future-work winner-language carryover
+- **Execution rule:** address these one by one using the agreed process:
+  - `Task`
+  - `Meaning`
+  - `Before`
+  - `After`
+- **Current status:** planning/documentation only; no new paper wording changes have been applied yet for this winner-terminology pass.
+
+### Winner terminology review — figure-level winner-frequency label aligned
+- **Approved task applied:** the global winner-frequency figure now reflects the same paper decision already used for `TABLE VI`.
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex`
+- **Before:** `Global Win Share (%)`
+- **After:** `Win Dominance (%)`
+- **Legend aligned too:** `Top-5 win share (default allocator)` → `Top-5 win dominance (default allocator)`
+- **Reason:** this was not an open terminology decision; it was a consistency propagation task from the already-documented `Win Dominance (%)` choice.
+
+### Winner terminology review — RQ2 in-family winner sentence simplified
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex`
+- **Before:** `iCEpsilonGreedy is the consistent winner (100% in-family win rate), while iCPursuit is not.`
+- **After:** `iCEpsilonGreedy is the consistent winner (100% in-family win rate) under the same adversarial scope.`
+- **Reason:** the contrast against `iCPursuit` was not adding useful meaning here; the important point is the scoped in-family winner claim.
+
+### Notebook validation — explicit winner-type tables restored for `Table X` and `Table XI`
+- **Notebook file:** `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/notebooks/H-MABs_MasterDataset_VerificationHub.ipynb`
+- **Reason:** `Table X` and `Table XI` needed explicit validation tables showing what kind of winner is being claimed, rather than leaving the winner basis implicit.
+- **Added to `Table X`:** per-testbed winner-type tables for `Paper 2`, `Paper 7`, `Paper 12`, and `Paper 8` with:
+  - `Experiment winner` = highest experiment-win count
+  - `Aggregate gap-reduction winner` = lowest aggregate gap
+  - `Aggregate efficiency winner` = highest aggregate efficiency
+- **Result for `Table X`:**
+  - `Papers 2/7/12`: `iCPursuitNeuralUCB` wins all three winner types
+  - `Paper 8`: `EXPNeuralUCB` is the `Experiment winner`, while `iCPursuitNeuralUCB` remains the aggregate gap/efficiency winner
+- **Added to `Table XI`:** per-source winner-type tables for `Hybrid Neural`, `Paper 2`, `Paper 7`, `Paper 12`, and `Paper 8` with:
+  - `Experiment winner`
+  - `Aggregate gap-reduction winner`
+  - `Aggregate efficiency winner`
+  - `Allocator-level aggregate gap winner`
+- **Result for `Table XI`:** `iCPursuitNeuralUCB` remains the aggregate gap/efficiency winner in every checked source world and within every allocator slice, while `Paper 8` still separates experiment wins from aggregate gap leadership.
+- **Validation:** the new winner-type logic was checked directly against the snapshot CSVs under `paper_validation/snapshots/20260315_001835` using pandas from `.quantum`.
+
+### Winner terminology note — `cross-layer winner` is acceptable only when the same model wins across all relevant winner views
+- **Rule recorded:** use `cross-layer winner` only when the same model is winning across all relevant validated views for that section.
+- **Required qualifier:** the paper/notebook should state the basis explicitly, e.g.:
+  - experiment wins
+  - aggregate gap reduction
+  - aggregate efficiency
+  - allocator-level aggregate gap winner (when applicable)
+- **Reason:** without that qualifier, `cross-layer winner` is too loose and can be confused with a narrower winner layer.
+
+### Winner terminology review — `Table X` first interpretation bullet updated
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex`
+- **Section:** first bullet under `Key Observations from Cross-Testbed Validation`
+- **Before:** `iCPursuitNeuralUCB is the experiment winner on Papers 2, 7, and 12, but not on Paper 8.`
+- **After:** `iCPursuitNeuralUCB is the cross-layer winner on Papers 2, 7, and 12, while on Paper 8 it dominates only.`
+- **Reason:** the notebook winner-type validation now shows that Papers 2/7/12 align across experiment wins and dominance, while Paper 8 separates experiment wins from aggregate dominance.
+
+### Winner terminology review — `Table X` second interpretation bullet clarified
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex`
+- **Before:** `Scenario-aggregated ranking does not fully determine configuration-level winners. ...`
+- **After:** `Experiment threat ranking does not fully determine experiment-level dominance. ...`
+- **Clarifications added:**
+  - `dominance` is explicitly tied to `scenario-aggregated efficiency`
+  - `2/5` and `3/5` are explicitly `threat scenarios`
+  - `10/20` is explicitly `allocator--threat-scenario configurations`
+- **Notebook decision capture added:** the `Table X` section now includes a `Table X Wording Decisions` note that records why:
+  - `cross-layer winner` is valid for `Papers 2/7/12`
+  - `Paper 8` must remain separated as a split winner-type case
+  - `dominance` in this section means `scenario-aggregated efficiency`
+
+### Winner terminology review — `Table X` third interpretation bullet clarified
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex`
+- **Before:** `Paper 12 exhibits the broadest winner overlap across scenarios. ...`
+- **After:** `Paper 12 exhibits the broadest overlap in threat-scenario winners. ...`
+- **Clarifications added:**
+  - `scenario` wording tightened to `threat scenario`
+  - the `Paper 7` contrast now says `threat-scenario championship`
+  - `markov` sharing is explicitly described as `markov experiment wins`
+
+### Winner terminology review — `Table X` fourth interpretation bullet clarified
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex`
+- **Before:** `... produces a more competitive EXP/iCP split than the strong iCP dominance seen on Paper 7.`
+- **After:** `... extends the testbed (default allocator) winner story: the compact 20-node, 8-path Paper 8 network splits \texttt{EXPNeuralUCB} experiment wins from \texttt{iCPursuitNeuralUCB} dominance, unlike the strong \texttt{iCPursuitNeuralUCB} cross-layer-winner pattern seen on Paper 7.`
+- **Reason:** the sentence now uses approved model names, keeps the Paper 8 split explicit, and records that the testbed winner framing here is anchored to the default allocator.
+
+### Winner terminology review — `Table X` fifth interpretation bullet clarified
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex`
+- **Before:** `\texttt{CPursuitNeuralUCB} never wins a scenario on Paper 7 yet wins 3/5 on Paper 2. ...`
+- **After:** `\texttt{CPursuitNeuralUCB} never wins a threat scenario on Paper 7 yet wins 3/5 threat scenarios on Paper 2. ...`
+- **Clarifications added:**
+  - `scenario` wording tightened to `threat scenario`
+  - `algorithm rankings` replaced with `winner structure`
+  - `\texttt{iCPursuitNeuralUCB}` is explicitly named as the `cross-layer winner` on `Paper 7`
+
+### Notebook validation — `Table XI` wording-decision note added
+- **Notebook file:** `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/notebooks/H-MABs_MasterDataset_VerificationHub.ipynb`
+- **Added:** `Table XI Wording Decisions`
+- **Captured decisions:**
+  - `strongest neural model by Oracle-relative gap reduction` is valid only under the Oracle-relative gap basis
+  - the notebook proof for this claim is the pair:
+    - `Table XI Aggregate Gap-Reduction Proof`
+    - `Table XI Allocator-Level Gap-Reduction Proof`
+  - experiment-win count is not the basis for this claim
+- **Validation:** notebook re-executed after adding the note
+
+### Winner terminology review — `cross-layer winner` adopted where all winner layers align
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex`
+- **Applied replacements in `Table X`:**
+  - `overall winner` → `cross-layer winner`
+  - `overall-winner pattern` → `cross-layer-winner pattern`
+- **Table XI adjustment:**
+  - `strongest overall neural model by Oracle-relative gap reduction` → `strongest neural model by Oracle-relative gap reduction`
+- **Reason:** `cross-layer winner` is now the approved term when the same model wins across all validated winner layers, while the `Table XI` claim remains specifically gap-based rather than cross-layer.
+
+### Winner terminology review — standardized-testbed follow-up sentence aligned
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex`
+- **Before:** `... shows strong testbed dependence in both efficiency and winner structure ...`
+- **After:** `... shows strong testbed dependence in both efficiency and cross-layer winning structure ...`
+
+### Winner terminology review — future-work benchmarking sentence aligned
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex`
+- **Before:** `... testing whether pursuit-neural dominance persists ...`
+- **After:** `... testing whether pursuit-neural cross-layer winning structure persists ...`
+
+### Winner terminology review — stale figure caption fixed
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex`
+- **Before:** `Global win share under the default allocator ...`
+- **After:** `Win dominance under the default allocator ...`
+
+### Applied the medium-priority `RQ2` average-efficiency correction for `EXPNeuralUCB`
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex`
+- **Before:** `EXPNeuralUCB & 82.4 & 15.1 & 18.0 & 30.5`
+- **After:** `EXPNeuralUCB & 83.1 & 15.1 & 18.0 & 30.5`
+- **Reason:** this row was already approved earlier (`82.4 -> 83.12` is a small but real source-backed difference), but the manuscript had not been updated.
+- **Notebook sync:** re-executed the verification notebook so the `RQ2 / EXPNeuralUCB / Avg Eff. (%)` medium discrepancy is no longer open.
+
+### Applied the approved `RQ1` medium-fix group for 3-run values
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex`
+- **Applied rows:**
+  - `EXPUCB / 3 Runs`: `76.2 -> 75.5`
+  - `CEXP4 / 3 Runs`: `70.1 -> 69.2`
+  - `CThompsonSampling / 3 Runs`: `66.6 -> 65.7`
+  - `iCThompsonSampling / 3 Runs`: `66.5 -> 65.7`
+- **Notebook sync:** updated the `RQ1` expected values and marked these four discrepancies as fixed in `H-MABs_MasterDataset_VerificationHub.ipynb`.
+- **Validation:** re-executed the notebook after the sync.
+
+### Applied the remaining approved `RQ1` medium-fix group
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex`
+- **Applied rows:**
+  - `iCEXP4 / 3 Runs`: `37.4 -> 36.9`
+  - `iCEpsilonGreedy / 5 Runs`: `88.6 -> 87.9`
+  - `GNeuralUCB / 5 Runs`: `86.3 -> 85.5`
+  - `EXPUCB / 5 Runs`: `78.4 -> 77.8`
+  - `CEXP4 / 5 Runs`: `70.2 -> 69.3`
+  - `CThompsonSampling / 5 Runs`: `68.1 -> 67.3`
+  - `iCThompsonSampling / 5 Runs`: `68.0 -> 67.2`
+  - `iCEXP4 / 5 Runs`: `37.4 -> 36.8`
+- **Notebook sync:** updated the `RQ1` expected values and marked these discrepancies as fixed in `H-MABs_MasterDataset_VerificationHub.ipynb`.
+- **Validation:** re-executed the notebook after the sync.
+
+### Final notebook sync — cleared stale open medium rows
+- **Notebook file:** `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/notebooks/H-MABs_MasterDataset_VerificationHub.ipynb`
+- **Fix applied:** updated `rq2_expected` so `EXPNeuralUCB / Avg Eff. (%)` now uses the patched paper value `83.1` and marked that row as fixed.
+- **Validation:** re-executed the notebook and confirmed there are now `0` `Medium / 🔴 Open` rows remaining in the saved notebook outputs.

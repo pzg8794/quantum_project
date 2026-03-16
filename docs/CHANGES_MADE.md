@@ -564,3 +564,222 @@ Your Paper7 (QBGP) experiments can now run without oracle hangs!
 - corrected the two high-priority claims:
   - claim 1: `OnlineAdaptive` lift remains `+18.3 pp`
   - claim 3: tighter dispersion is now explicit as `CV_scen: 6.5 -> 3.3`
+
+### Restored pandas-based notebook workflow layer and documented remaining coverage regression
+- kept pandas as the canonical manipulation layer in `H-MABs_MasterDataset_VerificationHub.ipynb`
+- restored the missing audit-review features for the sections currently present:
+  - discrepancy color coding
+  - `B - A` / `|B - A|` severity columns
+  - end-of-analysis summaries
+  - `🔴 Pending high tasks` / `🟢 Solved high tasks`
+- added an explicit notebook coverage note stating that the current GitHub variant still lacks the richer source-first sections for:
+  - `RQ3a`
+  - `RQ3b`
+  - `RQ3c`
+  - `RQ3d`
+  - `Table X`
+  - `Table XI`
+- corrected the notebook artifact ledger so those later artifacts are marked `restore required` instead of being silently implied as present
+- verified that `GA Papers/QuantumFaultTolerant/main.tex` still retains the approved paper-side fixes; the current regression is notebook coverage parity, not paper-text rollback
+
+### Restored the missing validated `RQ3` / `Table X` / `Table XI` notebook sections
+- rebuilt the removed validated sections in `H-MABs_MasterDataset_VerificationHub.ipynb` from the approved snapshot exports under `paper_validation/snapshots/20260315_001835`
+- restored:
+  - `RQ3a`
+  - `RQ3b`
+  - `RQ3c`
+  - `RQ3d`
+  - `Table X`
+  - `Table XI`
+- kept the same pandas-based workflow and formatting layer in those restored sections:
+  - discrepancy color coding
+  - `B - A` / `|B - A|` severity columns
+  - end-of-analysis summaries
+  - `🔴 Pending high tasks` / `🟢 Solved high tasks`
+- preserved validation structure:
+  - `Table X` is again validated per testbed before the combined interpretation
+  - `Table XI` is again validated per source world before the combined interpretation
+- executed the full notebook successfully after the recovery patch
+
+### Added explicit solved/pending status tables to notebook analysis summaries
+- each analysis summary in `H-MABs_MasterDataset_VerificationHub.ipynb` now shows a small task table with:
+  - `✅` solved items
+  - `🔴` pending items
+- kept the existing red/green summary lines and added the table as a second, more scannable status view
+- updated styling so `Priority = None` rows render neutral white instead of inheriting visual emphasis
+- re-executed the notebook successfully after the status-table and neutral-color update
+
+### Added a row-level `Status` column after `Priority` in the audit tables
+- updated the audit-table workflow so discrepancy tables now show `Priority` followed immediately by `Status`
+- `Status` meaning:
+  - `✅` resolved discrepancy
+  - `🔴` unresolved discrepancy
+  - blank/white for `Priority = None`
+- kept `None` / zero-delta rows neutral white so only actual discrepancies carry resolution markers
+- re-executed the notebook successfully after the row-level status-column change
+
+### Reverted the unintended full-row highlighting and removed the extra status tables
+- removed the full-row background styling that had been introduced by mistake during the status-column update
+- restored the intended readability rule:
+  - only discrepancy columns, the row-level `Status` column, and `Result` cells are color-coded
+- removed the extra summary status tables that were added by misunderstanding
+- kept:
+  - the row-level `Status` column after `Priority`
+  - the existing red/green summary lines
+- re-executed the notebook successfully after the correction
+
+### Patched `RQ2 / TABLE VI / EXPNeuralUCB / CV (%)`
+- updated `GA Papers/QuantumFaultTolerant/main.tex` so `EXPNeuralUCB / CV (%)` in `TABLE VI` is now `15.1` instead of `16.5`
+- this reflects the validated source-backed notebook value (`15.08`) at the paper’s one-decimal display precision
+- synced the notebook expected value and row status so this item no longer appears as an open high-priority discrepancy
+
+### Recorded the next review pass: paper-wide winner terminology integrity
+- documented that the next pass is not numeric repair, but terminology review around `winner` / `winning` language
+- target locations include:
+  - `fig:global_win_share`
+  - `TABLE VI`
+  - the RQ2 in-family winner sentence
+  - `TABLE X`
+  - `TABLE XI`
+  - standardized-testing / future-work winner wording
+- locked the section-by-section process for this pass:
+  - `Task`
+  - `Meaning`
+  - `Before`
+  - `After`
+- no wording changes from that pass have been applied yet; this entry only records the plan and scope
+
+### Applied the first winner-terminology consistency fix
+- updated the winner-frequency figure in `GA Papers/QuantumFaultTolerant/main.tex` so it now uses the paper’s standardized terminology:
+  - `Global Win Share (%)` → `Win Dominance (%)`
+  - `Top-5 win share (default allocator)` → `Top-5 win dominance (default allocator)`
+- removed the unnecessary `Global` qualifier because the figure scope is already clear from context
+
+### Simplified the RQ2 in-family winner sentence
+- updated the RQ2 in-family winner sentence in `GA Papers/QuantumFaultTolerant/main.tex`
+- removed the unnecessary contrast against `iCPursuit`
+- kept the intended scoped meaning:
+  - `iCEpsilonGreedy` is the consistent winner within the iCMAB corpus under the same adversarial scope
+
+### Added explicit winner-type validation tables to the verification notebook
+- updated `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/notebooks/H-MABs_MasterDataset_VerificationHub.ipynb`
+- `Table X` now shows, for each testbed, which model is winning by:
+  - experiment-win count
+  - aggregate gap reduction
+  - aggregate efficiency
+- `Table XI` now shows, for each source world, which model is winning by:
+  - experiment-win count
+  - aggregate gap reduction
+  - aggregate efficiency
+  - allocator-level aggregate gap reduction
+- this makes the winner basis explicit in the notebook so the paper review can distinguish:
+  - threat/experiment win counts
+  - aggregate gap leadership
+  - allocator-level aggregate gap leadership
+- key preserved finding:
+  - `Paper 8` splits `experiment winner` (`EXPNeuralUCB`) from aggregate gap/efficiency winner (`iCPursuitNeuralUCB`)
+
+### Recorded the rule for using `cross-layer winner`
+- `cross-layer winner` is now treated as acceptable only when the same model wins across all relevant validated winner views for the section.
+- the basis must be stated explicitly instead of using `cross-layer winner` as a loose synonym for a single winner metric.
+
+### Updated the first `Table X` interpretation bullet
+- `GA Papers/QuantumFaultTolerant/main.tex`
+- changed the first `Table X` bullet from an experiment-winner-only wording to:
+  - `iCPursuitNeuralUCB is the cross-layer winner on Papers 2, 7, and 12, while on Paper 8 it dominates only.`
+- this follows the notebook winner-type validation now added for `Table X`.
+
+### Updated the second `Table X` interpretation bullet
+- `GA Papers/QuantumFaultTolerant/main.tex`
+- replaced the old `Scenario-aggregated ranking does not fully determine configuration-level winners` wording with:
+  - `Experiment threat ranking does not fully determine experiment-level dominance.`
+- the paragraph now explicitly distinguishes:
+  - experiment-level dominance = scenario-aggregated efficiency
+  - threat-scenario wins
+  - allocator--threat-scenario configurations
+- added a `Table X Wording Decisions` note to the verification notebook so the reasoning behind the winner-language edits is preserved alongside the data tables.
+
+### Updated the third `Table X` interpretation bullet
+- `GA Papers/QuantumFaultTolerant/main.tex`
+- tightened the wording so the paragraph now explicitly uses:
+  - `threat-scenario winners`
+  - `threat-scenario championship`
+  - `markov experiment wins`
+- this keeps the winner layer explicit in the `Paper 12` vs `Paper 7` comparison.
+
+### Updated the fourth `Table X` interpretation bullet
+- `GA Papers/QuantumFaultTolerant/main.tex`
+- replaced the old shorthand-heavy Paper 8 sentence with one that explicitly says:
+  - `testbed (default allocator) winner story`
+  - `\texttt{EXPNeuralUCB}` experiment wins
+  - `\texttt{iCPursuitNeuralUCB}` dominance
+- this keeps the section aligned with the validated winner-type split documented in the notebook.
+
+### Updated the fifth `Table X` interpretation bullet
+- `GA Papers/QuantumFaultTolerant/main.tex`
+- replaced the old `scenario` / `algorithm rankings` wording with:
+  - `threat scenario`
+  - `winner structure`
+  - explicit `cross-layer winner` language for `\texttt{iCPursuitNeuralUCB}` on `Paper 7`
+
+### Added `Table XI Wording Decisions` to the verification notebook
+- updated `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/notebooks/H-MABs_MasterDataset_VerificationHub.ipynb`
+- the notebook now explicitly states that the `strongest neural model by Oracle-relative gap reduction` claim in `Table XI` is validated by:
+  - aggregate gap reduction
+  - allocator-level aggregate gap retention
+- and not by experiment-win count
+
+### Replaced `overall winner` with `cross-layer winner` in the paper where appropriate
+- `GA Papers/QuantumFaultTolerant/main.tex`
+- `Table X` now uses:
+  - `cross-layer winner`
+  - `cross-layer-winner pattern`
+- `Table XI` no longer says `strongest overall neural model`; it now says:
+  - `strongest neural model by Oracle-relative gap reduction`
+- this keeps the paper aligned with the approved winner-language distinction:
+  - `cross-layer winner` = all validated winner layers align
+  - Oracle-gap claim = validated on gap basis only
+
+### Updated the standardized-testbed follow-up sentence
+- `GA Papers/QuantumFaultTolerant/main.tex`
+- changed `winner structure` to `cross-layer winning structure` to align with the approved terminology.
+
+### Updated the future-work benchmarking sentence
+- `GA Papers/QuantumFaultTolerant/main.tex`
+- changed `pursuit-neural dominance persists` to `pursuit-neural cross-layer winning structure persists`.
+
+### Fixed the stale figure caption terminology
+- `GA Papers/QuantumFaultTolerant/main.tex`
+- changed `Global win share under the default allocator ...` to `Win dominance under the default allocator ...`.
+
+### Applied the approved `RQ2` medium-fix for `EXPNeuralUCB` average efficiency
+- `GA Papers/QuantumFaultTolerant/main.tex`
+- changed `EXPNeuralUCB` in `TABLE VI` from `82.4` to `83.1`
+- this implements the previously approved source-backed correction for the `Avg Eff. (%)` cell.
+
+### Applied the approved `RQ1` medium-fix group for 3-run values
+- `GA Papers/QuantumFaultTolerant/main.tex`
+- changed the following `TABLE V` rows:
+  - `EXPUCB / 3 Runs`: `76.2 -> 75.5`
+  - `CEXP4 / 3 Runs`: `70.1 -> 69.2`
+  - `CThompsonSampling / 3 Runs`: `66.6 -> 65.7`
+  - `iCThompsonSampling / 3 Runs`: `66.5 -> 65.7`
+- synced the notebook so these no longer appear as open medium discrepancies.
+
+### Applied the remaining approved `RQ1` medium-fix group
+- `GA Papers/QuantumFaultTolerant/main.tex`
+- changed the following `TABLE V` rows:
+  - `iCEXP4 / 3 Runs`: `37.4 -> 36.9`
+  - `iCEpsilonGreedy / 5 Runs`: `88.6 -> 87.9`
+  - `GNeuralUCB / 5 Runs`: `86.3 -> 85.5`
+  - `EXPUCB / 5 Runs`: `78.4 -> 77.8`
+  - `CEXP4 / 5 Runs`: `70.2 -> 69.3`
+  - `CThompsonSampling / 5 Runs`: `68.1 -> 67.3`
+  - `iCThompsonSampling / 5 Runs`: `68.0 -> 67.2`
+  - `iCEXP4 / 5 Runs`: `37.4 -> 36.8`
+- synced the notebook so these no longer appear as open medium discrepancies.
+
+### Cleared the last stale medium-open notebook row
+- updated `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/notebooks/H-MABs_MasterDataset_VerificationHub.ipynb`
+- synced `RQ2 / EXPNeuralUCB / Avg Eff. (%)` to the patched paper value `83.1`
+- re-executed the notebook and confirmed there are no remaining `Medium / Open` rows.

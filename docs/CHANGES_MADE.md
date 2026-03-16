@@ -783,3 +783,8 @@ Your Paper7 (QBGP) experiments can now run without oracle hangs!
 - updated `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/notebooks/H-MABs_MasterDataset_VerificationHub.ipynb`
 - synced `RQ2 / EXPNeuralUCB / Avg Eff. (%)` to the patched paper value `83.1`
 - re-executed the notebook and confirmed there are no remaining `Medium / Open` rows.
+
+### Applied the approved low-priority paper-data batch
+- updated `GA Papers/QuantumFaultTolerant/main.tex` with the approved low-priority `RQ1` and `RQ2` value adjustments
+- updated `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/notebooks/H-MABs_MasterDataset_VerificationHub.ipynb`
+- re-executed the notebook and cleared all remaining `Open` status rows from the saved validation outputs

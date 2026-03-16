@@ -634,3 +634,10 @@ Source: `docs/guides/STATE_LAYERS_AND_RESUME.md`
 **Applied result**
 - Updated the `RQ2` expected-value block in `H-MABs_MasterDataset_VerificationHub.ipynb` so `EXPNeuralUCB / Avg Eff. (%)` matches the patched paper value.
 - Re-executed the notebook and verified that no `Medium / Open` rows remain in the saved outputs.
+
+### 2026-03-16 — approved low-priority audit batch applied and notebook fully synced
+
+**Applied result**
+- Updated `GA Papers/QuantumFaultTolerant/main.tex` with the approved low-priority rounding-level fixes for `RQ1 / TABLE V` and `RQ2 / TABLE VI`.
+- Synced `H-MABs_MasterDataset_VerificationHub.ipynb` so the expected values and solved/open status match the paper.
+- Re-executed the notebook and verified that no `Open` rows remain in the saved outputs.

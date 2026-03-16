@@ -817,3 +817,29 @@ This log records **surgical notebook changes** (issues encountered, what was cha
 - **Notebook file:** `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/notebooks/H-MABs_MasterDataset_VerificationHub.ipynb`
 - **Fix applied:** updated `rq2_expected` so `EXPNeuralUCB / Avg Eff. (%)` now uses the patched paper value `83.1` and marked that row as fixed.
 - **Validation:** re-executed the notebook and confirmed there are now `0` `Medium / 🔴 Open` rows remaining in the saved notebook outputs.
+
+### Applied the approved low-priority audit batch
+- **Paper file:** `GA Papers/QuantumFaultTolerant/main.tex`
+- **RQ1 low fixes applied:**
+  - `CPursuit / 3 Runs`: `89.6 -> 90.0`
+  - `iCEpsilonGreedy / 3 Runs`: `88.0 -> 87.8`
+  - `CEpsilonGreedy / 3 Runs`: `87.5 -> 87.9`
+  - `EXPNeuralUCB / 3 Runs`: `82.1 -> 82.1` (source `82.05`, no visible one-decimal change)
+  - `CEpochGreedy / 3 Runs`: `37.6 -> 37.5`
+  - `iCEpochGreedy / 3 Runs`: `37.5 -> 37.2`
+  - `CPursuit / 5 Runs`: `90.1 -> 90.2`
+  - `CEpsilonGreedy / 5 Runs`: `87.9 -> 87.8`
+  - `CEpochGreedy / 5 Runs`: `37.6 -> 37.5`
+  - `iCEpochGreedy / 5 Runs`: `37.5 -> 37.2`
+- **RQ2 low fixes applied:**
+  - `CPursuit / Avg Eff. (%)`: `88.1 -> 88.0`
+  - `iCEpsilonGreedy / Avg Eff. (%)`: `86.9 -> 86.8`
+  - `EXPUCB / Avg Eff. (%)`: `76.3 -> 76.4`
+  - `CPursuit / CV (%)`: `5.3 -> 5.6`
+  - `iCEpsilonGreedy / CV (%)`: `3.6 -> 3.7`
+  - `EXPUCB / CV (%)`: `6.0 -> 6.0` (source `6.01`, no visible one-decimal change)
+  - `CPursuit / Floor (%)`: `77.4 -> 77.4` (source `77.37`, no visible one-decimal change)
+  - `iCEpsilonGreedy / Floor (%)`: `81.0 -> 81.0` (source `80.98`, no visible one-decimal change)
+  - `EXPNeuralUCB / Floor (%)`: `18.0 -> 18.0` (source `18.01`, no visible one-decimal change)
+  - `EXPUCB / Floor (%)`: `68.8 -> 68.8` (source `68.75`, no visible one-decimal change)
+- **Notebook sync:** updated the expected-value cells and solved-key sets for `RQ1` and `RQ2`, re-executed the notebook, and confirmed there are now `0` `Open` rows in the saved outputs.

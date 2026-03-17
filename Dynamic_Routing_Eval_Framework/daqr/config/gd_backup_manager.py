@@ -19,7 +19,7 @@ DAY_REGEX = re.compile(
 class GoogleDriveBackupManager:
     """Unified JSON registry backup to Google Drive Shared Drive."""
 
-    DRIVE_FOLDER_ID = "0APT9hcMpvuHYUk9PVA"
+    DRIVE_FOLDER_ID = "0AK0VchnNyM-xUk9PVA"
 
     def __init__(self, date_str, config_dir, verbose=False):
         self.drive = None
@@ -29,7 +29,9 @@ class GoogleDriveBackupManager:
         self.backup_registry = {}
         self.in_share_drive = True
 
-        self.dir = config_dir
+        self.dir = Path(config_dir)
+        if self.dir.name == "quantum_data_lake":
+            self.dir = self.dir.parent
         self.date_str = date_str
 
         # self.date_str = self.normalize_day_prefix(date_str)
@@ -383,13 +385,18 @@ class GoogleDriveBackupManager:
 
         return remote_status
 
+    def _registry_entry_to_local_path(self, entry):
+        if isinstance(entry, dict):
+            return entry.get("local_path") or entry.get("path")
+        return entry
+
 
     def get_latest_state(self, component, filename):
         entry = self.backup_registry.get(component, {}).get(filename)
         if not entry: return None
 
         path                     = None
-        try:                path = entry.get("local_path") if isinstance(entry, dict) else entry
+        try:                path = self._registry_entry_to_local_path(entry)
         except Exception:   path = self.normalize_path(path, project_root=self.dir)
         if not path or not os.path.exists(path): return None
 
@@ -418,19 +425,8 @@ class GoogleDriveBackupManager:
     def _ensure_drive_folder(self, folder_name, parent_id):
         """Find or create a folder under a given parent (or Drive root)."""
 
-        is_drive_root = (parent_id == self.DRIVE_FOLDER_ID)
-
-        if is_drive_root:
-            parent_clause = "trashed = false"
-        elif parent_id == "root":
-            parent_clause = "'root' in parents"
-        else:
-            parent_clause = f"'{parent_id}' in parents"
-
-        query = (
-            f"name='{folder_name}' and {parent_clause} "
-            f"and mimeType='application/vnd.google-apps.folder'"
-        )
+        parent_clause = f"'{parent_id}' in parents"
+        query = f"name='{folder_name}' and {parent_clause} and mimeType='application/vnd.google-apps.folder' and trashed=false"
 
         response = self.drive.files().list(
             q=query,
@@ -445,7 +441,7 @@ class GoogleDriveBackupManager:
         metadata = {
             "name": folder_name,
             "mimeType": "application/vnd.google-apps.folder",
-            "parents": None if is_drive_root else [parent_id]
+            "parents": [parent_id],
         }
 
         folder = self.drive.files().create(
@@ -475,8 +471,8 @@ class GoogleDriveBackupManager:
 
     def _upload_file_to_drive(self, component, date_str, local_path, filename, parent_dir="quantum_data_lake"):
         """Upload a file into Google Drive, supporting both quantum_data_lake and quantum_logs."""
-        if not self.remote_available or not self.drive: return False
-        if self.in_share_drive: return False
+        if not self.remote_available or not self.drive: return None
+        if self.in_share_drive: return None
 
         # ---------------------------------------------------------------
         # 1. Root folder (quantum_data_lake or quantum_logs)
@@ -518,10 +514,17 @@ class GoogleDriveBackupManager:
         if file_id:         self.drive.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
         else:
             metadata    =   {"name": filename, "parents": [parent_folder_id]}
-            self.drive.files().create(body=metadata, media_body=media, supportsAllDrives=True).execute()
+            created = self.drive.files().create(body=metadata, media_body=media, supportsAllDrives=True).execute()
+            file_id = created["id"]
         if self.verbose:    print(f"☁️ Uploaded {parent_dir}/{component}/{filename}")
 
-        return True
+        return {
+            "drive_file_id": file_id,
+            "drive_parent_id": parent_folder_id,
+            "drive_date": date_str,
+            "drive_component": component,
+            "drive_storage_dir": parent_dir,
+        }
 
     
     def _download_file_from_drive(self, date_str, component, filename, storage_dir="quantum_data_lake"):
@@ -532,6 +535,8 @@ class GoogleDriveBackupManager:
         This mirrors the same structure created by _upload_file_to_drive.
         """
         
+        entry = self.backup_registry.get(component, {}).get(filename)
+
         if self.in_share_drive:
             # Direct filesystem path in shared drive - no download needed
             local_path = self.quantum_datalake_path / component / date_str / filename
@@ -557,21 +562,26 @@ class GoogleDriveBackupManager:
         # ---------------------------------------------------------------
         # 4. Drive search query
         # ---------------------------------------------------------------
-        if component == "model_state":
-            safe_prefix = filename.split("(")[0]
-            query = f"name contains '{safe_prefix}' and '{day_folder_id}' in parents"
+        drive_file_id = entry.get("drive_file_id") if isinstance(entry, dict) else None
+
+        if drive_file_id:
+            files = [{"id": drive_file_id}]
         else:
-            query = f"name='{filename}' and '{day_folder_id}' in parents"
-        
-        response = self._retry_drive(
-            lambda: self.drive.files().list(
-                q=query,
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True
-            ).execute()
-        )
-        
-        files = response.get("files", [])
+            if component == "model_state":
+                safe_prefix = filename.split("(")[0]
+                query = f"name contains '{safe_prefix}' and '{day_folder_id}' in parents"
+            else:
+                query = f"name='{filename}' and '{day_folder_id}' in parents"
+            
+            response = self._retry_drive(
+                lambda: self.drive.files().list(
+                    q=query,
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True
+                ).execute()
+            )
+            
+            files = response.get("files", [])
         if not files:
             return None
         
@@ -592,8 +602,49 @@ class GoogleDriveBackupManager:
             done = False
             while not done:
                 status, done = downloader.next_chunk()
+
+        if isinstance(entry, dict):
+            entry["local_path"] = str(local_path)
+        else:
+            self.backup_registry.setdefault(component, {})[filename] = {"local_path": str(local_path)}
         
         return str(local_path)
+
+    def delete_from_drive(self, component, filename):
+        """
+        Delete a state file from the actual Drive datalake and any local recovered copy.
+        """
+        try:
+            deleted_remote = False
+            entry = self.backup_registry.get(component, {}).get(filename)
+
+            if self.remote_available and self.drive:
+                drive_file_id = entry.get("drive_file_id") if isinstance(entry, dict) else None
+                if drive_file_id:
+                    self.drive.files().delete(
+                        fileId=drive_file_id,
+                        supportsAllDrives=True,
+                    ).execute()
+                    deleted_remote = True
+
+            deleted_local = False
+            drive_root = self.quantum_datalake_path / component
+            if drive_root.exists():
+                for day_dir in drive_root.iterdir():
+                    if not day_dir.is_dir() or not day_dir.name.startswith("day_"):
+                        continue
+                    candidate = day_dir / filename
+                    if candidate.exists():
+                        candidate.unlink()
+                        deleted_local = True
+
+            if isinstance(entry, dict):
+                entry.pop("drive_file_id", None)
+                entry.pop("drive_parent_id", None)
+
+            return deleted_remote or deleted_local
+        except Exception:
+            return False
 
 
     def restore_from_drive(self, date_str, expected_keys):

@@ -103,8 +103,30 @@ class LocalBackupManager(GoogleDriveBackupManager):
             print(f"✓ Saved: {component}/{filename} ({file_size/1024/1024:.2f} MB)")
             
             # Update registry
-            self.backup_registry.setdefault(component, {})[filename] = str(file_path)
-            self.new_entries.setdefault(component, {})[filename] = str(file_path)
+            registry_entry = {
+                "local_path": str(file_path),
+                "date": self.date_str,
+            }
+            self.backup_registry.setdefault(component, {})[filename] = registry_entry
+            self.new_entries.setdefault(component, {})[filename] = dict(registry_entry)
+
+            # Immediate Drive upload (legacy local-first flow + durable remote copy)
+            if self.remote_available and self.drive and not self.in_share_drive:
+                try:
+                    uploaded = self._upload_file_to_drive(
+                        component=component,
+                        date_str=self.date_str,
+                        local_path=str(file_path),
+                        filename=filename,
+                    )
+                    if uploaded:
+                        self.backup_registry[component][filename].update(uploaded)
+                        self.new_entries[component][filename].update(uploaded)
+                    if self.verbose and uploaded:
+                        print(f"☁️ Uploaded immediately: {component}/{filename}")
+                except Exception as e:
+                    if self.verbose:
+                        print(f"⚠️ Immediate Drive upload failed for {component}/{filename}: {e}")
             
             return str(file_path)
         except Exception as e:

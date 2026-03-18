@@ -769,11 +769,13 @@ class GoogleDriveBackupManager:
                     continue
 
                 recovered = None
-                if getattr(self, "remote_available", False) and getattr(self, "drive", None) is not None:
-                    try:
-                        recovered = self.download_any_date(component=component, filename=filename)
-                    except Exception:
-                        recovered = None
+                # Attempt recovery via the unified any-date lookup.
+                # - If a Drive filesystem mirror is available, this returns a mirror path.
+                # - If only Drive API is available, this downloads into the local datalake.
+                try:
+                    recovered = self.download_any_date(component=component, filename=filename)
+                except Exception:
+                    recovered = None
 
                 if recovered:
                     restored[component][filename] = str(Path(recovered).resolve())

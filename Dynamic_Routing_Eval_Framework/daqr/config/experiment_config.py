@@ -602,6 +602,9 @@ class ExperimentConfiguration:
         # 1) Generate expected keys if needed (for MultiRunEvaluator)
         if len(self.expected_keys) == 0 and "multirunevaluator" in item_v.lower():
             self.generate_expected_keys(item_v)
+            # Every run is expected to aggregate (build) the registry; enforce it here
+            # so restore/download logic has a focused registry view.
+            self._build_backup_registry(force=True)
             self.backup_mgr.restore_from_drive(self.day_str, self.expected_keys)
         
         # 2) Handle Random Allocator filename resolution (Evaluators AND Runners)

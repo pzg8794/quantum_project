@@ -8,6 +8,7 @@ import psutil
 import random, re
 import warnings, gc
 import numpy as np
+from daqr.config.state_naming import model_state_filename
 import pandas as pd
 from tqdm import tqdm
 import seaborn as sns
@@ -103,7 +104,15 @@ class QuantumModel(ABC):
         self.allocator_id = str(getattr(self.configs, "allocator", "alloc"))
         self.env_id       = str(getattr(self.configs, "environment", "env"))
         self.attack_id    = str(getattr(self.configs, "attack_strategy", "None"))
-        self.file_name    = f"{self.id}({self.mode})_{int(self.capacity)}-{self.allocator_id}_{self.env_id }_{self.attack_id}-{frame_no_str}.pkl"
+        self.file_name = model_state_filename(
+            model_id=str(self.id),
+            mode=str(self.mode),
+            cap_id=int(self.capacity),
+            allocator_id=self.allocator_id,
+            env_id=self.env_id,
+            attack_id=self.attack_id,
+            frame_no=int(self.frame_number),
+        )
 
 
         self.thresholds = {

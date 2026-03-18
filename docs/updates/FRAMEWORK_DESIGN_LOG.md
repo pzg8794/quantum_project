@@ -647,3 +647,13 @@ Source: `docs/guides/STATE_LAYERS_AND_RESUME.md`
 **Applied result**
 - `LocalBackupManager.save_file(...)` is restored to legacy local-first semantics: save locally, update registry with the local path, then upload a best-effort Drive copy (no local deletion on success).
 - `GoogleDriveBackupManager.delete_from_drive(...)` now deletes via Drive API when the filesystem mirror is unavailable, and falls back to trashing when permanent delete is not permitted by shared-drive capabilities.
+
+### 2026-03-17 — Expected-key generation exists for targeted restore + focused registry
+
+**Documented intent**
+- `ExperimentConfiguration.generate_expected_keys(...)` exists to: (1) derive the exact runner/model state filenames implied by an evaluator artifact so we can download only what we need from Drive, and (2) constrain the active registry view to that expected set to avoid operating on the full corpus during resume/validation.
+
+**Refactor + tests**
+- Extracted dependency-light expected-key generation into `daqr/config/expected_keys.py` and shared state naming into `daqr/config/state_naming.py`.
+- Updated runtime objects (`QuantumExperimentRunner`, `BaseBandit`) and expected-key generation to use the same naming helpers.
+- Added unit tests: `tests/test_expected_keys_generation.py` and verified drive + registry + expected-key tests pass.

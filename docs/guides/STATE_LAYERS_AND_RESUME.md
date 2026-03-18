@@ -83,6 +83,18 @@ If the registry is stale (not updated after saves), the system can behave like:
 
 That’s why the registry must be **updated and persisted after each evaluator/runner/model save**, so the next run (or next day) can recover correctly.
 
+## Expected keys (targeted restore + focused registry)
+
+For long-running studies, downloading/scanning the entire dataset is too expensive. Instead, we use a targeted workflow:
+
+- `ExperimentConfiguration.generate_expected_keys(evaluator_filename)` deterministically derives the **exact set of runner + model state filenames** implied by a `MultiRunEvaluator_…pkl` artifact.
+- `backup_mgr.restore_from_drive(day_str, expected_keys)` then attempts to **download only those expected files** (when they exist) into the local datalake structure.
+- After restore, we can **filter/limit the registry** to those expected keys, so resume/validation logic operates on the relevant subset instead of the full dictionary.
+
+This is why expected-key generation exists:
+1) avoid downloading the entire corpus, and  
+2) keep resume/analysis focused on just the files needed for a specific evaluator scope.
+
 ## Fairness note (why we sometimes *don’t* resume)
 
 Resume can be a big time-saver, but it can also change experimental semantics:

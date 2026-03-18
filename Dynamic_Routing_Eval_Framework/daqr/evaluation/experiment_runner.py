@@ -26,6 +26,7 @@ except Exception:
     np = None
 import  multiprocessing as mp
 
+from daqr.config.state_naming import runner_state_filename
 
 
 
@@ -96,7 +97,14 @@ class QuantumExperimentRunner:
         self.cap_id       = int(self.capacity*self.configs.scale)
         
         id_str            = str(self.id)
-        self.file_name    = f"{self}_{self.cap_id}-{self.allocator_id}_{self.env_id }_{self.attack_id}-{self.frames_count}_{id_str}.pkl"
+        self.file_name = runner_state_filename(
+            runner_id=self.id,
+            cap_id=self.cap_id,
+            allocator_id=self.allocator_id,
+            env_id=self.env_id,
+            attack_id=self.attack_id,
+            frames_count=self.frames_count,
+        )
 
         # Resume previous evaluator state if configured
         try:                    self.resume()

@@ -357,180 +357,45 @@ class ExperimentConfiguration:
         Given an evaluator filename, parse its components and generate the full set
         of expected runner and model state filenames for all runs.
         """
-        print("\n=====================================================")
-        print("🔍 GENERATING EXPECTED KEYS FROM EVALUATOR")
-        print("=====================================================")
-        print(f"  • Evaluator filename: {evaluator_filename}")
+        from daqr.config.expected_keys import (
+            generate_expected_state_keys,
+            parse_multirun_evaluator_filename,
+        )
 
-        # ---------------------------------------------------------------
-        # Strip extension & split prefix
-        # ---------------------------------------------------------------
-        core = evaluator_filename.replace(".pkl", "")
-        prefix, rest = core.split("_", 1)
-
-        # print(f"  • Core (no .pkl): {core}")
-        # print(f"  • Prefix: {prefix}")
-        # print(f"  • Remainder: {rest}")
-
-        # ---------------------------------------------------------------
-        # Example rest:
-        #   800-alloc0_env_stochastic-16000_200_1
-        # ---------------------------------------------------------------
-        file_qubits = ""
-        parts = rest.split("-")
-        
-        # Safety check for split
-        if len(parts) < 3:
-            print(f"  ⚠️ Filename format unexpected: {rest}")
+        parsed = parse_multirun_evaluator_filename(evaluator_filename)
+        if parsed is None:
             return {}, {}
 
-        alloc_env_attack = parts[1].split("_")
-        cap_id = int(round(float(parts[0])))
-        
-        # Detect Random Allocator
-        self.is_random_alloc = True if "random" in alloc_env_attack[0].lower() else False
-        pattern = re.compile(r"\(\d+_\d+_\d+_\d+\)(_S\d*(_\d*)?T\w*)?|(_S\d*(_\d*)?T\w*)")
-        last_params = parts[-1]
-        
-        # Initial ST extraction (suffix)
-        if "_" in last_params: self.st = last_params.split("_")[-1]
-        else: self.st = ""
+        # Detect Random allocator (used by other resume helpers)
+        self.is_random_alloc = True if "random" in parsed.allocator_id.lower() else False
 
-        # if not self.is_random_alloc: 
-            # match = pattern.search(parts[2])
-            # if match:  file_qubits = match.group(0)
-            # # Remove the qubit tuple from parameters string for parsing
-            # if file_qubits:
-            #     last_params = last_params.replace(f"_{file_qubits}", '').strip()
-            #     # Clean up ST to remove any tuple remnants
-            #     self.st = re.sub(r'_?\(.*\)_?', "", file_qubits)
-            
-            # # If we found qubits in the filename, set them as the runtime qubits
-            # if file_qubits: self.random_runtime_qubits = file_qubits
-            #     # Normalize formatting if needed, usually it keeps parens in filename
-        # else:
-            # match = pattern.search(parts[2])
-            # if match: file_qubits = match.group(0)
-            
-            # if file_qubits:
-            #     last_params = last_params.replace(f"{file_qubits}", '').strip()
-            #     self.st = re.sub(r'_?\(.*\)_?', "", file_qubits)
+        # Preserve ST suffix (used elsewhere in configs/logging)
+        self.st = parsed.st
 
-        allocator_id, env_id, attack_id = alloc_env_attack
-        
-        try: 
-            base_frames, frame_step, runs_id = map(int, last_params.split("_")[:3])
-        except ValueError as e:
-            print(f"  ❌ Error parsing parameters '{last_params}': {e}")
-            return {}, {}
-
-        print("\n🧩 PARSED COMPONENTS")
-        print(f"  • cap_id:        {cap_id}")
-        print(f"  • allocator_id:  {allocator_id}")
-        print(f"  • env_id:        {env_id}")
-        print(f"  • attack_id:     {attack_id}")
-        print(f"  • base_frames:   {base_frames}")
-        print(f"  • frame_step:    {frame_step}")
-        print(f"  • runs_id:       {runs_id}")
-        # print(f"  • Qubit Caps:    {file_qubits or 'N/A'}")
-        
-        runtime_qubits = ""
-        # # If Random and no qubits in filename, try to find them in registry
-        # if self.is_random_alloc and not runtime_qubits:
-        #     # Pass the ORIGINAL full filename to the helper
-        #     runtime_qubits = self._get_random_runtime_qubits(evaluator_filename, file_qubits)
-        #     if not runtime_qubits: print("  ⚠️ No qubit allocation found for Random allocator. The system may fail if files are not found.")
-        
-        attack_mapping = {
-            'none': NoAttack(),
-            'random': RandomAttack(attack_rate=self.attack_rate * self.attack_intensity),
-            'stochastic': RandomAttack(attack_rate=self.attack_rate * self.attack_intensity),
-            'markov': MarkovAttack(attack_rate=self.attack_intensity),
-            'adaptive': AdaptiveAttack(attack_rate=self.attack_intensity),
-            'onlineadaptive': OnlineAdaptiveAttack(attack_rate=self.attack_intensity)
-        }
-        framework_state = {}
-        model_state  = {}
-
-        print("\n=====================================================")
-        print("🧪 GENERATING KEYS FOR EACH RUN")
-        print("=====================================================")
-
-        # ---------------------------------------------------------------
-        # SINGLE LOOP — everything happens here
-        # ---------------------------------------------------------------
-        framework_state[evaluator_filename] = evaluator_filename
-        for run_idx in range(self.runs):
-            print(f"\n--- Run {run_idx+1}/{self.runs} -----------------------")
-            for env_cls in [StochasticQuantumEnvironment, AdversarialQuantumEnvironment]:
-
-                env = env_cls.__name__.replace("QuantumEnvironment", "")
-                env_id = env if env else "Baseline (None)"
-
-                for attack in attack_mapping.values():
-                    attack_id = str(attack)
-                    frame_no = base_frames + (frame_step * run_idx) 
-                    cap_id = frame_no * self.scale if not self.base_capacity else base_frames * self.scale
-                    # print(f"  • Frame number: {frame_no}")
-
-                    # -----------------------------------------------------------
-                    # RUNNER KEY (framework_state)
-                    # -----------------------------------------------------------
-                    runner_key = (
-                        f"QuantumExperimentRunner_{run_idx+1}_{cap_id}-"
-                        f"{allocator_id}_{env_id}_{attack_id}-"
-                        f"{frame_no}_{run_idx+1}{runtime_qubits}.pkl"
-                    )
-                    framework_state[runner_key] = runner_key
-                    # print(f"  → Runner key: {runner_key}")
-
-                    # -----------------------------------------------------------
-                    # MODEL KEYS (model_state)
-                    # -----------------------------------------------------------
-                    # print("  • Generating model keys:")
-
-                    for model_name in self.models:
-                        model_class = self.algorithm_configs[model_name]["model_class"].__name__
-                        mode = self.algorithm_configs[model_name]["kwargs"]["mode"]
-
-                        model_key = (
-                            f"{model_class}({mode})_{cap_id}-"
-                            f"{allocator_id}_{env_id}_{attack_id}-"
-                            f"{frame_no}{runtime_qubits}.pkl"
-                        )
-                        model_state[model_key] = model_key
-                        # print(f"    → {model_key}")
-
-            print("\n=====================================================")
-            print("📦 FINAL EXPECTED KEYS")
-            print("=====================================================")
-            print(f"  • Runner keys: {len(framework_state)}")
-            # for rk in framework_state.keys():
-            #     print(f"    - {rk}")
-
-            print(f"\n  • Model keys: {len(model_state)}")
-            # for mk in model_state.keys():
-            #     print(f"    - {mk}")
-
-        # ---------------------------------------------------------------
-        # Save internally & return
-        # ---------------------------------------------------------------
-        self.expected_keys = {"framework_state": framework_state, "model_state": model_state}
+        self.expected_keys = generate_expected_state_keys(
+            evaluator_filename=evaluator_filename,
+            parsed=parsed,
+            runs=self.runs,
+            models=list(self.models),
+            algorithm_configs=self.algorithm_configs,
+            scale=int(self.scale),
+            base_capacity=bool(self.base_capacity),
+        )
         results = {
-            "components": self.expected_keys,    
+            "components": self.expected_keys,
             "parsed": {
-                "cap_id": cap_id,
-                "allocator_id": allocator_id,
-                "env_id": env_id,
-                "attack_id": attack_id,
-                "base_frames": base_frames,
-                "frame_step": frame_step,
-                "runs_id": runs_id,
-            }
+                "cap_id": parsed.cap_id,
+                "allocator_id": parsed.allocator_id,
+                "env_id": parsed.env_id,
+                "attack_id": parsed.attack_id,
+                "base_frames": parsed.base_frames,
+                "frame_step": parsed.frame_step,
+                "runs_id": parsed.runs_id,
+            },
         }
 
-        print("\nEXPECTED KEY GENERATION COMPLETE\n")
-        if len(self.backup_registry) != 0: self._build_backup_registry(force=False)
+        if len(self.backup_registry) != 0:
+            self._build_backup_registry(force=False)
         return results
 
     def generate_paper7_paths(

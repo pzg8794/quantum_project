@@ -95,6 +95,12 @@ This is why expected-key generation exists:
 1) avoid downloading the entire corpus, and  
 2) keep resume/analysis focused on just the files needed for a specific evaluator scope.
 
+### Known pitfalls (worth fixing before expanding restore)
+
+- `get_latest_state(...)` currently triggers `restore_from_drive(self.day_str, expected_keys)` for evaluators. This assumes the relevant state artifacts live under the *current* `day_YYYYMMDD` folder, which is often false for cross-day resume.
+- If the real goal is “download only expected keys from the whole corpus”, the restore step should use an **any-date lookup** per expected filename (like `download_any_date`) rather than a single fixed date folder.
+- The method is intentionally side-effectful (it may download and mutate the registry). That’s fine, but it should be explicit and testable (e.g., a dedicated `ensure_expected_keys_restored(...)` step rather than hiding restore inside a getter).
+
 ## Fairness note (why we sometimes *don’t* resume)
 
 Resume can be a big time-saver, but it can also change experimental semantics:

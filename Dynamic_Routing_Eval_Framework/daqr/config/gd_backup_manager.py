@@ -706,57 +706,96 @@ class GoogleDriveBackupManager:
 
 
     def restore_from_drive(self, date_str, expected_keys):
-        """Restore local data lake structure for the expected experiment keys."""
-        print("RESTORING FROM DRIVE 1")
-        if not self.remote_available or not self.drive:
-            # if self.verbose: 
-            print("\t⚠️ Drive unavailable → cannot restore")
-            return False
+        """
+        Targeted restore: populate a focused registry for *only* the expected keys and
+        download missing files on-demand (instead of syncing the entire datalake).
 
-        print("RESTORING FROM DRIVE 2")
-        comp_path = self.quantum_data_paths["obj"]
-        if comp_path["framework_state"][self.mode].exists() and comp_path["model_state"][self.mode].exists(): 
-            # if self.verbose: 
-            print("\t⚠️ Registry exists → aborting restore")
-            return False
+        Resume-friendly behavior:
+        - If a file already exists locally (or in a Drive filesystem mirror), keep it.
+        - Otherwise, try to fetch it from Drive (any day_* folder) via `download_any_date`.
+        - Always record a registry entry for each expected filename (even if missing),
+          so callers can re-attempt recovery or clearly report what is absent.
 
-        restored = defaultdict(dict)
+        Returns a small report dict for diagnostics, but callers may ignore it.
+        """
+        restored: dict[str, dict[str, str]] = defaultdict(dict)
+        report: dict[str, dict[str, int]] = {}
 
-        print("RESTORING FROM DRIVE 3")
-        for component, filenames in expected_keys.items():
-            print(component.upper())
+        def _expected_local_path(component: str, filename: str) -> Path | None:
+            try:
+                root = self.quantum_data_paths["obj"][component].get("local")
+            except Exception:
+                return None
+            if not root or not isinstance(root, Path):
+                return None
+            return root / date_str / filename
 
-            for filename in filenames.keys():
-                print(filename)
-                
-                # Check if already exists locally
-                local_entry = None
-                try:                local_entry = self.backup_registry.get(component, {}).get(filename)
-                except Exception:   local_entry = self.normalize_path(local_entry, project_root=self.dir)
-                if local_entry and Path(local_entry).exists():
-                    print("local entry check ", local_entry)
-                    restored[component][filename] = str(Path(drive_path or local_path).resolve())
+        def _existing_path(component: str, filename: str) -> Path | None:
+            # 1) Registry hit (if it exists and is still valid)
+            try:
+                entry = self.backup_registry.get(component, {}).get(filename)
+            except Exception:
+                entry = None
+            if isinstance(entry, str) and entry:
+                p = Path(entry)
+                if p.exists():
+                    return p
+
+            # 2) Expected local staging location
+            p = _expected_local_path(component, filename)
+            if p is not None and p.exists():
+                return p
+
+            # 3) Drive filesystem mirror (if available)
+            try:
+                drive_root = self.quantum_data_paths["obj"][component].get("drive")
+            except Exception:
+                drive_root = None
+            if drive_root and isinstance(drive_root, Path) and drive_root.exists():
+                candidate = drive_root / date_str / filename
+                if candidate.exists():
+                    return candidate
+            return None
+
+        for component, filenames in (expected_keys or {}).items():
+            report.setdefault(component, {"total": 0, "present": 0, "downloaded": 0, "missing": 0})
+            for filename in (filenames or {}).keys():
+                report[component]["total"] += 1
+
+                found = _existing_path(component, filename)
+                if found is not None:
+                    restored[component][filename] = str(found.resolve())
+                    report[component]["present"] += 1
                     continue
 
-                # Otherwise download
-                drive_path = self._download_file_from_drive(date_str, component, filename)
-                if drive_path: 
-                    print("found path: ",drive_path)
-                    restored[component][filename] = str(Path(drive_path or local_path).resolve())
+                recovered = None
+                if getattr(self, "remote_available", False) and getattr(self, "drive", None) is not None:
+                    try:
+                        recovered = self.download_any_date(component=component, filename=filename)
+                    except Exception:
+                        recovered = None
+
+                if recovered:
+                    restored[component][filename] = str(Path(recovered).resolve())
+                    report[component]["downloaded"] += 1
+                    continue
+
+                # Placeholder for missing file.
+                expected = _expected_local_path(component, filename)
+                if expected is not None:
+                    expected.parent.mkdir(parents=True, exist_ok=True)
+                    restored[component][filename] = str(expected.resolve())
                 else:
-                    local_path = str(self.quantum_data_paths["obj"][component][self.mode]/self.date_str/filename)
-                    restored[component][filename] = local_path
-                    print("manual path: ", local_path)
+                    restored[component][filename] = filename
+                report[component]["missing"] += 1
 
-
-        print("RESTORING FROM DRIVE 4")
-        # Save registry locally
-        file = str(self.registry_file_paths[self.mode].replace(".pkl", ".json"))
-        with open(file, "w") as f: json.dump(restored, f)
-
-        # Update internal registry
+        # Focus the registry strictly to expected keys (reduces scanning/parsing).
         self.backup_registry = restored
-        return True
+        try:
+            self.save_registry(restored, force=True)
+        except Exception:
+            pass
+        return report
     
     def load_new_entries(self, entries=None, force=False):
         """
@@ -842,8 +881,9 @@ class GoogleDriveBackupManager:
         if self.in_share_drive:
             # Direct filesystem search in shared drive
             for mode in ["drive", "local"]:
-                comp_dir =  self.quantum_data_paths[mode] / component
-                if not comp_dir.exists(): return None
+                comp_dir = self.quantum_data_paths[mode] / component
+                if not comp_dir.exists():
+                    continue
                 
                 # Search all day_* folders
                 for day_folder in comp_dir.iterdir():
@@ -852,7 +892,7 @@ class GoogleDriveBackupManager:
                     file_path = day_folder / filename
                     if file_path.exists():
                         if self.verbose: print(f"✓ Found: {file_path}")
-                    return str(file_path)
+                        return str(file_path)
             return None
 
         drive_component_dir = self.quantum_data_paths["obj"][component].get("drive")
@@ -881,7 +921,7 @@ class GoogleDriveBackupManager:
         for folder in day_folders:
             fid = folder["id"]
             # EXACT MATCH — no substring collision
-            q = f"name = '{filename}' and '{fid}' in parents"
+            q = f"name='{filename}' and '{fid}' in parents"
             response = self._retry_drive(
                 lambda: self.drive.files().list(
                     q=q, supportsAllDrives=True,

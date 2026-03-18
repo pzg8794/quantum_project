@@ -657,3 +657,6 @@ Source: `docs/guides/STATE_LAYERS_AND_RESUME.md`
 - Extracted dependency-light expected-key generation into `daqr/config/expected_keys.py` and shared state naming into `daqr/config/state_naming.py`.
 - Updated runtime objects (`QuantumExperimentRunner`, `BaseBandit`) and expected-key generation to use the same naming helpers.
 - Added unit tests: `tests/test_expected_keys_generation.py` and verified drive + registry + expected-key tests pass.
+
+**OOP integration**
+- `ExperimentConfiguration` now owns a thread-safe `state_naming` service (`StateNaming`) so quantum objects can call `configs.state_naming.*` for subtype-specific naming without duplicating string formats.

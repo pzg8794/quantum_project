@@ -97,14 +97,25 @@ class QuantumExperimentRunner:
         self.cap_id       = int(self.capacity*self.configs.scale)
         
         id_str            = str(self.id)
-        self.file_name = runner_state_filename(
-            runner_id=self.id,
-            cap_id=self.cap_id,
-            allocator_id=self.allocator_id,
-            env_id=self.env_id,
-            attack_id=self.attack_id,
-            frames_count=self.frames_count,
-        )
+        naming = getattr(self.configs, "state_naming", None)
+        if naming is not None:
+            self.file_name = naming.runner_filename(
+                runner_id=self.id,
+                cap_id=self.cap_id,
+                allocator_id=self.allocator_id,
+                env_id=self.env_id,
+                attack_id=self.attack_id,
+                frames_count=self.frames_count,
+            )
+        else:
+            self.file_name = runner_state_filename(
+                runner_id=self.id,
+                cap_id=self.cap_id,
+                allocator_id=self.allocator_id,
+                env_id=self.env_id,
+                attack_id=self.attack_id,
+                frames_count=self.frames_count,
+            )
 
         # Resume previous evaluator state if configured
         try:                    self.resume()

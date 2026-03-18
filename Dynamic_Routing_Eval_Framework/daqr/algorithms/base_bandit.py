@@ -104,15 +104,27 @@ class QuantumModel(ABC):
         self.allocator_id = str(getattr(self.configs, "allocator", "alloc"))
         self.env_id       = str(getattr(self.configs, "environment", "env"))
         self.attack_id    = str(getattr(self.configs, "attack_strategy", "None"))
-        self.file_name = model_state_filename(
-            model_id=str(self.id),
-            mode=str(self.mode),
-            cap_id=int(self.capacity),
-            allocator_id=self.allocator_id,
-            env_id=self.env_id,
-            attack_id=self.attack_id,
-            frame_no=int(self.frame_number),
-        )
+        naming = getattr(self.configs, "state_naming", None)
+        if naming is not None:
+            self.file_name = naming.model_filename(
+                model_id=str(self.id),
+                mode=str(self.mode),
+                cap_id=int(self.capacity),
+                allocator_id=self.allocator_id,
+                env_id=self.env_id,
+                attack_id=self.attack_id,
+                frame_no=int(self.frame_number),
+            )
+        else:
+            self.file_name = model_state_filename(
+                model_id=str(self.id),
+                mode=str(self.mode),
+                cap_id=int(self.capacity),
+                allocator_id=self.allocator_id,
+                env_id=self.env_id,
+                attack_id=self.attack_id,
+                frame_no=int(self.frame_number),
+            )
 
 
         self.thresholds = {

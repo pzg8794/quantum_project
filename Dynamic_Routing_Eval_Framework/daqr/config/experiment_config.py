@@ -18,6 +18,7 @@ from pathlib import Path
 from datetime import datetime
 from .local_backup_manager import LocalBackupManager
 from .state_registry import register_state_path
+from .state_naming import StateNaming
 
 
 class ExperimentConfiguration:
@@ -70,6 +71,7 @@ class ExperimentConfiguration:
 
         # Single unified manager - handles everything
         self.backup_mgr = LocalBackupManager(date_str=self.day_str, config_dir=self.dir, verbose=self.verbose)
+        self.state_naming = StateNaming()
 
         self.category_map = {
             'none': 'Baseline (No Attacks)',

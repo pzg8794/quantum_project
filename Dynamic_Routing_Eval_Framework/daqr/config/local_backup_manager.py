@@ -285,7 +285,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
 
     def save_file(self, component, filename, file_data):
         # self.date_str = self.normalize_day_prefix(self.date_str)
-        save_dir = self.dir / component / self.date_str
+        save_root = Path(self.quantum_data_paths["obj"][component]["local"])
+        save_dir = save_root / self.date_str
         save_dir.mkdir(parents=True, exist_ok=True)
         file_path = save_dir / filename
         backup_path = None

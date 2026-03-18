@@ -67,44 +67,59 @@ class GoogleDriveBackupManager:
         )
         self.quantum_logs_file_name         = f"quantum_quick-run_log_{self.date_str}.txt"
 
-        self.quantum_data_paths             = {"drive":"", "local":"", "datalake":""}
-        self.quantum_data_paths["local"]    = self.dir
-        self.quantum_data_paths["drive"]    = (
-            self.drive_config_dir
-            if self.drive_config_dir is not None
-            else self.drive_datalake_base / "quantum_data_lake"
-        )
+        # ------------------------------------------------------------
+        # Data lake roots (local + drive mirror)
+        #
+        # Contract:
+        # - config_dir contains a *single* `quantum_data_lake/` directory.
+        # - object state lives under:
+        #     quantum_data_lake/framework_state/day_YYYYMMDD/*.pkl
+        #     quantum_data_lake/model_state/day_YYYYMMDD/*.pkl
+        # ------------------------------------------------------------
+        self.quantum_data_paths = {"drive": "", "local": "", "datalake": ""}
+
+        self.quantum_data_paths["local"] = self.dir / "quantum_data_lake"
+        self.quantum_data_paths["local"].mkdir(parents=True, exist_ok=True)
+
+        # If a Drive filesystem mirror is available, mirror the same layout under config_dir.
+        if self.drive_config_dir is not None:
+            self.quantum_data_paths["drive"] = self.drive_config_dir / "quantum_data_lake"
+        else:
+            self.quantum_data_paths["drive"] = self.drive_datalake_base / "quantum_data_lake"
         
-        self.quantum_data_paths["logs"]             = {}
-        self.quantum_data_paths["logs"]["drive"]    = (
+        self.quantum_data_paths["logs"] = {}
+        self.quantum_data_paths["logs"]["drive"] = (
             self.drive_config_dir / "quantum_logs"
             if self.drive_config_dir is not None
             else self.drive_datalake_base / "quantum_logs"
         )
-        self.quantum_data_paths["logs"]["local"]    = self.dir / "quantum_logs"
+        self.quantum_data_paths["logs"]["local"] = self.dir / "quantum_logs"
 
-        self.quantum_data_paths["obj"]                              = {"obj":{}}
-        drive_path                                                  = self.quantum_data_paths["drive"]
-        self.quantum_data_paths["obj"]["model_state"]               = {}
-        self.quantum_data_paths["obj"]["framework_state"]           = {}
-        self.quantum_data_paths["obj"]["model_state"]["local"]      = self.dir / "model_state"
-        self.quantum_data_paths["obj"]["model_state"]["drive"]      = (
-            self.drive_config_dir / "model_state"
-            if self.drive_config_dir is not None
-            else self.dir / "model_state"
-        )
-        self.quantum_data_paths["obj"]["framework_state"]["local"]  = self.dir / "framework_state"
-        self.quantum_data_paths["obj"]["framework_state"]["drive"]  = (
-            self.drive_config_dir / "framework_state"
-            if self.drive_config_dir is not None
-            else self.dir / "framework_state"
-        )
+        self.quantum_data_paths["obj"] = {"obj": {}}
+        drive_path = self.quantum_data_paths["drive"]
+        local_path = self.quantum_data_paths["local"]
+
+        self.quantum_data_paths["obj"]["model_state"] = {
+            "local": local_path / "model_state",
+            "drive": drive_path / "model_state",
+        }
+        self.quantum_data_paths["obj"]["framework_state"] = {
+            "local": local_path / "framework_state",
+            "drive": drive_path / "framework_state",
+        }
+
+        # Ensure local component roots exist.
+        for component in ("framework_state", "model_state"):
+            try:
+                Path(self.quantum_data_paths["obj"][component]["local"]).mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
         
 
-        self.registry_file_paths            = {'drive':"", "local":"", "datalake":""}
-        self.registry_file_paths["drive"]   = self.dir / "drive_backup_registry.json"
-        self.registry_file_paths["local"]   = self.dir / "local_backup_registry.json"
-        self.registry_file_paths["datalake"]= drive_path / "backup_registry.json"
+        self.registry_file_paths = {"drive": "", "local": "", "datalake": ""}
+        self.registry_file_paths["drive"] = self.dir / "drive_backup_registry.json"
+        self.registry_file_paths["local"] = self.dir / "local_backup_registry.json"
+        self.registry_file_paths["datalake"] = drive_path / "backup_registry.json"
 
         self.in_share_drive             = self._is_running_from_drive_workspace()
         self.drive_filesystem_available = bool(self.drive_config_dir and self.drive_config_dir.exists())

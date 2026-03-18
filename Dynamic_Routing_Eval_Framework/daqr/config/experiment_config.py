@@ -691,8 +691,9 @@ class ExperimentConfiguration:
         project_root = Path(__file__).resolve().parents[2]  # Dynamic_Routing_Eval_Framework/
         tool_path = project_root / "tools" / "state" / "aggregate_state_dirs.py"
         config_dir = project_root / "daqr" / "config"
-        framework_state_root = config_dir / "framework_state"
-        model_state_root = config_dir / "model_state"
+        datalake_root = config_dir / "quantum_data_lake"
+        framework_state_root = datalake_root / "framework_state"
+        model_state_root = datalake_root / "model_state"
 
         if not target:
             target = getattr(self, "day_str", None) or "today"

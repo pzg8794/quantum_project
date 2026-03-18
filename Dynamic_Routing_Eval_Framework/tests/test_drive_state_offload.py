@@ -44,14 +44,15 @@ class _DriveOffloadHarness(LocalBackupManager):
         mgr.mode = "local"
         mgr.upload_should_succeed = True
         mgr.verify_should_succeed = True
+        datalake_root = base_dir / "config" / "quantum_data_lake"
         mgr.quantum_data_paths = {
             "obj": {
                 "framework_state": {
-                    "local": base_dir / "local" / "framework_state",
+                    "local": datalake_root / "framework_state",
                     "drive": base_dir / "drive" / "framework_state",
                 },
                 "model_state": {
-                    "local": base_dir / "local" / "model_state",
+                    "local": datalake_root / "model_state",
                     "drive": base_dir / "drive" / "model_state",
                 },
             }
@@ -106,7 +107,7 @@ class TestDriveStateOffloadContracts(unittest.TestCase):
             )
 
             self.assertIsNotNone(durable_path)
-            staged = base / "config" / "framework_state" / "day_20990101" / "Runner.pkl"
+            staged = base / "config" / "quantum_data_lake" / "framework_state" / "day_20990101" / "Runner.pkl"
             remote_copy = base / "drive" / "framework_state" / "day_20990101" / "Runner.pkl"
 
             self.assertEqual(durable_path, str(staged))
@@ -133,7 +134,7 @@ class TestDriveStateOffloadContracts(unittest.TestCase):
                 file_data={"ok": 1},
             )
 
-            staged = base / "config" / "framework_state" / "day_20990101" / "Runner.pkl"
+            staged = base / "config" / "quantum_data_lake" / "framework_state" / "day_20990101" / "Runner.pkl"
             self.assertEqual(durable_path, str(staged))
             self.assertTrue(staged.exists())
             self.assertEqual(mgr.backup_registry["framework_state"]["Runner.pkl"], str(staged))
@@ -156,7 +157,7 @@ class TestDriveStateOffloadContracts(unittest.TestCase):
                 file_data={"ok": 1},
             )
 
-            staged = base / "config" / "framework_state" / "day_20990101" / "Runner.pkl"
+            staged = base / "config" / "quantum_data_lake" / "framework_state" / "day_20990101" / "Runner.pkl"
             self.assertEqual(durable_path, str(staged))
             self.assertTrue(staged.exists())
             self.assertEqual(mgr.backup_registry["framework_state"]["Runner.pkl"], str(staged))
@@ -179,7 +180,7 @@ class TestDriveStateOffloadContracts(unittest.TestCase):
                 file_data={"ok": 1},
             )
 
-            staged = base / "config" / "framework_state" / "day_20990101" / "Runner.pkl"
+            staged = base / "config" / "quantum_data_lake" / "framework_state" / "day_20990101" / "Runner.pkl"
             self.assertEqual(durable_path, str(staged))
             self.assertTrue(staged.exists())
             self.assertEqual(mgr.backup_registry["framework_state"]["Runner.pkl"], str(staged))
@@ -201,7 +202,7 @@ class TestDriveStateOffloadContracts(unittest.TestCase):
                 file_data={"ok": 1},
             )
 
-            staged = base / "config" / "framework_state" / "day_20990101" / "Runner.pkl"
+            staged = base / "config" / "quantum_data_lake" / "framework_state" / "day_20990101" / "Runner.pkl"
             self.assertEqual(mgr.backup_registry["framework_state"]["Runner.pkl"], str(staged))
             self.assertEqual(mgr.new_entries["framework_state"]["Runner.pkl"], str(staged))
             self.assertGreaterEqual(len(mgr.saved_registries), 0)

@@ -37,6 +37,8 @@ Dynamic_Routing_Eval_Framework/results/
 Dynamic_Routing_Eval_Framework/daqr/config/quantum_logs/
 Dynamic_Routing_Eval_Framework/daqr/config/backup_registry.json
 Dynamic_Routing_Eval_Framework/daqr/config/quantum_data_lake/
+Dynamic_Routing_Eval_Framework/daqr/config/framework_state/
+Dynamic_Routing_Eval_Framework/daqr/config/model_state/
 
 # Checkpoints
 *.pkl

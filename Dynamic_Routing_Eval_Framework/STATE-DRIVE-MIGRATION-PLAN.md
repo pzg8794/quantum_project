@@ -31,10 +31,16 @@ Project root:
 
 - `/Users/pitergarcia/DataScience/Semester4/GA-Work/hybrid_variable_framework/Dynamic_Routing_Eval_Framework`
 
-Current large state roots:
+Current large state roots (legacy; kept for reference):
 
-- `/Users/pitergarcia/DataScience/Semester4/GA-Work/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/config/framework_state` — about `41G`
-- `/Users/pitergarcia/DataScience/Semester4/GA-Work/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/config/model_state` — about `25G`
+- `/Users/pitergarcia/DataScience/Semester4/GA-Work/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/config/framework_state` — legacy location
+- `/Users/pitergarcia/DataScience/Semester4/GA-Work/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/config/model_state` — legacy location
+
+Canonical local datalake root (current design):
+
+- `/Users/pitergarcia/DataScience/Semester4/GA-Work/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/config/quantum_data_lake/`
+  - `quantum_data_lake/framework_state/day_YYYYMMDD/*.pkl`
+  - `quantum_data_lake/model_state/day_YYYYMMDD/*.pkl`
 
 Other current config-state paths:
 
@@ -60,8 +66,8 @@ Recommended mirrored workspace root on the shared drive:
 
 Expected shared-drive state roots:
 
-- `/Users/pitergarcia/Library/CloudStorage/GoogleDrive-garciapiterz@gmail.com/Shared drives/equitable_routing_and_diagnostic_ai/projects/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/config/framework_state`
-- `/Users/pitergarcia/Library/CloudStorage/GoogleDrive-garciapiterz@gmail.com/Shared drives/equitable_routing_and_diagnostic_ai/projects/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/config/model_state`
+- `/Users/pitergarcia/Library/CloudStorage/GoogleDrive-garciapiterz@gmail.com/Shared drives/equitable_routing_and_diagnostic_ai/projects/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/config/quantum_data_lake/framework_state`
+- `/Users/pitergarcia/Library/CloudStorage/GoogleDrive-garciapiterz@gmail.com/Shared drives/equitable_routing_and_diagnostic_ai/projects/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/config/quantum_data_lake/model_state`
 
 ---
 
@@ -73,6 +79,8 @@ Expected shared-drive state roots:
   - before
   - after
   - reason
+- **State artifacts must never be committed to git.**
+  - `daqr/config/quantum_data_lake/` is runtime output only and should remain ignored.
 - Prefer changes in the **backup/storage layer** over orchestration code.
 - Avoid touching `experiment_config.py` unless the manager layer cannot enforce the
   required policy by itself.

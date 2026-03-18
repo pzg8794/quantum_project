@@ -14,7 +14,8 @@ A **multi-testbed** research framework for evaluating quantum routing algorithms
 | **Local** | 15 min | `git clone` + `pip install -r requirements.txt` + `bash scripts/run_exp_test.sh` |
 | **GCP VM** | 30 min | `bash scripts/1_startup.sh` + `bash scripts/dynamic_exp_runner.sh` |
 
-**Results saved to**: Shared `quantum_data_lake/` → Instantly visible to all team members
+**Results saved to**: Shared `quantum_data_lake/` → Instantly visible to all team members  
+Local state is staged under `Dynamic_Routing_Eval_Framework/daqr/config/quantum_data_lake/` (runtime output; ignored by git).
 
 ---
 

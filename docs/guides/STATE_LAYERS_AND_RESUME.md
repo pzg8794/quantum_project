@@ -801,8 +801,13 @@ Goal: restore the legacy Drive behavior for state artifacts under `quantum_data_
 
 Behavior:
 
-- `LocalBackupManager.save_file(...)` always writes and returns the local path (`daqr/config/{component}/day_YYYYMMDD/{filename}`), updates the registry to the same local path, and then uploads a best-effort remote copy to Drive via API.
+- `LocalBackupManager.save_file(...)` always writes and returns the local path (`daqr/config/quantum_data_lake/{component}/day_YYYYMMDD/{filename}`), updates the registry to the same local path, and then uploads a best-effort remote copy to Drive via API.
 - `GoogleDriveBackupManager.delete_from_drive(...)` prefers deleting the mirrored filesystem copy when available; otherwise it finds the file via Drive API under `quantum_data_lake/{component}/day_*/{filename}` and:
   - attempts permanent delete,
   - falls back to `trashed=true` when the service account lacks `canDelete` but has `canTrash`.
 - Local cleanup is best-effort: any downloaded copy under `{component}/day_*/{filename}` may be removed after a successful remote delete/trash.
+
+Git hygiene:
+
+- `daqr/config/quantum_data_lake/` (and any state `*.pkl`) must **never** be committed to git.
+- `.gitignore` covers these outputs; if anything is accidentally tracked, remove it from the index with `git rm -r --cached ...` and recommit.

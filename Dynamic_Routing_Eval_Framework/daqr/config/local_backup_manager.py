@@ -6,7 +6,10 @@ from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
 from threading import Lock
-from googleapiclient.http import MediaIoBaseDownload
+try:
+    from googleapiclient.http import MediaIoBaseDownload
+except ModuleNotFoundError:  # pragma: no cover
+    MediaIoBaseDownload = None
 from .gd_backup_manager import GoogleDriveBackupManager
 
 
@@ -103,12 +106,9 @@ class LocalBackupManager(GoogleDriveBackupManager):
             print(f"✓ Saved: {component}/{filename} ({file_size/1024/1024:.2f} MB)")
             
             # Update registry
-            registry_entry = {
-                "local_path": str(file_path),
-                "date": self.date_str,
-            }
-            self.backup_registry.setdefault(component, {})[filename] = registry_entry
-            self.new_entries.setdefault(component, {})[filename] = dict(registry_entry)
+            saved_path = str(file_path)
+            self.backup_registry.setdefault(component, {})[filename] = saved_path
+            self.new_entries.setdefault(component, {})[filename] = saved_path
 
             # Immediate Drive upload (legacy local-first flow + durable remote copy)
             if self.remote_available and self.drive and not self.in_share_drive:
@@ -119,9 +119,6 @@ class LocalBackupManager(GoogleDriveBackupManager):
                         local_path=str(file_path),
                         filename=filename,
                     )
-                    if uploaded:
-                        self.backup_registry[component][filename].update(uploaded)
-                        self.new_entries[component][filename].update(uploaded)
                     if self.verbose and uploaded:
                         print(f"☁️ Uploaded immediately: {component}/{filename}")
                 except Exception as e:
@@ -135,6 +132,9 @@ class LocalBackupManager(GoogleDriveBackupManager):
                 backup_path.replace(file_path)
                 print(f"🚨 Save failed, restored from backup: {e}")
             raise
+
+    def delete_from_drive(self, component, filename):
+        return super().delete_from_drive(component, filename)
 
 
 

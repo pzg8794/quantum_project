@@ -660,3 +660,16 @@ Source: `docs/guides/STATE_LAYERS_AND_RESUME.md`
 
 **OOP integration**
 - `ExperimentConfiguration` now owns a thread-safe `state_naming` service (`StateNaming`) so quantum objects can call `configs.state_naming.*` for subtype-specific naming without duplicating string formats.
+
+### 2026-03-18 — Targeted restore uses any-date lookup + registry is persisted
+
+**Applied result**
+- `backup_mgr.restore_from_drive(day_str, expected_keys)` now performs a true targeted restore:
+  - uses the existing any-date finder (`download_any_date`) per expected filename (filesystem mirror first, then Drive API download when needed)
+  - writes a focused registry containing only expected keys and persists it (pickle+json) so resume does not require full rescans
+- Expected-key naming was corrected to match the legacy artifact contract:
+  - preserves runtime/testbed suffixes (e.g., `_paper2`, `_paper8_m1_rate_only`, `_paper12`)
+  - uses the saved scenario naming combos (`Baseline (None) + No`, `Stochastic + Random`, `Adversarial + {Markov, Adaptive, OnlineAdaptive}`)
+
+**Why this matters**
+- After local space cleanups (deleting old `framework_state`), the next run can regenerate expected keys and repopulate only the required state from Drive, then resume normally from the focused registry.

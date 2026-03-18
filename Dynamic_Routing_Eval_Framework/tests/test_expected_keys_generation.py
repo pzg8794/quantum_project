@@ -64,9 +64,10 @@ class TestExpectedKeyGenerationRuntime(unittest.TestCase):
             runner_id=1,
             cap_id=4000,
             allocator_id="Default",
-            env_id="Stochastic",
+            env_id="Baseline (None)",
             attack_id="No",
             frames_count=4000,
+            runtime_suffix="_paper12",
         )
         self.assertIn(expected_runner, fw)
 
@@ -75,9 +76,10 @@ class TestExpectedKeyGenerationRuntime(unittest.TestCase):
             mode="base",
             cap_id=4000,
             allocator_id="Default",
-            env_id="Stochastic",
+            env_id="Baseline (None)",
             attack_id="No",
             frame_no=4000,
+            runtime_suffix="_paper12",
         )
         self.assertIn(expected_model, ms)
 

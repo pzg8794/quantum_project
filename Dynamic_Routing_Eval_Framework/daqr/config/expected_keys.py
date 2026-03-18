@@ -14,7 +14,7 @@ class ParsedEvaluatorFilename:
     base_frames: int
     frame_step: int
     runs_id: int
-    st: str
+    st: str  # testbed/runtime suffix inferred from filename (e.g., "paper2", "paper8_m1_rate_only")
 
 
 def parse_multirun_evaluator_filename(name: str) -> ParsedEvaluatorFilename | None:
@@ -51,7 +51,21 @@ def parse_multirun_evaluator_filename(name: str) -> ParsedEvaluatorFilename | No
     except Exception:
         return None
 
-    st = last_params.split("_")[-1] if "_" in last_params else ""
+    # The suffix can contain underscores (e.g., "paper8_m1_rate_only").
+    # Recover it by:
+    # - splitting on "_"
+    # - skipping the first 3 numeric params (base_frames, frame_step, runs_id)
+    # - then taking everything from the first token that starts with "paper" onward
+    #   (falling back to joining remaining tokens if "paper" isn't present).
+    st = ""
+    tokens = last_params.split("_")
+    if len(tokens) > 3:
+        remainder = tokens[3:]
+        paper_idx = next((i for i, tok in enumerate(remainder) if tok.lower().startswith("paper")), None)
+        if paper_idx is not None:
+            st = "_".join(remainder[paper_idx:])
+        else:
+            st = "_".join(remainder)
     return ParsedEvaluatorFilename(
         cap_id=cap_id,
         allocator_id=allocator_id,
@@ -81,9 +95,28 @@ def generate_expected_state_keys(
     This is dependency-light by design (no numpy/torch imports). It produces the
     same naming contract as runtime objects by delegating to state_naming helpers.
     """
-    runtime_suffix = ""  # policy: expected keys are allocation-agnostic
-    env_names = ["Stochastic", "Adversarial"]
-    attack_names = ["No", "Random", "Markov", "Adaptive", "OnlineAdaptive"]
+    # Expected keys are allocation-agnostic, but they must preserve the
+    # testbed/runtime suffix used in the artifact naming contract.
+    runtime_suffix = f"_{parsed.st}" if parsed.st else ""
+
+    # Legacy naming semantics (as observed in the curated evaluation corpus):
+    # - Baseline (no-attack) uses env_id="Baseline (None)" and attack_id="No"
+    # - Stochastic uses env_id="Stochastic" and attack_id="Random"
+    # - Adversarial uses env_id="Adversarial" and one of:
+    #   Markov / Adaptive / OnlineAdaptive
+    combos: list[tuple[str, str]] = [
+        ("Baseline (None)", "No"),
+        ("Stochastic", "Random"),
+        ("Adversarial", "Markov"),
+        ("Adversarial", "Adaptive"),
+        ("Adversarial", "OnlineAdaptive"),
+    ]
+
+    # If evaluator filename is already specific (not "All"), filter combos.
+    if parsed.env_id and parsed.env_id.lower() != "all":
+        combos = [c for c in combos if c[0].lower().startswith(parsed.env_id.lower())]
+    if parsed.attack_id and parsed.attack_id.lower() != "all":
+        combos = [c for c in combos if c[1].lower() == parsed.attack_id.lower()]
 
     framework_state: dict[str, str] = {}
     model_state: dict[str, str] = {}
@@ -100,33 +133,31 @@ def generate_expected_state_keys(
             else parsed.base_frames * scale
         )
 
-        for env_name in env_names:
-            for attack_name in attack_names:
-                runner_key = runner_state_filename(
-                    runner_id=runner_id,
+        for env_name, attack_name in combos:
+            runner_key = runner_state_filename(
+                runner_id=runner_id,
+                cap_id=int(cap_id),
+                allocator_id=parsed.allocator_id,
+                env_id=env_name,
+                attack_id=attack_name,
+                frames_count=int(frame_no),
+                runtime_suffix=runtime_suffix,
+            )
+            framework_state[runner_key] = runner_key
+
+            for model_name in models:
+                model_class = algorithm_configs[model_name]["model_class"].__name__
+                mode = algorithm_configs[model_name]["kwargs"]["mode"]
+                model_key = model_state_filename(
+                    model_id=model_class,
+                    mode=mode,
                     cap_id=int(cap_id),
                     allocator_id=parsed.allocator_id,
                     env_id=env_name,
                     attack_id=attack_name,
-                    frames_count=int(frame_no),
+                    frame_no=int(frame_no),
                     runtime_suffix=runtime_suffix,
                 )
-                framework_state[runner_key] = runner_key
-
-                for model_name in models:
-                    model_class = algorithm_configs[model_name]["model_class"].__name__
-                    mode = algorithm_configs[model_name]["kwargs"]["mode"]
-                    model_key = model_state_filename(
-                        model_id=model_class,
-                        mode=mode,
-                        cap_id=int(cap_id),
-                        allocator_id=parsed.allocator_id,
-                        env_id=env_name,
-                        attack_id=attack_name,
-                        frame_no=int(frame_no),
-                        runtime_suffix=runtime_suffix,
-                    )
-                    model_state[model_key] = model_key
+                model_state[model_key] = model_key
 
     return {"framework_state": framework_state, "model_state": model_state}
-

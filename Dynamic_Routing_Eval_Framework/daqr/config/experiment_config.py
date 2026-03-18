@@ -14,6 +14,8 @@ import  copy, os, re
 import  pathlib
 import  pickle
 import  shutil, random
+import subprocess
+import sys
 from pathlib import Path
 from datetime import datetime
 from .local_backup_manager import LocalBackupManager
@@ -68,6 +70,8 @@ class ExperimentConfiguration:
         self.random_runtime_qubits = None
         self.is_random_alloc    =   False
         self.eval_file_name = ""
+        # Preflight policy: consolidate `day_*` state dirs into the current day to stabilize resume/scanning.
+        self.aggregate_state = os.environ.get("DAQR_AGGREGATE_STATE", "1") == "1"
 
         # Single unified manager - handles everything
         self.backup_mgr = LocalBackupManager(date_str=self.day_str, config_dir=self.dir, verbose=self.verbose)
@@ -602,6 +606,9 @@ class ExperimentConfiguration:
         # 1) Generate expected keys if needed (for MultiRunEvaluator)
         if len(self.expected_keys) == 0 and "multirunevaluator" in item_v.lower():
             self.generate_expected_keys(item_v)
+            # Preflight: every run is expected to aggregate state dirs before restore/resume.
+            # This is owned by configuration so it applies to notebook/manual entry points too.
+            self.aggregate_state_dirs()
             # Every run is expected to aggregate (build) the registry; enforce it here
             # so restore/download logic has a focused registry view.
             self._build_backup_registry(force=True)
@@ -669,6 +676,55 @@ class ExperimentConfiguration:
         # 6) Not Found
         print(f"\t❌ Not found anywhere: {item_k}/{item_v}")
         return None
+
+
+    def aggregate_state_dirs(self, *, target: str | None = None) -> bool:
+        """
+        Consolidate local `day_*` directories into a single target day folder.
+
+        This is a preflight step to stabilize scanning/resume. It is intentionally owned
+        by configuration (not AllocatorRunner) so any entry point can run it.
+        """
+        if not self.aggregate_state:
+            return False
+
+        project_root = Path(__file__).resolve().parents[2]  # Dynamic_Routing_Eval_Framework/
+        tool_path = project_root / "tools" / "state" / "aggregate_state_dirs.py"
+        config_dir = project_root / "daqr" / "config"
+        framework_state_root = config_dir / "framework_state"
+        model_state_root = config_dir / "model_state"
+
+        if not target:
+            target = getattr(self, "day_str", None) or "today"
+
+        if not tool_path.exists():
+            return False
+
+        try:
+            cmd = [
+                sys.executable,
+                str(tool_path),
+                "--config-dir",
+                str(config_dir),
+                "--framework-state-root",
+                str(framework_state_root),
+                "--model-state-root",
+                str(model_state_root),
+                "--target",
+                str(target),
+            ]
+            subprocess.run(cmd, cwd=str(project_root), check=True)
+        except Exception:
+            return False
+
+        # Refresh in-memory registry so subsequent resume sees the aggregated view.
+        try:
+            if hasattr(self, "backup_mgr") and self.backup_mgr is not None:
+                self.backup_mgr.build_registry(force=True, expected_keys=getattr(self, "expected_keys", None))
+        except Exception:
+            pass
+
+        return True
 
 
 

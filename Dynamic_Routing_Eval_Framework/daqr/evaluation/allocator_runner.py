@@ -467,7 +467,15 @@ class AllocatorRunner:
         
         try:
             # Consolidate day_* state directories up-front to stabilize resume/scanning.
-            self._aggregate_state_dirs()
+            # Owned by configuration so non-AllocatorRunner entry points can share the same preflight.
+            try:
+                if self.custom_config is not None and hasattr(self.custom_config, "aggregate_state_dirs"):
+                    self.custom_config.aggregate_state_dirs(target=getattr(self.custom_config, "day_str", None))
+                else:
+                    self._aggregate_state_dirs()
+            except Exception:
+                # Never block runs on aggregation; it's a best-effort preflight.
+                pass
 
             for physics_model in self.physics_models:
                 print(f"\n📊 Physics Model: {physics_model}")

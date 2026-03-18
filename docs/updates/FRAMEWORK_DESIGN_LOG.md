@@ -641,3 +641,9 @@ Source: `docs/guides/STATE_LAYERS_AND_RESUME.md`
 - Updated `GA Papers/QuantumFaultTolerant/main.tex` with the approved low-priority rounding-level fixes for `RQ1 / TABLE V` and `RQ2 / TABLE VI`.
 - Synced `H-MABs_MasterDataset_VerificationHub.ipynb` so the expected values and solved/open status match the paper.
 - Re-executed the notebook and verified that no `Open` rows remain in the saved outputs.
+
+### 2026-03-17 — Drive state artifacts: restore legacy local-first + reliable delete
+
+**Applied result**
+- `LocalBackupManager.save_file(...)` is restored to legacy local-first semantics: save locally, update registry with the local path, then upload a best-effort Drive copy (no local deletion on success).
+- `GoogleDriveBackupManager.delete_from_drive(...)` now deletes via Drive API when the filesystem mirror is unavailable, and falls back to trashing when permanent delete is not permitted by shared-drive capabilities.

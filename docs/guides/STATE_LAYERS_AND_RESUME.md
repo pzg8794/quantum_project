@@ -751,3 +751,15 @@ Reason:
 - support multi-PC work from the mirrored Drive workspace,
 - allow local runs to recover missing states directly from the Drive replica,
 - remove the old risk of wiping shared-drive state directories on manager initialization.
+
+### Drive API state sync: local-first save + API delete/trash (2026-03-17)
+
+Goal: restore the legacy Drive behavior for state artifacts under `quantum_data_lake/` while keeping the local filesystem as the primary source of truth.
+
+Behavior:
+
+- `LocalBackupManager.save_file(...)` always writes and returns the local path (`daqr/config/{component}/day_YYYYMMDD/{filename}`), updates the registry to the same local path, and then uploads a best-effort remote copy to Drive via API.
+- `GoogleDriveBackupManager.delete_from_drive(...)` prefers deleting the mirrored filesystem copy when available; otherwise it finds the file via Drive API under `quantum_data_lake/{component}/day_*/{filename}` and:
+  - attempts permanent delete,
+  - falls back to `trashed=true` when the service account lacks `canDelete` but has `canTrash`.
+- Local cleanup is best-effort: any downloaded copy under `{component}/day_*/{filename}` may be removed after a successful remote delete/trash.

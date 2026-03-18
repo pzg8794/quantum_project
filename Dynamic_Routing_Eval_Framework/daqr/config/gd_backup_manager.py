@@ -7,11 +7,20 @@ from collections import defaultdict
 import re
 import time
 import random
-from googleapiclient.errors import HttpError
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+try:
+    from googleapiclient.errors import HttpError
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaIoBaseUpload
+    from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+except ModuleNotFoundError:  # pragma: no cover
+    # Allow local unit tests to run without Drive dependencies installed.
+    HttpError = Exception
+    service_account = None
+    build = None
+    MediaIoBaseUpload = None
+    MediaFileUpload = None
+    MediaIoBaseDownload = None
 
 class GoogleDriveBackupManager:
     """Unified JSON registry backup to Google Drive Shared Drive."""
@@ -609,7 +618,14 @@ class GoogleDriveBackupManager:
         # ---------------------------------------------------------------
         # 5. Upload or update
         # ---------------------------------------------------------------
-        media           =   MediaFileUpload(local_path, resumable=True)
+        if MediaFileUpload is None:  # pragma: no cover
+            class _BareMedia:
+                def __init__(self, filename):
+                    self._filename = filename
+
+            media = _BareMedia(local_path)
+        else:
+            media = MediaFileUpload(local_path, resumable=True)
         if file_id:         self.drive.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
         else:
             metadata    =   {"name": filename, "parents": [parent_folder_id]}
@@ -934,15 +950,97 @@ class GoogleDriveBackupManager:
     
     def delete_from_drive(self, component, filename):
         """
-        Removes a file from Google Drive datalake (ShareDrive path).
-        Safe: deletes only the file matching the exact component + filename.
+        Remove a state file from the Drive-backed datalake.
+
+        - If a Drive filesystem mirror is available, delete the mirrored copy.
+        - Otherwise, locate the file via Drive API under:
+          `quantum_data_lake/{component}/day_*/{filename}`
+          and attempt permanent delete; if not permitted, fall back to trashing.
+
+        Always performs best-effort cleanup of any local downloaded copy under
+        `{local_component_root}/day_*/{filename}`.
         """
         try:
-            file_path = self.quantum_data_paths["obj"][component]["drive"] / filename
-            if file_path.exists():
-                file_path.unlink()
-                return True
-            return False
+            deleted_remote = False
+
+            # -------------------------------------------------------
+            # 1) Drive filesystem mirror (if available)
+            # -------------------------------------------------------
+            drive_root = self.quantum_data_paths["obj"][component].get("drive")
+            if drive_root and isinstance(drive_root, Path) and drive_root.exists():
+                for day_dir in drive_root.iterdir():
+                    if not day_dir.is_dir() or not day_dir.name.startswith("day_"):
+                        continue
+                    candidate = day_dir / filename
+                    if candidate.exists():
+                        candidate.unlink()
+                        deleted_remote = True
+
+            # -------------------------------------------------------
+            # 2) Drive API fallback (legacy behavior)
+            # -------------------------------------------------------
+            if not deleted_remote and self.remote_available and self.drive:
+                data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.drive_folder_id)
+                comp_id = self._ensure_drive_folder(component, data_lake_id)
+
+                day_folders = self.drive.files().list(
+                    q=f"'{comp_id}' in parents and mimeType='application/vnd.google-apps.folder'",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    fields="files(id,name)",
+                ).execute().get("files", [])
+
+                for folder in day_folders:
+                    fid = folder["id"]
+                    q = f"name='{filename}' and '{fid}' in parents"
+                    response = self._retry_drive(
+                        lambda: self.drive.files().list(
+                            q=q,
+                            supportsAllDrives=True,
+                            includeItemsFromAllDrives=True,
+                            fields="files(id,name)",
+                        ).execute()
+                    )
+                    files = response.get("files", [])
+                    if not files:
+                        continue
+
+                    file_id = files[0]["id"]
+                    deleter = getattr(self.drive.files(), "delete", None)
+                    if callable(deleter):
+                        try:
+                            deleter(
+                                fileId=file_id,
+                                supportsAllDrives=True,
+                            ).execute()
+                        except Exception:
+                            updater = getattr(self.drive.files(), "update", None)
+                            if callable(updater):
+                                updater(
+                                    fileId=file_id,
+                                    body={"trashed": True},
+                                    supportsAllDrives=True,
+                                ).execute()
+                            else:
+                                raise
+                        deleted_remote = True
+                        break
+
+            # -------------------------------------------------------
+            # 3) Best-effort local cleanup (downloaded copy)
+            # -------------------------------------------------------
+            deleted_local = False
+            local_root = self.quantum_data_paths["obj"][component].get("local")
+            if local_root and isinstance(local_root, Path) and local_root.exists():
+                for day_dir in local_root.iterdir():
+                    if not day_dir.is_dir() or not day_dir.name.startswith("day_"):
+                        continue
+                    candidate = day_dir / filename
+                    if candidate.exists():
+                        candidate.unlink()
+                        deleted_local = True
+
+            return deleted_remote or deleted_local
 
         except Exception:
             return False

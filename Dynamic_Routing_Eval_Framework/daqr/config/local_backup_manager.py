@@ -7,7 +7,10 @@ from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
 from threading import Lock
-from googleapiclient.http import MediaIoBaseDownload
+try:
+    from googleapiclient.http import MediaIoBaseDownload
+except ModuleNotFoundError:  # pragma: no cover
+    MediaIoBaseDownload = None
 from .gd_backup_manager import GoogleDriveBackupManager
 
 
@@ -305,61 +308,29 @@ class LocalBackupManager(GoogleDriveBackupManager):
                 raise IOError("Saved file is empty - rollback!")
             
             print(f"✓ Saved: {component}/{filename} ({file_size/1024/1024:.2f} MB)")
+            saved_path = str(file_path)
 
-            drive_path = self.quantum_data_paths["obj"][component]["drive"] / self.date_str / filename
-
-            # -------------------------------------------------------
-            # 2. If Drive is unavailable, keep local staged file
-            # -------------------------------------------------------
-            if not self.remote_available:
-                self.backup_registry.setdefault(component, {})[filename] = str(file_path)
-                self.new_entries.setdefault(component, {})[filename] = str(file_path)
-                self.save_registry()
-                return str(file_path)
-
-            # -------------------------------------------------------
-            # 3. Try persisting staged file to Drive
-            # -------------------------------------------------------
-            uploaded = self._upload_file_to_drive(
-                component=component,
-                date_str=self.date_str,
-                local_path=str(file_path),
-                filename=filename,
-            )
-
-            # -------------------------------------------------------
-            # 4. If upload fails, keep local staged file
-            # -------------------------------------------------------
-            if not uploaded:
-                self.backup_registry.setdefault(component, {})[filename] = str(file_path)
-                self.new_entries.setdefault(component, {})[filename] = str(file_path)
-                self.save_registry()
-                return str(file_path)
-
-            # -------------------------------------------------------
-            # 5. Verify Drive-backed file exists and is non-empty
-            # -------------------------------------------------------
-            verified = drive_path.exists() and drive_path.stat().st_size > 0
-            if not verified:
-                self.backup_registry.setdefault(component, {})[filename] = str(file_path)
-                self.new_entries.setdefault(component, {})[filename] = str(file_path)
-                self.save_registry()
-                return str(file_path)
-
-            # -------------------------------------------------------
-            # 6. Verified Drive copy → registry points to Drive
-            # -------------------------------------------------------
-            self.backup_registry.setdefault(component, {})[filename] = str(drive_path)
-            self.new_entries.setdefault(component, {})[filename] = str(drive_path)
+            # Legacy/local-first registry semantics: registry tracks the local path.
+            self.backup_registry.setdefault(component, {})[filename] = saved_path
+            self.new_entries.setdefault(component, {})[filename] = saved_path
             self.save_registry()
 
-            # -------------------------------------------------------
-            # 7. Delete local staged file only after verified success
-            # -------------------------------------------------------
-            if file_path.exists():
-                file_path.unlink()
+            # Best-effort immediate upload (durable remote copy) without changing local path semantics.
+            if self.remote_available and self.drive and not self.in_share_drive:
+                try:
+                    uploaded = self._upload_file_to_drive(
+                        component=component,
+                        date_str=self.date_str,
+                        local_path=saved_path,
+                        filename=filename,
+                    )
+                    if self.verbose and uploaded:
+                        print(f"☁️ Uploaded immediately: {component}/{filename}")
+                except Exception as e:
+                    if self.verbose:
+                        print(f"⚠️ Immediate Drive upload failed for {component}/{filename}: {e}")
 
-            return str(drive_path)
+            return saved_path
         except Exception as e:
             # Emergency rollback if save fails
             if backup_path and backup_path.exists():

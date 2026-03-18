@@ -87,13 +87,12 @@ class TestDriveStateOffloadContracts(unittest.TestCase):
             file_data=file_data,
         )
 
-    def test_drive_available_moves_staged_file_and_updates_registry(self):
+    def test_drive_available_keeps_local_file_and_uploads_remote_copy(self):
         """
         Contract:
-        - state is first written to a local staging path
-        - then persisted to the mirrored drive path
-        - after verification, the local staged file is removed
-        - registry points to the durable drive path
+        - state is written to a local path
+        - if Drive is available, we also upload a remote copy
+        - registry continues to point to the local path (legacy/local-first semantics)
         """
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
@@ -108,11 +107,13 @@ class TestDriveStateOffloadContracts(unittest.TestCase):
 
             self.assertIsNotNone(durable_path)
             staged = base / "config" / "framework_state" / "day_20990101" / "Runner.pkl"
-            self.assertFalse(staged.exists())
-            self.assertTrue(Path(durable_path).exists())
-            self.assertIn("/drive/", durable_path.replace("\\", "/"))
-            self.assertEqual(mgr.backup_registry["framework_state"]["Runner.pkl"], durable_path)
-            self.assertEqual(mgr.new_entries["framework_state"]["Runner.pkl"], durable_path)
+            remote_copy = base / "drive" / "framework_state" / "day_20990101" / "Runner.pkl"
+
+            self.assertEqual(durable_path, str(staged))
+            self.assertTrue(staged.exists())
+            self.assertTrue(remote_copy.exists())
+            self.assertEqual(mgr.backup_registry["framework_state"]["Runner.pkl"], str(staged))
+            self.assertEqual(mgr.new_entries["framework_state"]["Runner.pkl"], str(staged))
 
     def test_drive_unavailable_keeps_local_file_and_local_registry_path(self):
         """
@@ -183,10 +184,10 @@ class TestDriveStateOffloadContracts(unittest.TestCase):
             self.assertTrue(staged.exists())
             self.assertEqual(mgr.backup_registry["framework_state"]["Runner.pkl"], str(staged))
 
-    def test_registry_records_drive_path_after_successful_offload(self):
+    def test_registry_records_local_path_after_successful_upload(self):
         """
         Contract:
-        - on successful offload, backup_registry/new_entries all point to the drive-backed path
+        - on successful upload, backup_registry/new_entries point to the local path
         - registry persistence is attempted after the update
         """
         with tempfile.TemporaryDirectory() as td:
@@ -200,8 +201,9 @@ class TestDriveStateOffloadContracts(unittest.TestCase):
                 file_data={"ok": 1},
             )
 
-            self.assertEqual(mgr.backup_registry["framework_state"]["Runner.pkl"], durable_path)
-            self.assertEqual(mgr.new_entries["framework_state"]["Runner.pkl"], durable_path)
+            staged = base / "config" / "framework_state" / "day_20990101" / "Runner.pkl"
+            self.assertEqual(mgr.backup_registry["framework_state"]["Runner.pkl"], str(staged))
+            self.assertEqual(mgr.new_entries["framework_state"]["Runner.pkl"], str(staged))
             self.assertGreaterEqual(len(mgr.saved_registries), 0)
 
 

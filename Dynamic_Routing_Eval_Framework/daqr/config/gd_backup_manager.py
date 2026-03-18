@@ -662,10 +662,22 @@ class GoogleDriveBackupManager:
                     file_id = files[0]["id"]
                     deleter = getattr(self.drive.files(), "delete", None)
                     if callable(deleter):
-                        deleter(
-                            fileId=file_id,
-                            supportsAllDrives=True,
-                        ).execute()
+                        try:
+                            deleter(
+                                fileId=file_id,
+                                supportsAllDrives=True,
+                            ).execute()
+                        except Exception:
+                            # Some shared-drive permission sets allow trashing but not permanent deletion.
+                            updater = getattr(self.drive.files(), "update", None)
+                            if callable(updater):
+                                updater(
+                                    fileId=file_id,
+                                    body={"trashed": True},
+                                    supportsAllDrives=True,
+                                ).execute()
+                            else:
+                                raise
                     elif hasattr(self.drive, "entries"):
                         # Unit-test / fake-drive compatibility
                         self.drive.entries.pop(file_id, None)

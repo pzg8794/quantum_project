@@ -759,6 +759,20 @@ current design direction before the next patch.
     - `Evaluator` / `Runner` → `framework_state`
     - everything else → `model_state`
 
+### 2026-03-21
+
+- Handoff docs were refreshed for future agents at:
+  - `../AGENTS.md`
+  - `AGENTS.md`
+- The Drive upload guard is already present in `daqr/config/gd_backup_manager.py`:
+  - upload when the remote file is missing
+  - overwrite only when the remote file exists but is smaller than the local file
+  - skip overwrite when the remote file is the same size or larger
+- Regression coverage for that behavior lives in:
+  - `tools/tests/test_task2d_drive_upload_size_guard_behavior.py`
+  - `tools/tests/test_task2d_drive_upload_size_guard_static.py`
+- Future agents should verify the current code and these tests before changing Drive migration behavior.
+
 ---
 
 ## 10) Next approved step

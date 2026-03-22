@@ -3,6 +3,8 @@ import pickle
 import threading
 import os, sys, io
 import shutil, pathlib
+import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
@@ -278,6 +280,194 @@ class LocalBackupManager(GoogleDriveBackupManager):
         
         self.save_registry()
         return self.backup_registry
+
+    def _resolve_state_components(self, components=None):
+        if components is None:
+            return ["framework_state", "model_state"]
+        if isinstance(components, str):
+            return [components]
+        return list(components)
+
+    def _compile_state_pattern(self, pattern):
+        if hasattr(pattern, "search"):
+            return pattern
+        return re.compile(str(pattern))
+
+    def _emit_pattern_status(self, status_callback, message):
+        if status_callback is not None:
+            status_callback(message)
+        else:
+            print(message, flush=True)
+
+    def _collect_local_state_files_by_pattern(self, pattern, components=None, date_str=None):
+        compiled = self._compile_state_pattern(pattern)
+        matches = {}
+
+        for component in self._resolve_state_components(components):
+            component_root = self.dir / component
+            component_matches = defaultdict(list)
+            if component_root.exists():
+                if date_str is not None:
+                    day_dirs = [component_root / date_str]
+                else:
+                    day_dirs = sorted(
+                        path for path in component_root.iterdir()
+                        if path.is_dir() and path.name.startswith("day_")
+                    )
+
+                for day_dir in day_dirs:
+                    if not day_dir.exists():
+                        continue
+                    for path in sorted(day_dir.iterdir()):
+                        if path.is_file() and compiled.search(path.name):
+                            component_matches[day_dir.name].append(path)
+
+            matches[component] = dict(component_matches)
+        return matches
+
+    def _list_remote_state_names(self, component, date_str=None):
+        target_date = date_str or self.date_str
+        if not self.remote_available or not self.drive:
+            return set()
+
+        data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.drive_folder_id)
+        comp_id = self._ensure_drive_folder(component, data_lake_id)
+        day_id = self._ensure_drive_folder(target_date, comp_id)
+        if not day_id:
+            return set()
+
+        names = set()
+        page_token = None
+        while True:
+            response = self.drive.files().list(
+                q=f"'{day_id}' in parents and trashed=false",
+                fields="nextPageToken,files(name)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                corpora="allDrives",
+                pageSize=1000,
+                pageToken=page_token,
+            ).execute()
+            for entry in response.get("files", []):
+                if entry.get("name"):
+                    names.add(entry["name"])
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                break
+        return names
+
+    def check_drive_files_by_pattern(self, pattern, components=None, date_str=None):
+        local_matches = self._collect_local_state_files_by_pattern(
+            pattern,
+            components=components,
+            date_str=date_str,
+        )
+
+        summary = {}
+        for component, by_date in local_matches.items():
+            local_names = []
+            present = []
+            missing = []
+            by_date_summary = {}
+            for current_date, files in by_date.items():
+                remote_names = self._list_remote_state_names(component, date_str=current_date)
+                date_local_names = [path.name for path in files]
+                date_present = [name for name in date_local_names if name in remote_names]
+                date_missing = [name for name in date_local_names if name not in remote_names]
+                local_names.extend(date_local_names)
+                present.extend(date_present)
+                missing.extend(date_missing)
+                by_date_summary[current_date] = {
+                    "local_matches": date_local_names,
+                    "remote_present": date_present,
+                    "remote_missing": date_missing,
+                }
+            summary[component] = {
+                "date_str": date_str,
+                "pattern": getattr(pattern, "pattern", str(pattern)),
+                "local_matches": local_names,
+                "remote_present": present,
+                "remote_missing": missing,
+                "by_date": by_date_summary,
+            }
+        return summary
+
+    def upload_files_by_pattern(self, pattern, components=None, date_str=None, status_callback=None, progress_every=25):
+        local_matches = self._collect_local_state_files_by_pattern(
+            pattern,
+            components=components,
+            date_str=date_str,
+        )
+
+        summary = {}
+        for component, by_date in local_matches.items():
+            uploaded = []
+            failed = []
+            matched = []
+            verified = []
+            missing_after_upload = []
+            by_date_summary = {}
+            for current_date, files in by_date.items():
+                self._emit_pattern_status(
+                    status_callback,
+                    f"START {component} {current_date} matched={len(files)}",
+                )
+                date_uploaded = []
+                date_failed = []
+                for idx, path in enumerate(files, start=1):
+                    matched.append(path.name)
+                    try:
+                        ok = self._upload_file_to_drive(
+                            component=component,
+                            date_str=current_date,
+                            local_path=str(path),
+                            filename=path.name,
+                        )
+                        if ok:
+                            uploaded.append(path.name)
+                            date_uploaded.append(path.name)
+                        else:
+                            failed.append(path.name)
+                            date_failed.append(path.name)
+                    except Exception:
+                        failed.append(path.name)
+                        date_failed.append(path.name)
+
+                    if idx % progress_every == 0 or idx == len(files):
+                        self._emit_pattern_status(
+                            status_callback,
+                            f"PROGRESS {component} {current_date} {idx}/{len(files)} uploaded={len(date_uploaded)} failed={len(date_failed)}",
+                        )
+
+                remote_names = self._list_remote_state_names(component, date_str=current_date)
+                date_verified = [name for name in date_uploaded if name in remote_names]
+                date_missing_after_upload = [name for name in date_uploaded if name not in remote_names]
+                verified.extend(date_verified)
+                missing_after_upload.extend(date_missing_after_upload)
+                self._emit_pattern_status(
+                    status_callback,
+                    f"DONE {component} {current_date} verified_remote={len(date_verified)} missing_after_upload={len(date_missing_after_upload)} failed={len(date_failed)}",
+                )
+                by_date_summary[current_date] = {
+                    "matched": [path.name for path in files],
+                    "uploaded": date_uploaded,
+                    "failed": date_failed,
+                    "verified_remote": date_verified,
+                    "missing_after_upload": date_missing_after_upload,
+                }
+
+            summary[component] = {
+                "date_str": date_str,
+                "pattern": getattr(pattern, "pattern", str(pattern)),
+                "matched": matched,
+                "uploaded": uploaded,
+                "failed": failed,
+                "verified_remote": verified,
+                "missing_after_upload": missing_after_upload,
+                "by_date": by_date_summary,
+            }
+
+        return summary
     
 
     def save_file(self, component, filename, file_data):
@@ -794,6 +984,93 @@ class LocalBackupManager(GoogleDriveBackupManager):
         data    = request.execute()
         self.metadata = json.loads(data.decode("utf-8"))
         return True
+
+
+def create_pattern_drive_manager(date_str, config_dir, verbose=False):
+    """
+    Create a Drive-backed manager for data-management operations without forcing
+    a full LocalBackupManager registry rebuild.
+    """
+    manager = LocalBackupManager.__new__(LocalBackupManager)
+    GoogleDriveBackupManager.__init__(manager, date_str, Path(config_dir), verbose=verbose)
+    manager.backup_registry = {}
+    manager.new_entries = {}
+    manager.metadata = {}
+    return manager
+
+
+def migrate_files_by_pattern(
+    date_str,
+    config_dir,
+    pattern,
+    components=None,
+    delete_local=False,
+    parallel=False,
+    verbose=False,
+    status_callback=None,
+    progress_every=25,
+):
+    """
+    Batch data-management helper for Drive uploads by filename/testbed regex.
+
+    Flow:
+    1. create a Drive manager
+    2. upload all matching files for each component
+    3. verify with one remote folder metadata listing per component
+    4. optionally delete only confirmed local files
+    """
+
+    target_components = ["framework_state", "model_state"] if components is None else (
+        [components] if isinstance(components, str) else list(components)
+    )
+    config_dir = Path(config_dir)
+
+    def _run_component(component):
+        manager = create_pattern_drive_manager(date_str, config_dir, verbose=verbose)
+        upload_summary = manager.upload_files_by_pattern(
+            pattern,
+            components=[component],
+            date_str=date_str,
+            status_callback=status_callback,
+            progress_every=progress_every,
+        )[component]
+
+        deleted_local = []
+        delete_failed = []
+        if delete_local:
+            for current_date, date_summary in upload_summary.get("by_date", {}).items():
+                local_day = config_dir / component / current_date
+                for name in date_summary["verified_remote"]:
+                    local_path = local_day / name
+                    try:
+                        if local_path.exists():
+                            local_path.unlink()
+                            deleted_local.append(name)
+                            if status_callback is not None:
+                                status_callback(f"DELETE {component} {current_date} {name}")
+                    except Exception:
+                        delete_failed.append(name)
+                        if status_callback is not None:
+                            status_callback(f"DELETE_FAIL {component} {current_date} {name}")
+
+        result = dict(upload_summary)
+        result["deleted_local"] = deleted_local
+        result["delete_failed"] = delete_failed
+        if status_callback is not None:
+            status_callback(
+                f"SUMMARY {component} matched={len(result['matched'])} uploaded={len(result['uploaded'])} "
+                f"verified_remote={len(result['verified_remote'])} deleted_local={len(result['deleted_local'])} "
+                f"failed={len(result['failed'])} delete_failed={len(result['delete_failed'])}"
+            )
+        return component, result
+
+    if parallel and len(target_components) > 1:
+        with ThreadPoolExecutor(max_workers=len(target_components)) as pool:
+            results = dict(pool.map(_run_component, target_components))
+    else:
+        results = dict(_run_component(component) for component in target_components)
+
+    return results
 
 class TeeStream:
     def __init__(self, *streams):

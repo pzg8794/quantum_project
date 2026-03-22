@@ -772,6 +772,51 @@ current design direction before the next patch.
   - `tools/tests/test_task2d_drive_upload_size_guard_behavior.py`
   - `tools/tests/test_task2d_drive_upload_size_guard_static.py`
 - Future agents should verify the current code and these tests before changing Drive migration behavior.
+- Cleanup logic clarification:
+  - `delete_from_drive(...)` is emergency-only and should not be part of the
+    normal successful allocator/testbed completion flow.
+  - `ExperimentConfiguration.delete_file(...)` now preserves remote datalake
+    backups and deletes only the local corrupted state plus its local registry
+    entry.
+  - Successful allocator cleanup should verify remote existence first and then
+    delete matching local files only.
+- Remote confirmation check on 2026-03-21:
+  - `quantum_data_lake/framework_state/day_20260321/` does not exist in Drive
+  - `quantum_data_lake/model_state/day_20260321/` does not exist in Drive
+  - therefore the current `paper12` local files from `day_20260321` are not
+    present in the Drive datalake yet
+- Shared-drive root fix on 2026-03-21:
+  - `_ensure_drive_folder(...)` now resolves root-level datalake folders under
+    the shared drive id itself instead of falling back to service-account-owned
+    storage
+  - regression coverage added in:
+    - `tests/test_gd_backup_manager_ensure_drive_folder.py`
+- Pattern-based Drive operations were added to the existing backup manager:
+  - `LocalBackupManager.upload_files_by_pattern(...)`
+  - `LocalBackupManager.check_drive_files_by_pattern(...)`
+  - both operate on the existing datalake contract and support regex/testbed or
+    filename-style matching without ad hoc scripts
+  - upload verifies in batch against remote folder metadata after the upload pass
+    instead of per-file Drive verification
+  - regression coverage added in:
+    - `tests/test_local_backup_manager_pattern_drive_ops.py`
+- Standalone batch entrypoint added for data-management work:
+  - `create_pattern_drive_manager(date_str, config_dir, verbose=False)`
+  - `migrate_files_by_pattern(date_str, config_dir, pattern, components=None, delete_local=False, parallel=False, verbose=False)`
+  - intended use:
+    - instantiate a Drive-aware manager without forcing the full pipeline save path
+    - upload/check/delete by regex or testbed/tag
+    - optionally run `framework_state` and `model_state` in parallel
+  - important default behavior:
+    - `date_str=None` means scan **all** `day_*` folders for matches
+    - `date_str='day_YYYYMMDD'` narrows the operation to one day folder
+  - status reporting:
+    - both `upload_files_by_pattern(...)` and `migrate_files_by_pattern(...)`
+      now support built-in progress/status output via `status_callback`
+    - default behavior prints status directly to the terminal
+- File-based entrypoint added for normal use:
+  - `tools/state/manage_drive_pattern.py`
+  - use this instead of inline terminal Python for pattern-based check/migrate work
 
 ---
 

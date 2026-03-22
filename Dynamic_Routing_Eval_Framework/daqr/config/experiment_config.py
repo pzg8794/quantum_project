@@ -1505,10 +1505,15 @@ class ExperimentConfiguration:
 
     def delete_file(self, state_path, obj):
         """
-        Deletes a corrupted or mismatched state file both locally and remotely (if applicable).
+        Deletes a corrupted or mismatched local state file and removes its local
+        registry entry.
+
+        Remote datalake backups are intentionally preserved here. Drive deletion
+        is reserved for emergency cleanup only and should not happen during
+        normal recovery or successful allocator cleanup.
 
         Args:
-            state_path (Path): Full path to the corrupted file (local or drive)
+            state_path (Path): Full path to the local corrupted file
             component (str): "model_state" or "framework_state"
             filename (str): exact file name (e.g., runner_key or model_key)
         """
@@ -1529,28 +1534,18 @@ class ExperimentConfiguration:
             print(f"\t[ERROR] Failed to delete local file: {e}")
 
         # =============================
-        # 2) DELETE REMOTE (GOOGLE DRIVE DATA LAKE)
+        # 2) REMOVE FROM REGISTRY
         # =============================
         try:
-            if self.backup_mgr.remote_available:
-                removed = self.backup_mgr.delete_from_drive(obj.component, obj.file_name)
-                if removed: print(f"\t☁️  Deleted remote datalake copy of {obj.file_name}")
+            if obj.component in self.backup_registry:
+                if obj.file_name in self.backup_registry[obj.component]:
+                    del self.backup_registry[obj.component][obj.file_name]
+                    print(f"\t🗑️  Removed registry entry for {obj.file_name}")
         except Exception as e:
-            print(f"\t[ERROR] Failed Drive delete for {obj.file_name}: {e}")
+            print(f"\t[ERROR] Removing registry entry failed: {e}")
 
         # =============================
-        # 3) REMOVE FROM REGISTRY
-        # =============================
-            try:
-                if obj.component in self.backup_registry:
-                    if obj.file_name in self.backup_registry[obj.component]:
-                        del self.backup_registry[obj.component][obj.file_name]
-                        print(f"\t🗑️  Removed registry entry for {obj.file_name}")
-            except Exception as e:
-                print(f"\t[ERROR] Removing registry entry failed: {e}")
-
-        # =============================
-        # 4) SAVE UPDATED REGISTRY
+        # 3) SAVE UPDATED REGISTRY
         # =============================
         try:
             self.save()

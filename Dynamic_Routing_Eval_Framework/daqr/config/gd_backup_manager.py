@@ -512,7 +512,7 @@ class GoogleDriveBackupManager:
             is_drive_root = (parent_id == self.drive_folder_id)
 
             if is_drive_root:
-                parent_clause = "trashed = false"
+                parent_clause = f"'{self.drive_folder_id}' in parents"
             elif parent_id == "root":
                 parent_clause = "'root' in parents"
             else:
@@ -523,11 +523,16 @@ class GoogleDriveBackupManager:
                 f"and mimeType='application/vnd.google-apps.folder'"
             )
 
-            response = self.drive.files().list(
+            list_kwargs = dict(
                 q=query,
                 supportsAllDrives=True,
-                includeItemsFromAllDrives=True
-            ).execute()
+                includeItemsFromAllDrives=True,
+            )
+            if is_drive_root:
+                list_kwargs["corpora"] = "drive"
+                list_kwargs["driveId"] = self.drive_folder_id
+
+            response = self.drive.files().list(**list_kwargs).execute()
 
             files = response.get("files", [])
             if files:
@@ -536,7 +541,7 @@ class GoogleDriveBackupManager:
             metadata = {
                 "name": folder_name,
                 "mimeType": "application/vnd.google-apps.folder",
-                "parents": None if is_drive_root else [parent_id]
+                "parents": [self.drive_folder_id] if is_drive_root else [parent_id]
             }
 
             folder = self.drive.files().create(
@@ -598,16 +603,34 @@ class GoogleDriveBackupManager:
 
         response                =   self._retry_drive(
                                         lambda: self.drive.files().list(
-                                            q=query, supportsAllDrives=True,
+                                            q=query,
+                                            fields="files(id,name,size)",
+                                            supportsAllDrives=True,
                                             includeItemsFromAllDrives=True
                                         ).execute()
                                     )
 
-        files           =   response.get("files", [])
-        file_id         =   files[0]["id"] if files else None
+        files                   =   response.get("files", [])
+        existing_file           =   None
+        if files:
+            existing_file       =   next((f for f in files if f.get("name") == filename), files[0])
+        file_id                 =   existing_file["id"] if existing_file else None
+        remote_size             =   int(existing_file.get("size", 0) or 0) if existing_file else 0
+        local_size              =   Path(local_path).stat().st_size
 
         # ---------------------------------------------------------------
-        # 5. Upload or update
+        # 5. Skip upload when Drive already has the same or a larger file
+        # ---------------------------------------------------------------
+        if existing_file and remote_size >= local_size:
+            if self.verbose:
+                print(
+                    f"☁️ Skipping upload for {parent_dir}/{component}/{filename}: "
+                    f"remote size {remote_size} >= local size {local_size}"
+                )
+            return True
+
+        # ---------------------------------------------------------------
+        # 6. Upload or update
         # ---------------------------------------------------------------
         media           =   MediaFileUpload(local_path, resumable=True)
         if file_id:         self.drive.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()

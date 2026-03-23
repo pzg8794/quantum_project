@@ -826,3 +826,124 @@ RQ3a paper correction applied:
 ## Winner wording rule — `cross-layer winner` vs gap-based leader
 - Use `cross-layer winner` when the same model wins across all validated winner layers for the section.
 - Use metric-specific wording when the validated basis is narrower, e.g. `strongest neural model by Oracle-relative gap reduction`.
+
+
+## Review To-Do List (Reviewer Comments Queue)
+
+These review tasks now take priority over all remaining non-validation work. Each item is frozen in the agreed format so we can address them one by one later without re-deriving the problem.
+
+### Reviewer source map — Dan comments (March 11--13)
+
+This queue comes directly from Dan's comments and is intentionally duplicated here in a compact map so the source, priority, and location stay visible while we work through the backlog.
+
+| Queue ID | Dan comment date/time | Section / location | Short ask |
+|---|---|---|---|
+| `R-01` | 11 March, 8:21 am | Related Work | Be more explicit about how existing works differ |
+| `R-02` | 13 March, 10:29 am | Introduction sentence | Replace awkward `situate` wording |
+| `R-03` | 11 March, 7:30 am | Abstract | Add 1--2 sentences on why the problem matters |
+| `R-04` | 13 March, 9:34 am | Early intro framing | State the primary contribution early and why readers should care |
+| `R-05` | 11 March, 7:33 am | Main findings sentence | Rewrite the pursuit--neural finding and make the results concrete |
+| `R-06` | 11 March, 8:21 am | Introduction | Cut intro length to about a page; move detail elsewhere |
+| `R-07` | 11 March, 8:20 am | Introduction gap framing | Convert the long bullet-heavy framing into paragraphs |
+| `R-08` | 11 March, 8:27 am | Key Contributions | Keep only 2--4 contributions with short explanations |
+| `R-09` | 12 March, 10:34 am | Intro transition sentence | Replace `these considerations` with explicit context |
+| `R-10` | 13 March, 8:54 am | Research questions | Use `\\emph{}` rather than bold |
+| `R-11` | 13 March, 9:39 am | Figure captions | Shorten captions and make the takeaway explicit |
+| `R-12` | 13 March, 9:55 am | Hypothesis sentence | Review whether the explicit hypothesis should be removed |
+| `R-13` | 13 March, 9:56 am | Table VI caption | Shorten caption and state the main implication |
+
+### R-01 — Related Work differentiation (Dan, 11 March, 8:21 am)
+- **Task:** make the differences between existing works explicit in the Related Work section.
+- **Meaning:** the section should not only summarize prior work; it should say how those works differ from one another and from this paper.
+- **Before:** `\section{Related Work}` remains too descriptive and does not make the comparative differences explicit enough.
+- **After:** revise the section so each cited stream/paper is contrasted by assumption set, threat scope, allocation treatment, and evaluation comparability.
+- **Reasoning:** readers need the comparative logic, not just a literature inventory; otherwise the value of this paper's evaluation-first contribution is harder to see.
+
+### R-02 — Introduction wording: `situate` (Dan, 13 March, 10:29 am)
+- **Task:** rewrite the sentence beginning `We situate multi-armed bandits...`.
+- **Meaning:** the verb choice and sentence framing are awkward and need cleaner positioning language.
+- **Before:** `We situate multi-armed bandits (MABs) as a family of uncertainty-aware sequential decision rules and use quantum entanglement routing as a stress test where stochastic noise, structured disruption, and resource constraints jointly shape performance.`
+- **After:** replace this with cleaner positioning language that introduces MABs and quantum routing naturally, without the awkward `situate` construction.
+- **Reasoning:** this sentence appears early and sets reader confidence; awkward phrasing there makes the paper feel less precise than the underlying work.
+
+### R-03 — Abstract problem significance (Dan, 11 March, 7:30 am)
+- **Task:** add 1--2 sentences in the abstract explaining why the stated problem matters.
+- **Meaning:** the abstract identifies failing assumptions, but it still needs an explicit consequence statement.
+- **Before:** `Quantum entanglement routing requires dynamic path selection and qubit allocation under noisy and adversarial conditions. Existing routing approaches often assume stationary link behavior, decouple selection from allocation, or rely on offline optimization---assumptions that can fail when link fidelities drift and disruptions adapt online.`
+- **After:** extend this with 1--2 sentences that explain why these assumption failures matter for deployment, reliability, or decision quality.
+- **Reasoning:** without an explicit consequence statement, the abstract explains the setup but does not yet tell the reader why the problem deserves attention.
+
+### R-04 — Early contribution statement (Dan, 13 March, 9:34 am)
+- **Task:** state the paper's primary contribution early and explain why readers should care.
+- **Meaning:** the contribution and importance need to appear earlier in the paper, not be inferred later.
+- **Before:** the early introduction does not contain a compact `primary contribution` statement with a clear payoff.
+- **After:** add an early sentence or short block stating the primary contribution and the practical reason it matters.
+- **Reasoning:** readers should not need to wait until later sections to understand what this paper contributes and what decision problem it helps solve.
+
+### R-05 — Main findings sentence clarity (Dan, 11 March, 7:33 am)
+- **Task:** rewrite the pursuit--neural finding sentence and ground it with concrete results.
+- **Meaning:** the current sentence is too compressed and not concrete enough.
+- **Before:** `Pursuit--neural hybrids emerge as the most robust family, outperforming non-contextual bandit baselines by 18--24 percentage points and sustaining higher worst-case performance under strategic attacks than adversarial-first designs.`
+- **After:** rewrite this so the finding reads clearly and uses concrete, defensible result language.
+- **Reasoning:** this is one of the paper's headline takeaways, so it needs to be both easy to read and tightly aligned with the validated evidence.
+
+### R-06 — Introduction length reduction (Dan, 11 March, 8:21 am)
+- **Task:** compress the oversized introduction block and move detail elsewhere.
+- **Meaning:** the introduction is carrying too much framework/process detail and needs to be cut down to about a page.
+- **Before:** the block beginning `However, existing quantum routing research often evaluates algorithms under incompatible assumptions...` is too long for the intro.
+- **After:** condense this material into a tighter intro framing and move supporting detail into later sections.
+- **Reasoning:** the introduction should frame the problem, gap, and stakes quickly; too much detail early hides the main message and hurts pacing.
+
+### R-07 — Bullet-heavy gap framing (Dan, 11 March, 8:20 am)
+- **Task:** convert the intro's long enumerated gap framing into tighter prose.
+- **Meaning:** the current bullet/list structure is too heavy and slows the introduction.
+- **Before:** the adversarial-first/stochastic-first split and the three deployment-critical gaps are presented through multiple enumerate blocks.
+- **After:** rewrite this material as tighter paragraph form while preserving the three core gaps.
+- **Reasoning:** paragraph form will read more like an argument than a checklist, which better supports the narrative flow of the introduction.
+
+### R-08 — Key Contributions compression (Dan, 11 March, 8:27 am)
+- **Task:** reduce the Key Contributions subsection to 2--4 contributions with 1--2 sentences each.
+- **Meaning:** the contributions need to get to the point quickly.
+- **Before:** `\subsection{Key Contributions}` is too long/heavy.
+- **After:** present only 2--4 contributions, each stated briefly and clearly.
+- **Reasoning:** a shorter contributions block helps readers retain the main claims and avoids repeating material that belongs in later sections.
+
+### R-09 — `these considerations` ambiguity (Dan, 12 March, 10:34 am)
+- **Task:** replace the vague reference in `Motivated by these considerations...` with explicit context.
+- **Meaning:** the sentence assumes context that is not explicit enough at that point.
+- **Before:** `Motivated by these considerations, we study how modeling choices (\eg contextual vs.\ adversarial vs.\ predictive), allocator strategies, and capacity semantics jointly affect routing robustness under diverse threat regimes.`
+- **After:** replace `these considerations` with a short explicit reminder of the considerations being referenced.
+- **Reasoning:** vague referents make the sentence dependent on nearby memory rather than standalone clarity, which is exactly what Dan flagged.
+
+### R-10 — RQ typography (Dan, 13 March, 8:54 am)
+- **Task:** standardize the research-question styling to use `\emph{}` rather than bold.
+- **Meaning:** the reviewer requested lighter question styling.
+- **Before:** RQs are currently styled in bold.
+- **After:** RQs use `\emph{}` consistently.
+- **Reasoning:** this is a presentation consistency fix that improves readability and aligns the manuscript with the requested style.
+
+### R-11 — Figure caption shortening / takeaway captions (Dan, 13 March, 9:39 am)
+- **Task:** shorten long captions and make the takeaway explicit, starting with the context-vs-non-context figure.
+- **Meaning:** captions should state the primary implication, not restate the full setup.
+- **Before:** `\caption{Context vs.\ non-context efficiency across threat scenarios (evaluation corpus, paper-default allocator). Contextual (CMAB/iCMAB) models maintain higher Oracle-normalized efficiency than non-context EXP3 baselines under both $T$ and $T_b$ capacity semantics.}`
+- **After:** shorten the caption and state the main takeaway more directly; repeat this rule for the rest of the paper captions as needed.
+- **Reasoning:** captions are read quickly and should foreground interpretation; long setup-heavy captions cost space and bury the takeaway.
+
+### R-12 — Hypothesis removal / cut-for-space review (Dan, 13 March, 9:55 am)
+- **Task:** review whether the explicit hypothesis sentence should be removed.
+- **Meaning:** this is a space/clarity decision, not a validation issue.
+- **Before:** `We hypothesized that adversarial-first algorithms (EXP3-family, including 	exttt{EXPUCB} and 	exttt{EXPNeuralUCB}) would outperform contextual pursuit methods under structured attacks due to pessimistic exponential weighting.`
+- **After:** decide whether to remove this sentence entirely or replace it with a shorter setup line.
+- **Reasoning:** if the sentence is not doing important framing work, it is a good candidate to cut so the paper spends its space on evidence and implications.
+
+### R-13 — Table VI caption shortening / implication-first wording (Dan, 13 March, 9:56 am)
+- **Task:** shorten the `RQ2` table caption and make the primary implication explicit.
+- **Meaning:** the caption is too long and setup-heavy.
+- **Before:** `\caption{RQ2: robustness under adversarial threats (Markov/Adaptive/OnlineAdaptive) computed from the curated evaluation corpus under the 	exttt{Default} allocator. Results aggregate across horizons present, replay scales $s \in \{1,1.5,2\}$, and capacity semantics ($T$, $T_b$), summarized over 3-run and 5-run ensemble suites.}`
+- **After:** replace this with a shorter caption centered on what the table means.
+- **Reasoning:** tables should tell readers what to conclude at a glance; the methodological details can be shortened or moved elsewhere when the caption is overloaded.
+
+## Hold Until Review Queue Is Cleared
+- move paper tables/plots to generated text/TeX include files instead of hardcoded values
+- update `state_analysis.py` to refresh those generated files and run dependent report generation
+- automate controlled paper-repo commit/push preparation after validated report refresh

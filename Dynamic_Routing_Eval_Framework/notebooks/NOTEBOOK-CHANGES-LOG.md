@@ -843,3 +843,18 @@ This log records **surgical notebook changes** (issues encountered, what was cha
   - `EXPNeuralUCB / Floor (%)`: `18.0 -> 18.0` (source `18.01`, no visible one-decimal change)
   - `EXPUCB / Floor (%)`: `68.8 -> 68.8` (source `68.75`, no visible one-decimal change)
 - **Notebook sync:** updated the expected-value cells and solved-key sets for `RQ1` and `RQ2`, re-executed the notebook, and confirmed there are now `0` `Open` rows in the saved outputs.
+
+
+### Review queue captured for the next pass
+- **Context:** validation work is paused in a clean state; the next pass is reviewer-comment resolution.
+- **Recorded queue:** `R-01` through `R-13` now cover the currently active review comments for:
+  - Related Work differentiation
+  - abstract / intro clarity
+  - contribution framing
+  - intro compression
+  - bullet-to-paragraph cleanup
+  - RQ typography
+  - caption shortening
+  - cut-for-space hypothesis review
+- **Process lock:** each item has now been frozen as `Task` / `Meaning` / `Before` / `After` / `Reasoning` so the next session can work them one by one.
+- **Source visibility:** the queue now explicitly carries Dan's March 11--13 comment timestamps and locations in the review to-do notes so we can see the original ask without re-deriving it from chat history.

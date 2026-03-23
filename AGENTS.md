@@ -61,8 +61,15 @@ Current Drive contract:
   - `quantum_data_lake/framework_state/`
   - `quantum_data_lake/model_state/`
 - Keep using the existing Drive implementation; improve it, do not replace it with alternate storage paths.
+- Prefer object/file-based data-management workflows, not inline terminal Python.
+- Primary operator entrypoint for pattern-based Drive management:
+  - `Dynamic_Routing_Eval_Framework/tools/state/manage_drive_pattern.py`
+- Do not add a new script workflow unless the user explicitly approves a temporary one-off script.
 - Do not rename state files during migration work.
 - Use the full saved filename as the state key.
+- Pattern matching is only for selecting local files to manage.
+- Drive upload/check/download operations must use the full exact filename for both components.
+- Do not introduce separate filename-matching logic for `model_state`; only the component changes.
 - Tag rule:
   - the final suffix is the tag
   - no suffix/tag means `hybrid`

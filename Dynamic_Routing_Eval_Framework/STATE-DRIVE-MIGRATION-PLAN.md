@@ -78,6 +78,17 @@ Expected shared-drive state roots:
   required policy by itself.
 - This document should be updated as the migration proceeds.
 
+### Drive object matching rule
+
+- Pattern matching is only for selecting which local files to manage.
+- Actual Drive upload/check/download operations must use the **full exact filename**
+  for both:
+  - `framework_state`
+  - `model_state`
+- The only thing that changes between those operations is the `component`.
+- Prefix-based Drive matching for `model_state` is incorrect because it can
+  overwrite distinct files that share the same leading token.
+
 ---
 
 ## 5) Code review findings

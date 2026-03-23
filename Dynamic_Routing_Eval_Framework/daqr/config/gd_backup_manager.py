@@ -597,9 +597,6 @@ class GoogleDriveBackupManager:
         # 4. Check if file already exists
         # ---------------------------------------------------------------
         query                   =   (f"name='{filename}' and '{parent_folder_id}' in parents")
-        if component            ==  "model_state":
-            safe_prefix         =   filename.split("(")[0]
-            query               =   f"name contains '{safe_prefix}' and '{parent_folder_id}' in parents"
 
         response                =   self._retry_drive(
                                         lambda: self.drive.files().list(
@@ -642,7 +639,7 @@ class GoogleDriveBackupManager:
         return True
 
     def set_regestry_qry(self, filename, day_folder_id):
-        self.obj_query["model_state"] = f"""name contains '{filename.split("(")[0]}' and '{day_folder_id}' in parents"""
+        self.obj_query["model_state"] = f"name='{filename}' and '{day_folder_id}' in parents"
         self.obj_query["framework_state"] = f"name='{filename}' and '{day_folder_id}' in parents"
         return True
     
@@ -679,7 +676,7 @@ class GoogleDriveBackupManager:
         # ---------------------------------------------------------------
         # 4. Drive search query
         # ---------------------------------------------------------------
-        self.set_regestry_qry(filename, day_folder_id)[component]
+        self.set_regestry_qry(filename, day_folder_id)
 
         response = self._retry_drive(
             lambda: self.drive.files().list(

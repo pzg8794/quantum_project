@@ -28,6 +28,77 @@ A **multi-testbed** research framework for evaluating quantum routing algorithms
 
 ---
 
+## 🧭 Framework Schema
+
+### Runtime schema
+
+```text
+Notebook / script / batch runner
+            │
+            ▼
+ExperimentConfiguration
+  - testbed defaults
+  - threat settings
+  - allocator settings
+  - replay / capacity semantics
+            │
+            ▼
+MultiRunEvaluator / QuantumExperimentRunner
+  - orchestrates scenarios, runs, and seeds
+  - resumes from saved state when available
+            │
+            ▼
+Allocator + model family
+  - contextual / adversarial / hybrid / informed
+  - selects paths and qubit allocations
+            │
+            ▼
+Quantum environment + attack model
+  - stochastic / Markov / adaptive / online adaptive
+            │
+            ▼
+State + results layer
+  - local state registry
+  - shared Drive-backed `quantum_data_lake/`
+  - plots / CSVs / validation snapshots
+```
+
+### Code schema
+
+```text
+hybrid_variable_framework/
+├── daqr/                                # Core research package
+│   ├── algorithms/                      # Routing / allocation models
+│   ├── core/                            # Environments, attacks, network logic
+│   ├── config/                          # ExperimentConfiguration + testbed configs
+│   └── evaluation/                      # Runner / evaluator orchestration
+├── Dynamic_Routing_Eval_Framework/      # Extended evaluation + notebook workflow
+│   ├── notebooks/                       # Paper/testbed notebooks
+│   ├── daqr/                            # Extended framework modules
+│   ├── tools/                           # Tests, state repair, audit utilities
+│   └── experiments/                     # Evaluation-specific configs
+├── docs/                                # Setup, guides, testbeds, updates
+├── Validated_Logs/                      # Master datasets and validated outputs
+├── scripts/                             # Automation for local / VM runs
+├── tests/                               # Test suites
+└── REPOSITORY_STRUCTURE.md              # Detailed tree + file-by-file guide
+```
+
+### How the main layers fit together
+
+| Layer | Main code | Responsibility |
+|-------|-----------|----------------|
+| **Configuration** | `daqr/config/` | Defines testbed, threat, allocator, and replay/capacity settings |
+| **Execution** | `daqr/evaluation/`, `Dynamic_Routing_Eval_Framework/daqr/evaluation/` | Runs experiments, ensembles, and resume workflows |
+| **Algorithms** | `daqr/algorithms/` | Implements contextual, adversarial, hybrid, and informed policies |
+| **Environment** | `daqr/core/` | Simulates routing state, attacks, and quantum-network behavior |
+| **State / Resume** | `Dynamic_Routing_Eval_Framework/daqr/config/` | Saves, restores, uploads, downloads, and reconciles experiment state |
+| **Validation** | `Dynamic_Routing_Eval_Framework/notebooks/`, `paper_validation/` | Produces evidence bundles, audits, and manuscript-facing checks |
+
+For the full file map, see [`REPOSITORY_STRUCTURE.md`](REPOSITORY_STRUCTURE.md) and [`docs/INDEX.md`](docs/INDEX.md).
+
+---
+
 ## 📁 Quick Navigation
 
 | Document | Purpose | Audience |

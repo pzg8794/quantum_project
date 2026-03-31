@@ -952,8 +952,8 @@ This queue comes directly from Dan's comments and is intentionally duplicated he
 - **Task:** shorten the `RQ2` table caption and make the primary implication explicit.
 - **Meaning:** the caption is too long and setup-heavy.
 - **Before:** `\caption{RQ2: robustness under adversarial threats (Markov/Adaptive/OnlineAdaptive) computed from the curated evaluation corpus under the 	exttt{Default} allocator. Results aggregate across horizons present, replay scales $s \in \{1,1.5,2\}$, and capacity semantics ($T$, $T_b$), summarized over 3-run and 5-run ensemble suites.}`
-- **After:** replace this with a shorter caption centered on what the table means.
-- **Reasoning:** tables should tell readers what to conclude at a glance; the methodological details can be shortened or moved elsewhere when the caption is overloaded.
+- **After:** `\caption{Contextual and informed baselines remain more robust and stable than adversarial-first baselines under adversarial threats.}`
+- **Reasoning:** this applies Dan’s comment literally by making the table’s main implication explicit and removing the setup-heavy aggregation recipe from the caption.
 
 ### Deferred later-review note — Global table consistency sweep
 - **Task:** run one later formatting-only sweep for table caption and table layout consistency across the manuscript.

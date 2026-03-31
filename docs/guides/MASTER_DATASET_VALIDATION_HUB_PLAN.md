@@ -938,8 +938,15 @@ This queue comes directly from Dan's comments and is intentionally duplicated he
 - **Task:** review whether the explicit hypothesis sentence should be removed.
 - **Meaning:** this is a space/clarity decision, not a validation issue.
 - **Before:** `We hypothesized that adversarial-first algorithms (EXP3-family, including 	exttt{EXPUCB} and 	exttt{EXPNeuralUCB}) would outperform contextual pursuit methods under structured attacks due to pessimistic exponential weighting.`
-- **After:** decide whether to remove this sentence entirely or replace it with a shorter setup line.
+- **After:** remove the entire flagged `RQ2` hypothesis subsection so the `Experimental Design` subsection follows the `RQ2` header directly.
 - **Reasoning:** if the sentence is not doing important framing work, it is a good candidate to cut so the paper spends its space on evidence and implications.
+
+### Deferred later-review note — Remaining hypothesis audit
+- **Task:** review the remaining non-`RQ2` hypothesis subsections and decide whether any others should be shortened or removed.
+- **Meaning:** Dan explicitly flagged the `RQ2` hypothesis, and the paper still contains other hypothesis subsections that may or may not earn their space.
+- **Before:** the manuscript retains hypothesis subsections outside the flagged `RQ2` case.
+- **After:** in a later pass, check each remaining hypothesis subsection individually and decide whether it should stay, be shortened, or be removed for space/clarity.
+- **Reasoning:** this keeps the immediate `RQ2` fix narrow while preserving a deliberate follow-up review for consistency.
 
 ### R-13 — Table VI caption shortening / implication-first wording (Dan, 13 March, 9:56 am)
 - **Task:** shorten the `RQ2` table caption and make the primary implication explicit.

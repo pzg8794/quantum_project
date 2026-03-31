@@ -945,15 +945,22 @@ This queue comes directly from Dan's comments and is intentionally duplicated he
 - **Task:** shorten the `RQ2` table caption and make the primary implication explicit.
 - **Meaning:** the caption is too long and setup-heavy.
 - **Before:** `\caption{RQ2: robustness under adversarial threats (Markov/Adaptive/OnlineAdaptive) computed from the curated evaluation corpus under the 	exttt{Default} allocator. Results aggregate across horizons present, replay scales $s \in \{1,1.5,2\}$, and capacity semantics ($T$, $T_b$), summarized over 3-run and 5-run ensemble suites.}`
-- **After:** replace this with a shorter caption centered on what the table means.
+- **After:** use this table as the reference caption pattern for the full manuscript-wide table pass: takeaway first, compressed context second, and no setup-heavy aggregation recipe unless essential for interpretation.
 - **Reasoning:** tables should tell readers what to conclude at a glance; the methodological details can be shortened or moved elsewhere when the caption is overloaded.
 
 ### Deferred later-review note — Global table consistency sweep
-- **Task:** run one later formatting-only sweep for table caption and table layout consistency across the manuscript.
-- **Meaning:** figure-caption consistency is largely aligned after `R-11`, but tables still show a mix of takeaway-first and setup-heavy caption styles plus formatting variation.
-- **Before:** several table captions remain longer and more method-heavy than the current figure-caption style (e.g., the table regions around `main.tex:1244`, `main.tex:1400`, `main.tex:1741`, `main.tex:1786`, `main.tex:1930`, and `main.tex:2000`).
-- **After:** in a future pass, normalize table caption tone/length, sizing directives, column-header style, label/title style, and notation consistency (`T` vs `T_b`, scale notation, Oracle-normalized wording) without changing scientific claims or numerical values.
-- **Reasoning:** this is a formatting/style pass worth doing later, but it is intentionally deferred and does not enter the active Dan queue unless explicitly pulled in.
+- **Task:** run one formatting-only sweep for table caption and table layout consistency across the manuscript.
+- **Meaning:** figure-caption consistency is largely aligned after `R-11`, but tables showed a mix of takeaway-first and setup-heavy caption styles plus formatting variation.
+- **Before:** several table captions remained longer and more method-heavy than the current figure-caption style (e.g., the table regions around `main.tex:1244`, `main.tex:1400`, `main.tex:1741`, `main.tex:1786`, `main.tex:1930`, and `main.tex:2000`).
+- **After:** normalize table caption tone/length, sizing directives, column-header style, label/title style, and notation consistency (`T` vs `T_b`, scale notation, Oracle-normalized wording) without changing scientific claims or numerical values.
+- **Reasoning:** user later explicitly pulled this into active work and merged it into the `R-13` implementation lane; keep this note as the rationale/base for that completed pass.
+
+### Deferred later-review note — Remaining hypothesis audit
+- **Task:** review the remaining non-`RQ2` hypothesis subsections and decide whether any others should be shortened or removed.
+- **Meaning:** Dan explicitly flagged the `RQ2` hypothesis, and the paper still contains other hypothesis subsections that may or may not earn their space.
+- **Before:** the manuscript retains hypothesis subsections outside the flagged `RQ2` case.
+- **After:** in a later pass, check each remaining hypothesis subsection individually and decide whether it should stay, be shortened, or be removed for space/clarity.
+- **Reasoning:** this keeps the immediate `RQ2` fix narrow while preserving a deliberate follow-up review for consistency.
 
 ## Hold Until Review Queue Is Cleared
 - move paper tables/plots to generated text/TeX include files instead of hardcoded values

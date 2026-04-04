@@ -977,7 +977,8 @@ class QuantumEvaluatorVisualizer:
         if scenario_results:
             self._plot_model_performance_ranking(axes[0, 0], scenario_results, scenario)
             self._plot_oracle_efficiency(axes[0, 1], scenario_results)
-            self._plot_reward_evolution(axes[0, 2], scenario_results, scenario_data)
+            # NOTE: scenario_data is the viz_data key (e.g., "stochastic_data"); pass it as scen_data.
+            self._plot_reward_evolution(axes[0, 2], scenario_results, scen_data=scenario_data)
             self._plot_statistical_analysis(axes[1, 0], scenario_results)
         else:
             for (r, c) in [(0,0), (0,1), (0,2), (1,0)]:

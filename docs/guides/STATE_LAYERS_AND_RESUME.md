@@ -66,6 +66,21 @@ At run time, resumption should behave like a ladder:
 
 This preserves the principle: **resume as high as possible, fall back as needed**.
 
+## Resume scope controls (Drive-aware)
+
+Resume can be expensive when most state has been offloaded to Drive. To keep resume fast and predictable, the framework supports a **scope** knob.
+
+- `DAQR_RESUME_SCOPE`
+  - `evaluator` (default): only restores evaluator state (`framework_state/MultiRunEvaluator_*`) unless an explicit downstream state is requested.
+  - `all`: enables full restore/prefetch behavior (runner + model states) when resuming from an evaluator.
+- `DAQR_RESUME_ALLOW_DRIVE_DOWNLOADS`
+  - `1` (default): allow lazy Drive downloads when a needed state file is missing locally.
+  - `0`: disable Drive downloads (resume only uses local files).
+
+Notes:
+- `DAQR_RESUME_SCOPE=all` is still available when you explicitly want full restore behavior.
+- Analysis tooling (`state_analysis.py`) now uses the same Drive manager implementation to prefetch missing `MultiRunEvaluator_*` evaluator pickles when building master datasets.
+
 ## Responsibility guardrails (keep code short + reusable)
 
 - Keep “state discovery” inside the owning object (constructor/resume path + its own methods).

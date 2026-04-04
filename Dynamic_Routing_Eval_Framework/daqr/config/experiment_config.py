@@ -329,6 +329,18 @@ class ExperimentConfiguration:
         }
 
         self.use_last_backup = use_last_backup
+
+        # ------------------------------------------------------------
+        # Resume policy
+        # ------------------------------------------------------------
+        # Default to evaluator-only resume behavior, with Drive downloads enabled.
+        # Override via env vars:
+        #   - DAQR_RESUME_SCOPE=all|evaluator
+        #   - DAQR_RESUME_ALLOW_DRIVE_DOWNLOADS=0|1
+        self.resume_scope = os.environ.get("DAQR_RESUME_SCOPE", "evaluator").strip().lower()
+        if self.resume_scope not in {"all", "evaluator"}:
+            self.resume_scope = "all"
+        self.resume_allow_drive_downloads = os.environ.get("DAQR_RESUME_ALLOW_DRIVE_DOWNLOADS", "1") == "1"
         self.backup_registry = {}
         self.expected_keys = {}
         
@@ -732,8 +744,14 @@ class ExperimentConfiguration:
         """
         if not self.use_last_backup: return None
         
-        # 1) Generate expected keys if needed (for MultiRunEvaluator)
-        if len(self.expected_keys) == 0 and "multirunevaluator" in item_v.lower():
+        # 1) Generate expected keys + (optional) Drive prefetch
+        # NOTE: Only enabled for full resume scope.
+        if (
+            len(self.expected_keys) == 0
+            and "multirunevaluator" in item_v.lower()
+            and getattr(self, "resume_scope", "all") == "all"
+            and getattr(self, "resume_allow_drive_downloads", False)
+        ):
             self.generate_expected_keys(item_v)
             self.backup_mgr.restore_from_drive(self.day_str, self.expected_keys)
         
@@ -788,13 +806,14 @@ class ExperimentConfiguration:
             return str(search_path)
         
         # 5) Drive Fallback (Download)
-        print(f"\t☁️ Attempting Drive download: {item_k}/{item_v}")
-        drive_path = self.backup_mgr.download_any_date(component=item_k, filename=item_v)
-        
-        if drive_path is not None:
-            print(f"\t☁️ Recovered from Drive → {drive_path}")
-            self.backup_registry.setdefault(item_k, {})[item_v] = drive_path
-            return str(drive_path)
+        if getattr(self, "resume_allow_drive_downloads", False):
+            print(f"\t☁️ Attempting Drive download: {item_k}/{item_v}")
+            drive_path = self.backup_mgr.download_any_date(component=item_k, filename=item_v)
+
+            if drive_path is not None:
+                print(f"\t☁️ Recovered from Drive → {drive_path}")
+                self.backup_registry.setdefault(item_k, {})[item_v] = drive_path
+                return str(drive_path)
         
         # 6) Not Found
         print(f"\t❌ Not found anywhere: {item_k}/{item_v}")
@@ -815,10 +834,37 @@ class ExperimentConfiguration:
         Returns:
             bool: True on success
         """
-        if self.use_last_backup is None: return False
+        if self.use_last_backup is None or not self.use_last_backup:
+            return False
         if len(self.backup_registry) == 0 or force:
             print(f"BUILDING REGISTRY WITH {len(self.expected_keys)} EXPECTED COMPONENTS KEYS")
-            self.backup_registry = self.backup_mgr.build_registry(force=force, expected_keys=self.expected_keys)
+            components = None
+            if getattr(self, "resume_scope", "all") == "evaluator":
+                components = ["framework_state"]
+            # Backward-compatible call: notebook kernels may reload this module
+            # without reloading the backup manager module, leaving an older
+            # build_registry signature in memory.
+            try:
+                self.backup_registry = self.backup_mgr.build_registry(
+                    force=force,
+                    expected_keys=self.expected_keys,
+                    components=components,
+                )
+            except TypeError as e:
+                msg = str(e)
+                if "unexpected keyword argument" not in msg and "got an unexpected keyword argument" not in msg:
+                    raise
+                # Retry with progressively older signatures.
+                try:
+                    self.backup_registry = self.backup_mgr.build_registry(
+                        force=force,
+                        expected_keys=self.expected_keys,
+                    )
+                except TypeError:
+                    try:
+                        self.backup_registry = self.backup_mgr.build_registry(force=force)
+                    except TypeError:
+                        self.backup_registry = self.backup_mgr.build_registry()
         return True
 
 
@@ -1440,9 +1486,25 @@ class ExperimentConfiguration:
         print("\t❌ All load attempts failed")
         return None, False
 
+    def _resume_is_evaluator_obj(self, obj) -> bool:
+        try:
+            return obj.__class__.__name__ == "MultiRunEvaluator"
+        except Exception:
+            return False
+
+    def _resume_allows_object(self, obj) -> bool:
+        scope = getattr(self, "resume_scope", "all")
+        if scope == "all":
+            return True
+        if scope == "evaluator":
+            return self._resume_is_evaluator_obj(obj)
+        return True
+
     def can_resume(self, obj):
         # Get path from registry
         if not self.use_last_backup: return None
+        if not self._resume_allows_object(obj):
+            return None
         file_name = obj.file_name.replace("1.5", "1_5")
         if self.suffix: file_name = file_name.replace(".pkl", f"_{self.suffix}.pkl")
         config_path = self.get_latest_state(obj.component, file_name)
@@ -1469,6 +1531,8 @@ class ExperimentConfiguration:
         """
         if not self.use_last_backup: return None
         if obj.resumed: return obj.resumed
+        if not self._resume_allows_object(obj):
+            return False
 
         print(f"\n\t🔄 Resume: {obj}")
         has_path = self.can_resume(obj) 

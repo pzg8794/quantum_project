@@ -125,7 +125,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
         return temp
 
 
-    def _iterate_component_dir(self, mode_dir, temp, valid_exts, load_to_drive, force):
+    def _iterate_component_dir(self, mode_dir, temp, valid_exts, load_to_drive, force, components=None):
         """
         Walk directory tree and process all component subdirectories.
         
@@ -142,8 +142,23 @@ class LocalBackupManager(GoogleDriveBackupManager):
         print(f"   🚶 Walking directory tree: {mode_dir}")
         dirs_processed = 0
         
+        allowed_components = None
+        if components is not None:
+            if isinstance(components, str):
+                allowed_components = {components}
+            else:
+                try:
+                    allowed_components = set(components)
+                except Exception:
+                    allowed_components = None
+
         for dirpath, dirnames, filenames in os.walk(mode_dir):
             dir_path = Path(dirpath)
+
+            # Root pruning: only descend into requested top-level components.
+            if allowed_components is not None and dir_path == Path(mode_dir):
+                dirnames[:] = [d for d in dirnames if d in allowed_components]
+                continue
 
             # Calculate relative path from mode base
             try: relative_path = dir_path.relative_to(mode_dir)
@@ -152,10 +167,15 @@ class LocalBackupManager(GoogleDriveBackupManager):
                 continue
 
             # Extract component from first part of path
-            # print(f"      ⊘ Empty path parts, skipping")
             parts = relative_path.parts
-            if not parts: continue            
+            if not parts:
+                continue
             component = parts[0]
+
+            if allowed_components is not None and component not in allowed_components:
+                # Prevent descending further into unrequested components.
+                dirnames[:] = []
+                continue
 
             # Skip internal backup folders (these are not valid resume candidates and can
             # override correct registry entries due to duplicate filenames).
@@ -193,7 +213,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
         return temp
 
 
-    def _scan_local_files(self, expected_keys=None, load_to_drive=False, force=False):
+    def _scan_local_files(self, expected_keys=None, load_to_drive=False, force=False, components=None):
         """
         Scan local filesystem (drive + local modes) and build registry.
         
@@ -214,7 +234,20 @@ class LocalBackupManager(GoogleDriveBackupManager):
         valid_exts = {".pkl", ".json"}
         modes_scanned = 0
 
-        for mode in ["drive", "local"]:
+        # NOTE: On macOS, reading large pickles from the Google Drive filesystem mirror can
+        # produce intermittent timeouts during unpickling. Prefer local-only registry scans
+        # when Drive API is available; let explicit downloads stage files into local storage.
+        modes_to_scan = ["drive", "local"] if self.in_share_drive else ["local"]
+        if os.environ.get("DAQR_SCAN_DRIVE_MIRROR", "0") == "1":
+            modes_to_scan = ["drive", "local"]
+        elif (
+            (not self.in_share_drive)
+            and (not getattr(self, "remote_available", False) or not getattr(self, "drive", None))
+        ):
+            # Drive API unavailable: allow Drive-mirror scan as a best-effort fallback.
+            modes_to_scan = ["drive", "local"]
+
+        for mode in modes_to_scan:
             mode_path = self.quantum_data_paths[mode]
             print(f"\n📂 Checking {mode.upper()} mode: {mode_path}")
             
@@ -227,7 +260,14 @@ class LocalBackupManager(GoogleDriveBackupManager):
             modes_scanned += 1
             
             # Walk the directory tree
-            temp = self._iterate_component_dir(mode_path, temp, valid_exts, load_to_drive, force)
+            temp = self._iterate_component_dir(
+                mode_path,
+                temp,
+                valid_exts,
+                load_to_drive,
+                force,
+                components=components,
+            )
 
         # Build final registry
         print(f"\n{'='*80}")
@@ -249,9 +289,18 @@ class LocalBackupManager(GoogleDriveBackupManager):
         return registry
 
     
-    def build_registry(self, force=False, expected_keys=None):
+    def build_registry(self, force=False, expected_keys=None, components=None):
         """Build registry with recursion protection."""
         print("\n===================== GET LOCAL REGISTRY =====================")
+
+        # ------------------------------------------------------------
+        # Drive fallback policy
+        # ------------------------------------------------------------
+        # Default: allow Drive registry and downloads for resume.
+        # Disable explicitly via:
+        #   DAQR_RESUME_ALLOW_DRIVE_DOWNLOADS=0
+        allow_drive = os.environ.get("DAQR_RESUME_ALLOW_DRIVE_DOWNLOADS", "1") == "1"
+
         # ------------------------------------------------------------
         # 1. Try local cached registry
         # ------------------------------------------------------------
@@ -269,14 +318,23 @@ class LocalBackupManager(GoogleDriveBackupManager):
 
         if len(self.backup_registry) == 0:
             print("\n===================== BUILD LOCAL REGISTRY =====================")
-            self.backup_registry = self._scan_local_files(expected_keys=None)  # Always full scan first
+            self.backup_registry = self._scan_local_files(
+                expected_keys=None,
+                components=components,
+            )
             total = sum(len(v) for v in self.backup_registry.values())
             print(f"\t→ Filesystem scan found {total} files")
             print("\n===================== GET DRIVE REGISTRY =====================")
-            if len(self.backup_registry) == 0: super().build_registry()
+            if len(self.backup_registry) == 0 and allow_drive:
+                super().build_registry()
+            elif len(self.backup_registry) == 0:
+                print("→ Skipping Drive registry (DAQR_RESUME_ALLOW_DRIVE_DOWNLOADS=0)")
             print("===================== REGISTRY BUILD COMPLETE =====================\n")
 
-        if not self.in_share_drive: self._fetch_registry_from_drive(expected_keys=None)
+        if (not self.in_share_drive) and allow_drive:
+            self._fetch_registry_from_drive(expected_keys=None)
+        elif not self.in_share_drive:
+            print("→ Skipping Drive registry merge (DAQR_RESUME_ALLOW_DRIVE_DOWNLOADS=0)")
         
         self.save_registry()
         return self.backup_registry
@@ -529,7 +587,9 @@ class LocalBackupManager(GoogleDriveBackupManager):
             # -------------------------------------------------------
             # 5. Verify Drive-backed file exists and is non-empty
             # -------------------------------------------------------
-            verified = drive_path.exists() and drive_path.stat().st_size > 0
+            # NOTE: Do NOT rely on filesystem-mirror existence checks when running
+            # locally; prefer Drive API verification hooks.
+            verified = bool(self._verify_drive_state_path(component, self.date_str, filename))
             if not verified:
                 self.backup_registry.setdefault(component, {})[filename] = str(file_path)
                 self.new_entries.setdefault(component, {})[filename] = str(file_path)
@@ -556,6 +616,59 @@ class LocalBackupManager(GoogleDriveBackupManager):
                 backup_path.replace(file_path)
                 print(f"🚨 Save failed, restored from backup: {e}")
             raise
+
+
+
+    def _verify_drive_state_path(self, component: str, date_str: str, filename: str) -> bool:
+        """Verify that a state file is present and non-empty on Drive.
+
+        When running from a Drive-synced workspace (in_share_drive), a filesystem
+        check is usually sufficient. Otherwise, prefer Drive API metadata checks.
+
+        This method exists as a seam for testing (see tests/test_drive_state_offload.py).
+        """
+        try:
+            date_str = str(date_str)
+        except Exception:
+            date_str = self.date_str
+
+        # Shared-drive filesystem workspace: verify via filesystem.
+        if getattr(self, "in_share_drive", False):
+            try:
+                drive_path = Path(self.quantum_data_paths["obj"][component]["drive"]) / date_str / filename
+                return drive_path.exists() and drive_path.stat().st_size > 0
+            except Exception:
+                return False
+
+        # Otherwise: verify via Drive API metadata.
+        if not getattr(self, "remote_available", False) or not getattr(self, "drive", None):
+            return False
+
+        try:
+            data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.drive_folder_id)
+            comp_folder_id = self._ensure_drive_folder(component, data_lake_id)
+            day_folder_id = self._ensure_drive_folder(date_str, comp_folder_id)
+            if not day_folder_id:
+                return False
+
+            query = f"name='{filename}' and '{day_folder_id}' in parents and trashed=false"
+            response = self._retry_drive(
+                lambda: self.drive.files().list(
+                    q=query,
+                    fields="files(id,name,size)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    corpora="allDrives",
+                    pageSize=10,
+                ).execute()
+            )
+            files = response.get("files", [])
+            if not files:
+                return False
+            size = int(files[0].get("size", 0) or 0)
+            return size > 0
+        except Exception:
+            return False
 
 
 
@@ -624,7 +737,9 @@ class LocalBackupManager(GoogleDriveBackupManager):
         # -------------------------------------------------------
         # 6. Last resort: recover/download from drive
         # -------------------------------------------------------
-        recovered = self._download_file_from_drive(self.date_str, component, filename)
+        # Default Drive recovery is date-agnostic: (component, exact filename)
+        # across any `day_*` folder.
+        recovered = self._download_file_from_drive(component=component, filename=filename)
         if recovered:
             if self.verbose:
                 print(f"\t☁️ Recovered from Drive: {recovered}")

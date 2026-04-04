@@ -24,6 +24,10 @@ class GoogleDriveBackupManager:
         self.new_entries = {}
         self.verbose = verbose
         self.backup_registry = {}
+        # Drive state index cache: per-component mapping of exact filename -> {drive_id, day}
+        # Used to accelerate date-agnostic downloads without scanning every day_* folder.
+        self._drive_state_index_by_component = {}
+        self._drive_state_index_loaded_components = set()
         self.in_share_drive = True
         self.drive_folder_id = os.environ.get(
             "DAQR_DRIVE_FOLDER_ID",
@@ -135,6 +139,271 @@ class GoogleDriveBackupManager:
             if self.verbose: print(f"\t⚠️ Drive unavailable: {e}")
 
         if self.verbose: print(f"\t📁 Registry loaded: {len(self.backup_registry)} components")
+
+    # ------------------------------------------------------------
+    # Drive state-index helpers (performance)
+    # ------------------------------------------------------------
+    def _state_index_filename(self) -> str:
+        """Filename used for per-component Drive state index."""
+        return os.environ.get("DAQR_DRIVE_STATE_INDEX_FILENAME", "state_index.json")
+
+    def _state_index_local_day(self) -> str:
+        """Best-effort fallback for a day_* folder name."""
+        try:
+            day = str(getattr(self, "date_str", ""))
+        except Exception:
+            day = ""
+        if isinstance(day, str) and day.startswith("day_"):
+            return day
+        return f"day_{datetime.now().strftime('%Y%m%d')}"
+
+    def _normalize_state_index_payload(self, component: str, payload):
+        """Normalize supported index payload shapes into {filename: {drive_id, day}}."""
+        if not isinstance(payload, dict):
+            return {}
+
+        # Preferred shape: {"files": {filename: {drive_id, day} }}
+        if isinstance(payload.get("files"), dict):
+            payload = payload["files"]
+
+        # Flat mapping: {filename: {drive_id, day}} or {filename: drive_id}
+        normalized = {}
+        for fname, entry in payload.items():
+            if not isinstance(fname, str) or not fname:
+                continue
+
+            drive_id = None
+            day = None
+            if isinstance(entry, dict):
+                drive_id = entry.get("drive_id") or entry.get("id") or entry.get("drive_file_id")
+                day = entry.get("day") or entry.get("drive_date")
+            elif isinstance(entry, str):
+                drive_id = entry
+
+            if not drive_id:
+                continue
+
+            if not (isinstance(day, str) and day.startswith("day_")):
+                day = self._state_index_local_day()
+
+            normalized[fname] = {"drive_id": drive_id, "day": day}
+
+        return normalized
+
+    def _download_state_index_from_drive(self, component: str):
+        """Download per-component state_index.json from Drive, if present."""
+        if not self.remote_available or not self.drive:
+            return None
+
+        data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.drive_folder_id)
+        if not data_lake_id:
+            return None
+
+        comp_id = self._ensure_drive_folder(component, data_lake_id)
+        if not comp_id:
+            return None
+
+        filename = self._state_index_filename()
+        resp = self._retry_drive(
+            lambda: self.drive.files().list(
+                q=(
+                    f"name='{filename}' and '{comp_id}' in parents and trashed=false"
+                ),
+                fields="files(id,name,size)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                corpora="allDrives",
+                pageSize=10,
+            ).execute()
+        )
+        files = resp.get("files", []) if isinstance(resp, dict) else []
+        if not files:
+            return None
+
+        file_id = files[0]["id"]
+        request = self.drive.files().get_media(fileId=file_id)
+        data = request.execute()
+        try:
+            payload = json.loads(data.decode("utf-8"))
+        except Exception:
+            payload = json.loads(data)
+        return payload
+
+    def _upload_state_index_to_drive(self, component: str, index: dict) -> bool:
+        """Best-effort upload/update of per-component state_index.json."""
+        if not self.remote_available or not self.drive:
+            return False
+        if self.in_share_drive:
+            # We don't write Drive API files when running in the Drive-mirror workspace.
+            return False
+
+        data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.drive_folder_id)
+        if not data_lake_id:
+            return False
+        comp_id = self._ensure_drive_folder(component, data_lake_id)
+        if not comp_id:
+            return False
+
+        filename = self._state_index_filename()
+        payload = {
+            "_schema": "daqr_state_index_v1",
+            "component": component,
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "files": index,
+        }
+        json_bytes = json.dumps(payload, sort_keys=True).encode("utf-8")
+        buffer = io.BytesIO(json_bytes)
+        media = MediaIoBaseUpload(buffer, mimetype="application/json", resumable=False)
+
+        # Find existing file in component folder
+        resp = self._retry_drive(
+            lambda: self.drive.files().list(
+                q=(
+                    f"name='{filename}' and '{comp_id}' in parents and trashed=false"
+                ),
+                fields="files(id,name)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                corpora="allDrives",
+                pageSize=10,
+            ).execute()
+        )
+        files = resp.get("files", []) if isinstance(resp, dict) else []
+        existing_id = files[0]["id"] if files else None
+
+        if existing_id:
+            self.drive.files().update(
+                fileId=existing_id,
+                media_body=media,
+                supportsAllDrives=True,
+            ).execute()
+        else:
+            meta = {"name": filename, "parents": [comp_id]}
+            self.drive.files().create(
+                body=meta,
+                media_body=media,
+                supportsAllDrives=True,
+            ).execute()
+        return True
+
+    def _build_state_index_remote(self, component: str) -> dict:
+        """Build a per-component filename→(drive_id, day) index by scanning Drive."""
+        if not self.remote_available or not self.drive:
+            return {}
+
+        data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.drive_folder_id)
+        if not data_lake_id:
+            return {}
+
+        comp_id = self._ensure_drive_folder(component, data_lake_id)
+        if not comp_id:
+            return {}
+
+        # List day folders (newest-first)
+        day_folders = []
+        page_token = None
+        while True:
+            resp = self._retry_drive(
+                lambda: self.drive.files().list(
+                    q=(
+                        f"'{comp_id}' in parents and trashed=false and "
+                        "mimeType='application/vnd.google-apps.folder'"
+                    ),
+                    fields="nextPageToken, files(id,name)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    corpora="allDrives",
+                    pageSize=1000,
+                    pageToken=page_token,
+                ).execute()
+            )
+            day_folders.extend(resp.get("files", []))
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+
+        day_folders = [f for f in day_folders if str(f.get("name", "")).startswith("day_")]
+        day_folders.sort(key=lambda f: str(f.get("name", "")), reverse=True)
+
+        index = {}
+        for folder in day_folders:
+            day_name = str(folder.get("name", ""))
+            day_id = folder.get("id")
+            if not day_id or not day_name.startswith("day_"):
+                continue
+
+            file_token = None
+            while True:
+                file_resp = self._retry_drive(
+                    lambda: self.drive.files().list(
+                        q=f"'{day_id}' in parents and trashed=false",
+                        fields="nextPageToken, files(id,name,size)",
+                        supportsAllDrives=True,
+                        includeItemsFromAllDrives=True,
+                        corpora="allDrives",
+                        pageSize=1000,
+                        pageToken=file_token,
+                    ).execute()
+                )
+                for f in file_resp.get("files", []):
+                    fname = f.get("name")
+                    fid = f.get("id")
+                    if not fname or not fid:
+                        continue
+                    # Preserve current semantics: newest day_* wins.
+                    if fname in index:
+                        continue
+                    index[fname] = {"drive_id": fid, "day": day_name}
+
+                file_token = file_resp.get("nextPageToken")
+                if not file_token:
+                    break
+
+        return index
+
+    def ensure_drive_state_index(
+        self,
+        component: str,
+        *,
+        build_if_missing: bool = False,
+        force_refresh: bool = False,
+        save_if_built: bool = True,
+    ) -> dict | None:
+        """Ensure the per-component Drive state index is loaded (or built).
+
+        Returns the cached mapping {filename: {drive_id, day}} when available.
+        """
+        if not component:
+            return None
+
+        loaded = component in getattr(self, "_drive_state_index_loaded_components", set())
+        if loaded and not force_refresh:
+            return getattr(self, "_drive_state_index_by_component", {}).get(component, {})
+
+        # 1) Try loading from Drive
+        try:
+            payload = self._download_state_index_from_drive(component)
+        except Exception:
+            payload = None
+        if payload is not None:
+            index = self._normalize_state_index_payload(component, payload)
+            self._drive_state_index_by_component[component] = index
+            self._drive_state_index_loaded_components.add(component)
+            return index
+
+        # 2) Optionally build by scanning Drive
+        if build_if_missing and (not self.in_share_drive) and self.remote_available and self.drive:
+            index = self._build_state_index_remote(component)
+            self._drive_state_index_by_component[component] = index
+            self._drive_state_index_loaded_components.add(component)
+            if save_if_built:
+                try:
+                    self._upload_state_index_to_drive(component, index)
+                except Exception:
+                    pass
+            return index
+
+        return None
 
     def _find_workspace_root(self, start_path: Path):
         start_path = Path(start_path).resolve()
@@ -279,7 +548,9 @@ class GoogleDriveBackupManager:
 
                     # If file missing → download
                     if not Path(entry_path).exists():
-                        recovered = self._download_file_from_drive(self.date_str, comp, key)
+                        # Default Drive recovery is date-agnostic: (component, exact filename)
+                        # across any `day_*` folder.
+                        recovered = self._download_file_from_drive(component=comp, filename=key)
                         if recovered:
                             print(f"   ☁️ Recovered from Drive {' Remotely' if not self.in_share_drive else ' Locally'} → {recovered}")
                             entry_path = recovered
@@ -643,19 +914,45 @@ class GoogleDriveBackupManager:
         self.obj_query["framework_state"] = f"name='{filename}' and '{day_folder_id}' in parents"
         return True
     
-    def _download_file_from_drive(self, date_str, component, filename, storage_dir="quantum_data_lake"):
-        """
-        Download a single file from Drive into:
-            {config_dir}/{component}/day_{date_str}/{filename}
+    def _download_file_from_drive(
+        self,
+        date_str=None,
+        component=None,
+        filename=None,
+        storage_dir="quantum_data_lake",
+    ):
+        """Download a single file from Drive.
 
-        This mirrors the same structure created by _upload_file_to_drive.
+        Default behavior is date-agnostic: when `date_str` is None, search for
+        an EXACT `(component, filename)` match across any `day_*` folder.
+
+        If `date_str` is provided, restrict the lookup to that specific day
+        folder.
         """
+
+        if not component or not filename:
+            return None
+
+        # Default: no date constraint.
+        if not date_str:
+            return self.download_any_date(component=component, filename=filename)
+
+        date_str = str(date_str)
+        if re.fullmatch(r"\d{8}", date_str):
+            date_str = f"day_{date_str}"
+        else:
+            m = re.search(r"(day_\d{8})$", date_str)
+            if m:
+                date_str = m.group(1)
+
         if self.in_share_drive:
             # Direct filesystem path in shared drive - no download needed
-            local_path =  self.quantum_data_paths["obj"][component]["drive"] / date_str / filename
-            if local_path.exists(): return str(local_path)
+            local_path = self.quantum_data_paths["obj"][component]["drive"] / date_str / filename
+            if local_path.exists():
+                return str(local_path)
 
-        if not self.remote_available or not self.drive: return None
+        if not self.remote_available or not self.drive:
+            return None
         
         # ---------------------------------------------------------------
         # 1. Resolve quantum_data_lake root
@@ -710,55 +1007,118 @@ class GoogleDriveBackupManager:
 
 
     def restore_from_drive(self, date_str, expected_keys):
-        """Restore local data lake structure for the expected experiment keys."""
-        print("RESTORING FROM DRIVE 1")
-        if not self.remote_available or not self.drive:
-            # if self.verbose: 
-            print("\t⚠️ Drive unavailable → cannot restore")
-            return False
+        """Restore local state files for the expected experiment keys.
 
-        print("RESTORING FROM DRIVE 2")
-        comp_path = self.quantum_data_paths["obj"]
-        if comp_path["framework_state"][self.mode].exists() and comp_path["model_state"][self.mode].exists(): 
-            # if self.verbose: 
-            print("\t⚠️ Registry exists → aborting restore")
-            return False
+        IMPORTANT: the day folder is NOT part of the lookup key.
+        Restore is by exact (component, filename) across ANY `day_*` folder.
 
+        This method prefers staging via Drive API downloads (when available)
+        instead of returning Google Drive filesystem-mirror paths.
+        """
+        print("RESTORING FROM DRIVE")
+
+        if not expected_keys:
+            return True
+
+        # If we expect many restores in a remote environment, pre-load or build
+        # the Drive state index once per component to avoid scanning every day_* folder.
+        if (not self.in_share_drive) and self.remote_available and self.drive:
+            for component in expected_keys.keys():
+                try:
+                    self.ensure_drive_state_index(component, build_if_missing=True)
+                except Exception:
+                    # Never fail restore over index preloading.
+                    pass
+
+        # Accept either {component: {filename: ...}} or {component: [filename, ...]}.
         restored = defaultdict(dict)
 
-        print("RESTORING FROM DRIVE 3")
-        for component, filenames in expected_keys.items():
-            print(component.upper())
+        # Precompute local availability for faster membership checks.
+        local_cache = {}
+        for component in expected_keys.keys():
+            try:
+                local_root = Path(self.quantum_data_paths["obj"][component]["local"])
+            except Exception:
+                continue
+            if not local_root.exists():
+                continue
+            # Index filenames across all local day_* folders.
+            candidates = {}
+            for day_dir in sorted(local_root.glob("day_*"), reverse=True):
+                if not day_dir.is_dir():
+                    continue
+                for fp in day_dir.iterdir():
+                    if fp.is_file():
+                        candidates.setdefault(fp.name, fp)
+            local_cache[component] = candidates
 
-            for filename in filenames.keys():
-                print(filename)
-                
-                # Check if already exists locally
-                local_entry = None
-                try:                local_entry = self.backup_registry.get(component, {}).get(filename)
-                except Exception:   local_entry = self.normalize_path(local_entry, project_root=self.dir)
-                if local_entry and Path(local_entry).exists():
-                    print("local entry check ", local_entry)
-                    restored[component][filename] = str(Path(drive_path or local_path).resolve())
+        for component, filenames in expected_keys.items():
+            if isinstance(filenames, dict):
+                filename_list = list(filenames.keys())
+            else:
+                try:
+                    filename_list = list(filenames)
+                except Exception:
+                    filename_list = []
+
+            found_local = 0
+            downloaded = 0
+            missing = 0
+
+            for filename in filename_list:
+                # 1) Registry path if valid
+                entry = None
+                try:
+                    entry = self.backup_registry.get(component, {}).get(filename)
+                except Exception:
+                    entry = None
+
+                if isinstance(entry, str) and entry:
+                    try:
+                        entry_path = Path(entry)
+                    except Exception:
+                        entry_path = None
+                    if entry_path is not None and entry_path.exists():
+                        restored[component][filename] = str(entry_path.resolve())
+                        found_local += 1
+                        continue
+
+                # 2) Any-date local filesystem hit
+                local_hit = local_cache.get(component, {}).get(filename)
+                if local_hit is not None and local_hit.exists():
+                    restored[component][filename] = str(local_hit.resolve())
+                    found_local += 1
                     continue
 
-                # Otherwise download
-                drive_path = self._download_file_from_drive(date_str, component, filename)
-                if drive_path: 
-                    print("found path: ",drive_path)
-                    restored[component][filename] = str(Path(drive_path or local_path).resolve())
-                else:
-                    local_path = str(self.quantum_data_paths["obj"][component][self.mode]/self.date_str/filename)
-                    restored[component][filename] = local_path
-                    print("manual path: ", local_path)
+                # 3) Any-date Drive recovery (staged via API when available)
+                drive_path = self.download_any_date(component=component, filename=filename)
+                if drive_path and Path(drive_path).exists():
+                    restored[component][filename] = str(Path(drive_path).resolve())
+                    downloaded += 1
+                    continue
 
+                # 4) Placeholder expected local path (current day folder)
+                missing += 1
+                try:
+                    local_root = Path(self.quantum_data_paths["obj"][component]["local"])
+                    restored[component][filename] = str((local_root / (date_str or self.date_str) / filename).resolve())
+                except Exception:
+                    restored[component][filename] = filename
 
-        print("RESTORING FROM DRIVE 4")
-        # Save registry locally
-        file = str(self.registry_file_paths[self.mode].replace(".pkl", ".json"))
-        with open(file, "w") as f: json.dump(restored, f)
+            print(
+                f"\t{component}: expected={len(filename_list)} local={found_local} downloaded={downloaded} missing={missing}"
+            )
 
-        # Update internal registry
+        # Cache registry locally (JSON), best-effort.
+        try:
+            registry_path = Path(self.registry_file_paths[self.mode])
+            registry_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(registry_path, "w") as f:
+                json.dump(restored, f)
+        except Exception as e:
+            if self.verbose:
+                print(f"\t⚠️ Could not write local restore registry cache: {e}")
+
         self.backup_registry = restored
         return True
     
@@ -842,26 +1202,135 @@ class GoogleDriveBackupManager:
         Search all day_* folders under the given component
         and return the first EXACT match.
         """
-        
+        # Prefer Drive API download when available to avoid timeouts from
+        # reading large pickles via the Google Drive filesystem mirror.
+
         if self.in_share_drive:
             # Direct filesystem search in shared drive
             for mode in ["drive", "local"]:
-                comp_dir =  self.quantum_data_paths[mode] / component
-                if not comp_dir.exists(): return None
-                
-                # Search all day_* folders
-                for day_folder in comp_dir.iterdir():
-                    if not day_folder.is_dir() or not day_folder.name.startswith("day_"): continue
-                
+                comp_dir = self.quantum_data_paths.get(mode)
+                if comp_dir is None:
+                    continue
+                comp_dir = Path(comp_dir) / component
+                if not comp_dir.exists():
+                    continue
+
+                # Search all day_* folders (newest-first)
+                for day_folder in sorted(comp_dir.iterdir(), reverse=True):
+                    if not day_folder.is_dir() or not day_folder.name.startswith("day_"):
+                        continue
                     file_path = day_folder / filename
                     if file_path.exists():
-                        if self.verbose: print(f"✓ Found: {file_path}")
-                    return str(file_path)
+                        if self.verbose:
+                            print(f"✓ Found: {file_path}")
+                        return str(file_path)
             return None
 
-        drive_component_dir = self.quantum_data_paths["obj"][component].get("drive")
+        # Drive API for non-shared-drive environments
+        if self.remote_available and self.drive:
+            try:
+                # Fast-path: use the per-component Drive state index if available.
+                index = None
+                try:
+                    index = self.ensure_drive_state_index(component, build_if_missing=False)
+                except Exception:
+                    index = None
+
+                entry = index.get(filename) if isinstance(index, dict) else None
+                if isinstance(entry, dict) and entry.get("drive_id"):
+                    try:
+                        day_name = entry.get("day")
+                        if not (isinstance(day_name, str) and day_name.startswith("day_")):
+                            day_name = self._state_index_local_day()
+
+                        local_dir = self.quantum_data_paths["local"] / component / day_name
+                        local_dir.mkdir(parents=True, exist_ok=True)
+                        local_path = local_dir / filename
+                        if local_path.exists() and local_path.stat().st_size > 0:
+                            return str(local_path)
+
+                        request = self.drive.files().get_media(fileId=entry["drive_id"])
+                        with open(local_path, "wb") as f:
+                            done = False
+                            downloader = MediaIoBaseDownload(f, request)
+                            while not done:
+                                _status, done = downloader.next_chunk()
+
+                        return str(local_path)
+                    except Exception as e:
+                        # Stale index (or transient download error) → fall back to scan-based lookup.
+                        if self.verbose:
+                            print(f"\t⚠️ State-index fast download failed; falling back to scan: {e}")
+
+                data_lake_id = self._ensure_drive_folder("quantum_data_lake", self.drive_folder_id)
+                comp_id = self._ensure_drive_folder(component, data_lake_id)
+                if comp_id:
+                    # List all day_* folders under component
+                    response = self._retry_drive(
+                        lambda: self.drive.files().list(
+                            q=(
+                                f"'{comp_id}' in parents and trashed=false and "
+                                "mimeType='application/vnd.google-apps.folder'"
+                            ),
+                            fields="files(id,name)",
+                            supportsAllDrives=True,
+                            includeItemsFromAllDrives=True,
+                            corpora="allDrives",
+                            pageSize=1000,
+                        ).execute()
+                    )
+                    day_folders = [
+                        f for f in response.get("files", [])
+                        if f.get("name", "").startswith("day_")
+                    ]
+                    # Newest-first by folder name (day_YYYYMMDD)
+                    day_folders.sort(key=lambda f: f.get("name", ""), reverse=True)
+
+                    for folder in day_folders:
+                        fid = folder["id"]
+                        q = f"name = '{filename}' and '{fid}' in parents and trashed=false"
+                        file_response = self._retry_drive(
+                            lambda: self.drive.files().list(
+                                q=q,
+                                fields="files(id,name,size)",
+                                supportsAllDrives=True,
+                                includeItemsFromAllDrives=True,
+                                corpora="allDrives",
+                                pageSize=10,
+                            ).execute()
+                        )
+                        files = file_response.get("files", [])
+                        if not files:
+                            continue
+
+                        file_meta = files[0]
+                        file_id = file_meta["id"]
+                        actual_name = file_meta["name"]
+
+                        local_dir = self.quantum_data_paths["local"] / component / folder["name"]
+                        local_dir.mkdir(parents=True, exist_ok=True)
+                        local_path = local_dir / actual_name
+
+                        request = self.drive.files().get_media(fileId=file_id)
+                        with open(local_path, "wb") as f:
+                            done = False
+                            downloader = MediaIoBaseDownload(f, request)
+                            while not done:
+                                _status, done = downloader.next_chunk()
+
+                        return str(local_path)
+            except Exception as e:
+                if self.verbose:
+                    print(f"\t⚠️ Drive any-date download failed: {e}")
+
+        # Fallback: try Drive filesystem mirror if API is unavailable/failed.
+        drive_component_dir = None
+        try:
+            drive_component_dir = self.quantum_data_paths["obj"][component].get("drive")
+        except Exception:
+            drive_component_dir = None
         if drive_component_dir is not None and Path(drive_component_dir).exists():
-            for day_folder in Path(drive_component_dir).iterdir():
+            for day_folder in sorted(Path(drive_component_dir).iterdir(), reverse=True):
                 if not day_folder.is_dir() or not day_folder.name.startswith("day_"):
                     continue
                 file_path = day_folder / filename
@@ -869,49 +1338,8 @@ class GoogleDriveBackupManager:
                     if self.verbose:
                         print(f"✓ Found via Drive mirror: {file_path}")
                     return str(file_path)
-        
-        if not self.remote_available or not self.drive: return None
+
         # Drive API for non-shared-drive environments
-        data_lake_id= self._ensure_drive_folder("quantum_data_lake", self.drive_folder_id)
-        comp_id     = self._ensure_drive_folder(component, data_lake_id)
-        if not comp_id: return None
-        
-        # List all day_* folders
-        day_folders = self.drive.files().list(
-            q=f"'{comp_id}' in parents and mimeType='application/vnd.google-apps.folder'",
-            supportsAllDrives=True, includeItemsFromAllDrives=True
-        ).execute().get("files", [])
-        
-        for folder in day_folders:
-            fid = folder["id"]
-            # EXACT MATCH — no substring collision
-            q = f"name = '{filename}' and '{fid}' in parents"
-            response = self._retry_drive(
-                lambda: self.drive.files().list(
-                    q=q, supportsAllDrives=True,
-                    includeItemsFromAllDrives=True
-                ).execute()
-            )
-            files = response.get("files", [])
-            if not files: continue
-            
-            file_meta = files[0]
-            file_id = file_meta["id"]
-            actual_name = file_meta["name"]
-            
-            # Save using the ACTUAL filename
-            local_dir =  self.quantum_data_paths["local"] / component / folder["name"]
-            local_dir.mkdir(parents=True, exist_ok=True)
-            local_path = local_dir / actual_name
-            
-            print("\tFile Downloaded in local_path")
-            request = self.drive.files().get_media(fileId=file_id)
-            with open(local_path, "wb") as f:
-                done = False
-                downloader = MediaIoBaseDownload(f, request)
-                while not done: status, done = downloader.next_chunk()
-            
-            return str(local_path)
         return None
 
 

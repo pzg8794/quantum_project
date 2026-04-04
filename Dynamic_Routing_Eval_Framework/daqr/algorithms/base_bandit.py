@@ -234,11 +234,11 @@ class QuantumModel(ABC):
         return self.configs.save_obj(self)
 
     def resume(self):
-        # This now always loads from the correct data lake (or backup if not found)
+        # Load from the configured data lake (local-first). Do NOT disable resume
+        # globally on a miss; ExperimentConfiguration is shared across the pipeline.
         if not self.resumed:
-            if self.configs.resume_obj(self): self.resumed = True
-        if not self.resumed:
-            self.configs.use_last_backup = False
+            if self.configs.resume_obj(self):
+                self.resumed = True
         return self.resumed
 
             

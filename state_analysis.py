@@ -1,4 +1,5 @@
 import os, json
+import sys
 from pathlib import Path
 from datetime import datetime
 import shutil
@@ -1403,8 +1404,7 @@ def convert_pkl_to_json(root_dir, keyword="MultiRunEvaluator", ext=".pkl"):
     
     for pkl_file in log_paths:
         try:
-            with open(pkl_file, 'rb') as f: 
-                data = _load_any_pickle(f)
+            data = _load_any_pickle(pkl_file)
             
             # Save as JSON in same directory as pkl file
             json_file = pkl_file.with_suffix('.json')  # Use pathlib
@@ -1416,8 +1416,273 @@ def convert_pkl_to_json(root_dir, keyword="MultiRunEvaluator", ext=".pkl"):
             print(f"❌ Failed to convert {pkl_file.name}: {e}")
 
 
+_DRIVE_MANAGER_CACHE = {}
+
+
+def _analysis_allow_drive_downloads() -> bool:
+    """Return whether Drive downloads are allowed for state_analysis.
+
+    Priority:
+    1) DAQR_STATE_ANALYSIS_ALLOW_DRIVE_DOWNLOADS (if set)
+    2) DAQR_RESUME_ALLOW_DRIVE_DOWNLOADS (shared knob with runtime resume)
+    """
+    override = os.environ.get("DAQR_STATE_ANALYSIS_ALLOW_DRIVE_DOWNLOADS")
+    if override is not None:
+        return override == "1"
+    return os.environ.get("DAQR_RESUME_ALLOW_DRIVE_DOWNLOADS", "1") == "1"
+
+
+def _ensure_daqr_importable() -> None:
+    """Make `daqr` importable when running from the repo root."""
+    try:
+        daqr_root = PROJECT_ROOT
+        if str(daqr_root) not in sys.path:
+            sys.path.insert(0, str(daqr_root))
+    except Exception:
+        pass
+
+
+def _infer_config_dir(state_root: Path) -> Path:
+    """Infer the `daqr/config` directory from a framework_state root/path."""
+    try:
+        state_root = Path(state_root)
+    except Exception:
+        return PROJECT_ROOT / "daqr" / "config"
+
+    if state_root.name in {"framework_state", "model_state", "quantum_logs"}:
+        return state_root.parent
+
+    for parent in state_root.parents:
+        if parent.name == "config" and parent.parent.name == "daqr":
+            return parent
+
+    return PROJECT_ROOT / "daqr" / "config"
+
+
+def _get_drive_manager(config_dir: Path, verbose: bool = False):
+    """Best-effort create a Drive-backed manager (or return cached).
+
+    This is intentionally lazy-imported so `state_analysis` can run without
+    Drive dependencies installed.
+    """
+    if not _analysis_allow_drive_downloads():
+        return None
+
+    try:
+        config_dir = Path(config_dir)
+    except Exception:
+        return None
+
+    cache_key = str(config_dir.resolve())
+    if cache_key in _DRIVE_MANAGER_CACHE:
+        return _DRIVE_MANAGER_CACHE[cache_key]
+
+    _ensure_daqr_importable()
+
+    try:
+        # Use the lightest-weight Drive manager available: we only need Drive API
+        # access + state index helpers (not a full local registry scan).
+        from daqr.config.gd_backup_manager import GoogleDriveBackupManager
+
+        date_str = f"day_{datetime.now().strftime('%Y%m%d')}"
+        mgr = GoogleDriveBackupManager(date_str=date_str, config_dir=config_dir, verbose=verbose)
+    except Exception as exc:
+        if verbose:
+            print(f"[WARN] Drive manager unavailable: {exc}")
+        mgr = None
+
+    _DRIVE_MANAGER_CACHE[cache_key] = mgr
+    return mgr
+
+
+def _is_drive_filesystem_mirror_path(path: Path) -> bool:
+    """Return True when `path` points into the macOS Google Drive filesystem mirror.
+
+    Reading large pickles from this mirror can intermittently time out.
+    """
+    try:
+        parts = Path(path).parts
+    except Exception:
+        return False
+
+    if ".shortcut-targets-by-id" in parts:
+        return True
+    if "CloudStorage" in parts and any(p.startswith("GoogleDrive") for p in parts):
+        return True
+    return False
+
+
+def _download_state_from_drive_datalake(
+    mgr,
+    *,
+    component: str,
+    filename: str,
+    entry=None,
+    verbose: bool = False,
+):
+    """Download a state file via Drive API using the per-component state index.
+
+    This is intentionally API/datalake-only and will NOT fall back to the local
+    Drive filesystem mirror.
+    """
+    if mgr is None or not getattr(mgr, "remote_available", False) or not getattr(mgr, "drive", None):
+        return None
+
+    try:
+        from googleapiclient.http import MediaIoBaseDownload
+    except Exception:
+        return None
+
+    if entry is None:
+        try:
+            index = mgr.ensure_drive_state_index(component, build_if_missing=True)
+        except Exception as exc:
+            if verbose:
+                print(f"  ⚠️ Could not load Drive state index for {component}: {exc}")
+            index = None
+        entry = index.get(filename) if isinstance(index, dict) else None
+
+    if not (isinstance(entry, dict) and entry.get("drive_id")):
+        return None
+
+    day_name = entry.get("day")
+    if not (isinstance(day_name, str) and day_name.startswith("day_")):
+        day_name = f"day_{datetime.now().strftime('%Y%m%d')}"
+
+    try:
+        local_root = Path(getattr(mgr, "quantum_data_paths", {}).get("local", _infer_config_dir(PROJECT_ROOT)))
+        local_dir = local_root / component / day_name
+        local_dir.mkdir(parents=True, exist_ok=True)
+        local_path = local_dir / filename
+        if local_path.exists() and local_path.stat().st_size > 0:
+            return local_path
+
+        request = mgr.drive.files().get_media(fileId=entry["drive_id"])
+        with open(local_path, "wb") as f:
+            done = False
+            downloader = MediaIoBaseDownload(f, request)
+            while not done:
+                _status, done = downloader.next_chunk()
+
+        if local_path.exists() and local_path.stat().st_size > 0:
+            if verbose:
+                print(f"  ☁️ Downloaded evaluator state from Drive datalake: {local_path}")
+            return local_path
+    except Exception as exc:
+        if verbose:
+            print(f"  ⚠️ Drive datalake download failed for {filename}: {exc}")
+
+    return None
+
+
+def ensure_evaluator_state_downloaded(state_file_path: Path, verbose: bool = False) -> Path:
+    """Ensure a MultiRunEvaluator state pickle exists locally.
+
+    If missing, attempt to recover it from Drive using the existing DAQR Drive
+    manager implementation. Only downloads evaluator pickles (framework_state).
+    """
+    path = Path(state_file_path)
+    try:
+        if path.exists() and path.stat().st_size > 0 and not _is_drive_filesystem_mirror_path(path):
+            return path
+    except Exception:
+        # If stat fails, fall through to best-effort recovery.
+        pass
+
+    filename = path.name
+    if not filename.lower().startswith("multirunevaluator_"):
+        return path
+
+    mgr = _get_drive_manager(_infer_config_dir(path.parent), verbose=verbose)
+    if mgr is None:
+        return path
+
+    downloaded_path = _download_state_from_drive_datalake(
+        mgr,
+        component="framework_state",
+        filename=filename,
+        verbose=verbose,
+    )
+    if downloaded_path is not None:
+        return Path(downloaded_path)
+
+    # Avoid returning a Drive filesystem mirror path when we failed to fetch
+    # from the datalake (it is unreliable for large pickle reads on macOS).
+    try:
+        if path.exists() and _is_drive_filesystem_mirror_path(path):
+            if verbose:
+                print(f"  ⚠️ Refusing to load evaluator state from Drive mirror: {path}")
+            return Path(state_file_path)
+    except Exception:
+        pass
+
+    return path
+
+
+def prefetch_missing_evaluator_states(
+    *,
+    framework_state_root: Path,
+    keyword: str,
+    ext: str,
+    have_filenames: set[str],
+    verbose: bool = False,
+) -> list[Path]:
+    """Prefetch missing evaluator states from Drive for a given filename regex.
+
+    Downloads only MultiRunEvaluator pickles into local framework_state/day_*.
+    """
+    root = Path(framework_state_root)
+    if root.name != "framework_state":
+        return []
+
+    mgr = _get_drive_manager(_infer_config_dir(root), verbose=verbose)
+    if mgr is None:
+        return []
+
+    try:
+        index = mgr.ensure_drive_state_index("framework_state", build_if_missing=True)
+    except Exception as exc:
+        if verbose:
+            print(f"[WARN] Could not load Drive state index: {exc}")
+        return []
+
+    if not isinstance(index, dict) or not index:
+        return []
+
+    downloaded_paths: list[Path] = []
+    for filename in sorted(index.keys()):
+        if filename in have_filenames:
+            continue
+        if not filename.lower().startswith("multirunevaluator_"):
+            continue
+        if Path(filename).suffix != ext:
+            continue
+        try:
+            if not re.search(keyword, filename):
+                continue
+        except re.error as exc:
+            if verbose:
+                print(f"[WARN] Invalid regex {keyword!r}: {exc}")
+            break
+
+        local_path = _download_state_from_drive_datalake(
+            mgr,
+            component="framework_state",
+            filename=filename,
+            entry=index.get(filename),
+            verbose=verbose,
+        )
+        if local_path is not None:
+            downloaded_paths.append(Path(local_path))
+
+    if verbose and downloaded_paths:
+        print(f"☁️ Prefetched {len(downloaded_paths)} evaluator state(s) from Drive")
+    return downloaded_paths
+
+
 def _load_any_pickle(path: Path):
     """Best-effort loader: pickle → cloudpickle → SafeUnpickler."""
+    path = ensure_evaluator_state_downloaded(Path(path))
     data = None
     # Expose last load method for clearer logs (read by extract_data_from_state_file)
     # Methods: "pickle" (attempt 1), "cloudpickle" (attempt 2), "safe" (attempt 3), "failed"
@@ -1829,7 +2094,26 @@ def convert_key_state_files_to_csv(root_dir, output="", keyword=r"(?=.*MultiRunE
         keyword: Keyword to match in filenames
         ext: File extension (default: .pkl)
     """
-    pkl_files = collect_log_paths(Path(path), keyword, ext)
+    root_dir = Path(root_dir)
+    pkl_files = collect_log_paths(root_dir, keyword, ext)
+
+    # Prefetch missing evaluator states from Drive so the master dataset can be
+    # built even when evaluator pickles were offloaded.
+    have_filenames = {p.name for p in pkl_files}
+    downloaded = prefetch_missing_evaluator_states(
+        framework_state_root=root_dir,
+        keyword=keyword,
+        ext=ext,
+        have_filenames=have_filenames,
+        verbose=True,
+    )
+    for downloaded_path in downloaded:
+        if downloaded_path.exists() and downloaded_path.suffix == ext and re.search(keyword, downloaded_path.name):
+            pkl_files.append(downloaded_path)
+
+    # De-duplicate by absolute path.
+    uniq = {str(p.resolve()): p for p in pkl_files}
+    pkl_files = sorted(uniq.values())
     
     print(f"\n{'='*80}")
     print(f"CONVERTING KEY STATE FILES TO CSV")

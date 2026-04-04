@@ -333,6 +333,12 @@ class QuantumExperimentRunner:
 
 
     def resume(self):
+        # Fast resume policy: when enabled, resume only happens at the evaluator layer.
+        # Runner/model resumes are skipped to avoid expensive registry scans and Drive I/O.
+        if getattr(self.configs, "resume_scope", "all") == "evaluator":
+            self.resumed = False
+            return self.resumed
+
         if not self.resumed: 
             if self.configs.resume_obj(self):
                 # Resume loads a saved dict into this instance. Ensure we keep the

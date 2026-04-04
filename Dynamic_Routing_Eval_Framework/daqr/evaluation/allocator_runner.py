@@ -448,6 +448,50 @@ class AllocatorRunner:
         except Exception as e:
             print(f"❌ Error in experiment: {e}")
             traceback.print_exc()
+
+            # ------------------------------------------------------------
+            # Lazy Drive recovery (resume-on-error)
+            # ------------------------------------------------------------
+            # Policy: do NOT prefetch from Drive on resume. If (and only if)
+            # the evaluator run errors and resume is enabled, try to stage the
+            # evaluator pickle from Drive and load it so the pipeline can continue.
+            try:
+                if (
+                    self.evaluator is not None
+                    and self.custom_config is not None
+                    and getattr(self.custom_config, "resumed", False)
+                    and getattr(self.custom_config, "use_last_backup", False)
+                ):
+                    if not getattr(self.evaluator, "_drive_recovery_attempted", False):
+                        self.evaluator._drive_recovery_attempted = True
+
+                        mgr = getattr(self.custom_config, "backup_mgr", None)
+                        if mgr is not None:
+                            component = getattr(self.evaluator, "component", "framework_state")
+                            file_name = str(getattr(self.evaluator, "file_name", "")).replace("1.5", "1_5")
+                            suffix = getattr(self.custom_config, "suffix", None)
+                            if suffix:
+                                file_name = file_name.replace(".pkl", f"_{suffix}.pkl")
+
+                            print(f"☁️ Evaluator failed → attempting Drive recovery: {component}/{file_name}")
+                            drive_path = mgr.download_any_date(component=component, filename=file_name)
+
+                            if drive_path:
+                                try:
+                                    self.custom_config.backup_registry.setdefault(component, {})[file_name] = str(drive_path)
+                                except Exception:
+                                    pass
+
+                                try:
+                                    self.evaluator.resumed = False
+                                except Exception:
+                                    pass
+                                if self.evaluator.resume():
+                                    print("✅ Recovered evaluator state from Drive")
+                                    return True
+            except Exception as recovery_err:
+                print(f"⚠️ Drive recovery failed (continuing): {recovery_err}")
+
             return False
 
         finally:

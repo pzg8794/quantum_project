@@ -641,3 +641,75 @@ Source: `docs/guides/STATE_LAYERS_AND_RESUME.md`
 - Updated `GA Papers/QuantumFaultTolerant/main.tex` with the approved low-priority rounding-level fixes for `RQ1 / TABLE V` and `RQ2 / TABLE VI`.
 - Synced `H-MABs_MasterDataset_VerificationHub.ipynb` so the expected values and solved/open status match the paper.
 - Re-executed the notebook and verified that no `Open` rows remain in the saved outputs.
+
+
+### 2026-03-15 — reviewer comments converted into a structured review queue
+
+**Decision**
+- The next work phase is review-driven, not validation-driven.
+- Reviewer-comment tasks now take priority over all remaining engineering and automation work.
+
+**Structured review queue captured**
+- `R-01` Related Work differentiation
+- `R-02` Introduction wording: `situate`
+- `R-03` Abstract problem significance
+- `R-04` Early contribution statement
+- `R-05` Main findings sentence clarity
+- `R-06` Introduction length reduction
+- `R-07` Bullet-heavy gap framing
+- `R-08` Key Contributions compression
+- `R-09` `these considerations` ambiguity
+- `R-10` RQ typography
+- `R-11` Figure caption shortening / takeaway captions
+- `R-12` Hypothesis removal / cut-for-space review
+- `R-13` `RQ2` / Table VI caption shortening
+
+**Execution rule**
+- Each item is now frozen in the following format before implementation:
+  - `Task`
+  - `Meaning`
+  - `Before`
+  - `After`
+- These will be handled one by one in a later review pass.
+
+
+### 2026-03-21 — Drive upload now skips equal-or-larger remote files
+
+**Decision**
+- Shared-drive uploads should not blindly overwrite an existing remote file.
+- The upload rule is now:
+  - upload if the remote file is missing
+  - upload if the remote file exists but is smaller than the local file
+  - skip upload if the remote file exists and is the same size or larger
+
+**Reason**
+- This preserves the larger/more complete remote artifact and avoids redundant overwrites.
+- It matches the intended behavior for incremental state persistence while keeping staged local cleanup safe.
+
+**Applied result**
+- Updated `daqr/config/gd_backup_manager.py` so `_upload_file_to_drive()` queries Drive for `id`, `name`, and `size`, compares remote vs local size, and skips upload when the remote file is already the same size or larger.
+- Existing staged-file cleanup behavior remains unchanged in `local_backup_manager.py`: local staged files are deleted only after a successful verified Drive-backed save path.
+- Added targeted regression tests for the new size guard and wired them into `tools/tests/run_small_tests.sh`.
+
+
+### 2026-04-04 — Resume defaults to evaluator-only (full restore is opt-in)
+
+**Decision**
+- Default resume behavior should not trigger a full Drive restore of all expected runner/model files.
+- The default resume scope is now evaluator-only; full restore is explicitly opt-in.
+
+**Behavior**
+- `DAQR_RESUME_SCOPE` defaults to `evaluator`.
+- When `DAQR_RESUME_SCOPE=all`, evaluator resume may prefetch/restore expected runner + model keys.
+- Drive downloads are explicitly gated via `DAQR_RESUME_ALLOW_DRIVE_DOWNLOADS=0|1`.
+
+**Applied result**
+- Updated `daqr/config/experiment_config.py` to:
+  - default to evaluator-only resume scope
+  - prevent evaluator-triggered full prefetch unless scope is `all`
+  - keep lazy per-file Drive download behavior behind the download gate
+- Updated `state_analysis.py` to prefetch missing `MultiRunEvaluator_*` evaluator pickles from Drive (framework_state only) when generating master datasets.
+
+**Reason**
+- Evaluator-only restores are sufficient for most resume and downstream analysis workflows.
+- Keeping full restore behind an explicit knob reduces Drive churn and makes resumption more predictable.

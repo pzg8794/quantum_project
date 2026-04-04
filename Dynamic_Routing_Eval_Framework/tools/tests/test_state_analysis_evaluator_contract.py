@@ -90,6 +90,13 @@ def _can_import_runtime_modules() -> bool:
 def _find_state(filename: str) -> Path | None:
     matches = list(STATE_ROOT.rglob(filename))
     if not matches:
+        # Best-effort Drive recovery: state files may have been offloaded.
+        try:
+            recovered = state_analysis.ensure_evaluator_state_downloaded(STATE_ROOT / filename)
+            if recovered is not None and Path(recovered).exists():
+                return Path(recovered)
+        except Exception:
+            pass
         return None
     matches.sort(key=lambda path: path.stat().st_mtime, reverse=True)
     return matches[0]

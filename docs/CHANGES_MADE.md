@@ -788,3 +788,48 @@ Your Paper7 (QBGP) experiments can now run without oracle hangs!
 - updated `GA Papers/QuantumFaultTolerant/main.tex` with the approved low-priority `RQ1` and `RQ2` value adjustments
 - updated `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/notebooks/H-MABs_MasterDataset_VerificationHub.ipynb`
 - re-executed the notebook and cleared all remaining `Open` status rows from the saved validation outputs
+
+
+### Captured the next review-phase to-do list from reviewer comments
+- converted the active reviewer comments into a structured `R-01` through `R-13` queue
+- recorded each item with:
+  - `Task`
+  - `Meaning`
+  - `Before`
+  - `After`
+- separated these review tasks from the remaining engineering backlog so the next pass can proceed one item at a time without re-deriving the work
+
+
+### Added a size-aware Drive upload guard for saved state files
+- updated `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/config/gd_backup_manager.py`
+- Drive upload behavior is now:
+  - upload when the remote file is missing
+  - upload when the remote file is smaller than the local file
+  - skip upload when the remote file is the same size or larger
+- local staged-file cleanup behavior remains intact:
+  - staged local files are only deleted after a successful verified Drive-backed save path
+
+### Added regression tests for the Drive upload size guard
+- added `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/tools/tests/test_task2d_drive_upload_size_guard_static.py`
+- added `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/tools/tests/test_task2d_drive_upload_size_guard_behavior.py`
+- updated `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/tools/tests/run_small_tests.sh`
+
+
+### Default resume now restores evaluator state only (opt-in full restore)
+- updated `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/config/experiment_config.py`
+- new defaults:
+  - `DAQR_RESUME_SCOPE` defaults to `evaluator`
+  - full prefetch/restore of runner + model expected keys only runs when `DAQR_RESUME_SCOPE=all`
+- Drive downloads are now explicitly gated by `DAQR_RESUME_ALLOW_DRIVE_DOWNLOADS=0|1`
+
+
+### Added a registry helper for canonical + legacy state registries
+- updated `hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/config/state_registry.py`
+- added `get_registered_state_path(...)` to resolve both:
+  - legacy `config_registry[component][filename] -> path`
+  - canonical `config_registry['state'][filename] -> {active_path, drive_path, ...}`
+
+
+### state_analysis now prefetches evaluator pickles from Drive for master datasets
+- updated `hybrid_variable_framework/state_analysis.py`
+- when converting evaluator state files to CSV, missing `MultiRunEvaluator_*.pkl` files are recovered from Drive (framework_state only) using the existing DAQR Drive manager implementation

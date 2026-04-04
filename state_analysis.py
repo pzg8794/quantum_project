@@ -2205,14 +2205,13 @@ def convert_key_state_files_to_csv(root_dir, output="", keyword=r"(?=.*MultiRunE
     root_dir = Path(root_dir)
     pkl_files = collect_log_paths(root_dir, keyword, ext)
 
-    # Prefetch missing evaluator states from Drive so the master dataset can be
-    # built even when evaluator pickles were offloaded.
-    have_filenames = {p.name for p in pkl_files}
-    downloaded = prefetch_missing_evaluator_states(
+    # Fetch evaluator states from Drive using the same resume download path.
+    # This matches `keyword` against Drive state-index keys (full filenames)
+    # and downloads ALL matches.
+    downloaded = download_evaluator_states_for_pattern(
         framework_state_root=root_dir,
-        keyword=keyword,
+        pattern=keyword,
         ext=ext,
-        have_filenames=have_filenames,
         verbose=True,
     )
     for downloaded_path in downloaded:

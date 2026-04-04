@@ -1680,6 +1680,114 @@ def prefetch_missing_evaluator_states(
     return downloaded_paths
 
 
+def download_evaluator_states_for_pattern(
+    *,
+    framework_state_root: Path,
+    pattern: str,
+    ext: str = ".pkl",
+    verbose: bool = False,
+) -> list[Path]:
+    """Download evaluator state pickles from Drive for a filename regex pattern.
+
+    This is a single-purpose helper you can call before building master datasets.
+    It uses the same DAQR resume download path:
+
+      - metadata: `GoogleDriveBackupManager.ensure_drive_state_index("framework_state")`
+      - download: `GoogleDriveBackupManager.download_any_date(component="framework_state", ...)`
+
+    The regex `pattern` is matched against Drive state-index keys (full saved filenames).
+    Only `MultiRunEvaluator_*.pkl` files are considered.
+
+    Notes:
+      - Requires Drive downloads to be enabled (via `DAQR_STATE_ANALYSIS_ALLOW_DRIVE_DOWNLOADS=1`
+        or the shared `DAQR_RESUME_ALLOW_DRIVE_DOWNLOADS=1`).
+      - Requires Drive API availability; this helper intentionally does not rely on the macOS
+        Google Drive filesystem mirror.
+    """
+
+    root = Path(framework_state_root)
+    if root.name != "framework_state":
+        raise ValueError(
+            f"framework_state_root must point to the local 'framework_state' directory; got: {root}"
+        )
+
+    if not _analysis_allow_drive_downloads():
+        raise RuntimeError(
+            "Drive downloads are disabled. Set DAQR_STATE_ANALYSIS_ALLOW_DRIVE_DOWNLOADS=1 "
+            "(or DAQR_RESUME_ALLOW_DRIVE_DOWNLOADS=1) to enable pattern-based downloads."
+        )
+
+    try:
+        regex = re.compile(pattern)
+    except re.error as exc:
+        raise ValueError(f"Invalid regex pattern: {pattern!r}: {exc}") from exc
+
+    mgr = _get_drive_manager(_infer_config_dir(root), verbose=verbose)
+    if mgr is None:
+        raise RuntimeError("Drive manager unavailable; cannot download evaluator states.")
+
+    if not getattr(mgr, "remote_available", False) or not getattr(mgr, "drive", None):
+        raise RuntimeError("Drive API unavailable; cannot download evaluator states.")
+
+    try:
+        index = mgr.ensure_drive_state_index("framework_state", build_if_missing=True)
+    except Exception as exc:
+        raise RuntimeError(f"Could not load Drive state index for framework_state: {exc}") from exc
+
+    if not isinstance(index, dict) or not index:
+        raise RuntimeError("Drive state index for framework_state is empty/unavailable.")
+
+    matched_filenames: list[str] = []
+    for filename in sorted(index.keys()):
+        if not isinstance(filename, str) or not filename:
+            continue
+        if not filename.lower().startswith("multirunevaluator_"):
+            continue
+        if Path(filename).suffix != ext:
+            continue
+        if not regex.search(filename):
+            continue
+        matched_filenames.append(filename)
+
+    if not matched_filenames:
+        raise RuntimeError(f"No evaluator states matched pattern: {pattern!r}")
+
+    downloaded_paths: list[Path] = []
+    failures: list[str] = []
+
+    for filename in matched_filenames:
+        try:
+            local_path_str = mgr.download_any_date(component="framework_state", filename=filename)
+        except Exception as exc:
+            failures.append(f"{filename}: {type(exc).__name__}: {exc}")
+            continue
+
+        if not local_path_str:
+            failures.append(f"{filename}: download_any_date returned no path")
+            continue
+
+        local_path = Path(local_path_str)
+        try:
+            if not local_path.exists() or local_path.stat().st_size <= 0:
+                failures.append(f"{filename}: staged file missing/empty at {local_path}")
+                continue
+        except Exception as exc:
+            failures.append(f"{filename}: could not stat staged file at {local_path}: {exc}")
+            continue
+
+        downloaded_paths.append(local_path)
+
+    if failures:
+        raise RuntimeError(
+            "Failed to download one or more evaluator state(s):\n" + "\n".join(failures)
+        )
+
+    if verbose:
+        print(f"☁️ Downloaded {len(downloaded_paths)} evaluator state(s) via pattern")
+
+    return downloaded_paths
+
+
 def _load_any_pickle(path: Path):
     """Best-effort loader: pickle → cloudpickle → SafeUnpickler."""
     path = ensure_evaluator_state_downloaded(Path(path))
@@ -2155,7 +2263,7 @@ if __name__ == "__main__":
 
     key = "1000_1000_1"
     output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key}_paper8.csv"
-    convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}_S.*T_paper8.*\.pkl)")
+    convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*1000_1000_1_S.*T_paper8.*\.pkl)")
 
     # key = "4000_2000_5_S"
     # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_paper2_4000_2000_5_ST.csv"

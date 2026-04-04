@@ -201,6 +201,30 @@ Your Paper7 (QBGP) experiments can now run without oracle hangs!
 
 ---
 
+## 2026-04-04 — Pattern-based evaluator state downloads (Drive index)
+
+### Goal
+- Enable analysis-time workflows to download evaluator pickles from Drive by matching a regex against the Drive state index keys (full saved filenames).
+
+### Files changed
+- `state_analysis.py`
+- `Dynamic_Routing_Eval_Framework/tools/tests/run_small_tests.sh`
+- `Dynamic_Routing_Eval_Framework/tools/tests/test_state_analysis_evaluator_pattern_download.py`
+
+### What changed
+- Added `download_evaluator_states_for_pattern(...)`:
+  - Loads the Drive `framework_state` index via `ensure_drive_state_index(...)`.
+  - Matches a provided regex against index keys (filenames).
+  - Downloads **all** matching `MultiRunEvaluator_*.pkl` via the same resume path: `download_any_date(...)`.
+  - Raises on (a) downloads disabled, (b) Drive API unavailable, (c) no matches, or (d) any per-file download failure.
+
+### Tests
+- Added deterministic unit tests that stub the Drive manager/index and assert:
+  - `download_any_date(component="framework_state", filename=...)` is called for every match.
+  - the helper raises when the pattern matches nothing.
+
+---
+
 ## 2026-03-12 — Master-dataset validation hub planning
 
 ### Files added/updated

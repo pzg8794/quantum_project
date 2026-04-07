@@ -829,6 +829,17 @@ current design direction before the next patch.
   - `tools/state/manage_drive_pattern.py`
   - use this instead of inline terminal Python for pattern-based check/migrate work
 
+### 2026-04-05
+
+- Remote datalake cleanup / consolidation is supported via the existing aggregator tool:
+  - `tools/state/aggregate_state_dirs.py --remote` scans Drive `quantum_data_lake/<component>/day_*`.
+  - `--remote-execute` applies changes:
+    - moves "winner" files into the target day folder (largest size wins; mtime breaks ties)
+    - moves smaller duplicates to Drive Trash (not permanent delete)
+    - removes empty old `day_*` folders by moving them to Drive Trash
+    - uploads an updated per-component `state_index.json`
+- Note: Drive Trash may need to be emptied separately to reclaim storage quota.
+
 ---
 
 ## 10) Next approved step

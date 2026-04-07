@@ -20,8 +20,16 @@ This folder contains **framework test + repair utilities**.
   - `python3 tools/state/repair_state_key_attrs.py --help`
   - `python3 tools/state/fix_key_attrs_qubit_caps.py --help`
 
-- Aggregate state day directories (safe, local-only):
-  - `python3 tools/state/aggregate_state_dirs.py --help`
+- Aggregate state day directories (local) and optionally clean up Drive day folders:
+  - Help:
+    - `python3 tools/state/aggregate_state_dirs.py --help`
+  - Local-only aggregation into today's folder:
+    - `python3 tools/state/aggregate_state_dirs.py --components framework_state --target today`
+  - Drive scan (no changes):
+    - `python3 tools/state/aggregate_state_dirs.py --components framework_state --target today --remote --dry-run`
+  - Drive execute (moves winners into target day folder; trashes smaller duplicates + empty old day folders; updates `state_index.json`):
+    - `python3 tools/state/aggregate_state_dirs.py --components framework_state --target today --remote --remote-execute`
+  - Note: remote cleanup uses Drive Trash (not permanent delete). If quota is tight, you may need to empty Drive Trash to reclaim space.
 
 ## Backward compatibility
 

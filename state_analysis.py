@@ -1372,7 +1372,7 @@ def generate_master_csv(tests_type, path="/Users/pitergarcia/DataScience/Semeste
                         # Scenario data
                         "scenario": scenario_name,
                         "scenario_env": re.sub(r"\(.*\)|\s+|attack", "", scenario_env.lower()).upper(),
-                        "scenario_cat": re.split("\(|\)", scenario_cat)[-2],
+                        "scenario_cat": re.split(r"\(|\)", scenario_cat)[-2],
                         
                         # Winner data
                         "winner_model": winner.get("model", ""),
@@ -1870,7 +1870,13 @@ def extract_data_from_state_file(state_file_path):
         runs = get_val(state, 'runs_id', 1)
         frame_step = get_val(state, 'frame_step')
         base_frames = get_val(state, 'base_frames')
-        filename = get_val(state, 'file_name', Path(state_file_path).name)
+        stored_filename = get_val(state, 'file_name', None)
+        path_filename = Path(state_file_path).name
+        filename = stored_filename or path_filename
+
+        key_attrs = get_val(state, 'key_attrs', {}) or {}
+        if not isinstance(key_attrs, dict):
+            key_attrs = {}
         
         # Extract scaled capacity and scale from filename
         # Format: MultiRunEvaluator_{scaled_cap}-{allocator}_...
@@ -1878,13 +1884,44 @@ def extract_data_from_state_file(state_file_path):
         #   dict_keys(['scenarios_stats', 'env_experiments', 'evaluation_results', 'base_seed', 'frame_step', 'frames_count', 'base_frames', 'component', 'enable_progress', 'models', 'run_state', 'total_time', 'start_time', 'resumed', 'key_attrs', 'file_name', 'cal_winner', 'is_complete', 'env_type', 'capacity', 't_scale', 'is_base_t', 'save_to_dir', 'runs_id', 'allocator_id', 'env_id', 'attack_id', 'cap_id'])
         # print("KEYS: ", state.keys())
 
-        t_scale = float(state.get("t_scale"))
-        capacity = float(state.get("capacity"))
-        scaled_cap = capacity * t_scale
-        cap_type = 'Tb' if bool(state.get("is_base_t")) else "T"
+        def _as_float(v):
+            try:
+                if v is None:
+                    return None
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+
+        def _parse_scale_tag(name: str):
+            # Examples: *_S2T.pkl, *_S1Tb.pkl, *_S1_5T.pkl
+            m = re.search(r"_S(?P<scale>[0-9]+(?:[._][0-9]+)?)(?P<cap_type>Tb|T)(?:\d*)?\.pkl$", name)
+            if not m:
+                return None, None
+            scale_str = str(m.group('scale'))
+            # Historical convention: 1_5 means 1.5
+            if '_' in scale_str and '.' not in scale_str:
+                scale_str = scale_str.replace('_', '.')
+            return _as_float(scale_str), str(m.group('cap_type'))
+
+        parsed_scale, parsed_cap_type = _parse_scale_tag(path_filename)
+
+        t_scale = _as_float(get_val(state, 't_scale'))
+        if t_scale is None:
+            t_scale = parsed_scale
+
+        capacity = _as_float(get_val(state, 'capacity'))
+        if capacity is None:
+            capacity = _as_float(get_val(state, 'cap_id'))
+
+        scaled_cap = (capacity * t_scale) if (capacity is not None and t_scale is not None) else capacity
+
+        is_base_t = get_val(state, 'is_base_t')
+        if is_base_t is None and parsed_cap_type:
+            is_base_t = (parsed_cap_type == 'Tb')
+        cap_type = 'Tb' if bool(is_base_t) else 'T'
 
         # Usage in your extraction:
-        qubit_alloc = state.get("key_attrs", {}).get("qubit_capacities", "")
+        qubit_alloc = key_attrs.get("qubit_capacities", "")
         qubit_alloc_clean = clean_qubit_allocation(qubit_alloc)
         if not qubit_alloc_clean:
             # print(json.dumps(state.get("key_attrs", {}), indent=2))
@@ -1894,14 +1931,22 @@ def extract_data_from_state_file(state_file_path):
         
         # Get experiment data
         eval_scen_qubits_caps = get_val(state, "runner_qubit_caps", {})
+        if not isinstance(eval_scen_qubits_caps, dict):
+            eval_scen_qubits_caps = {}
         # if eval_scen_qubits_caps: print(json.dumps(eval_scen_qubits_caps, indent=2))
         
         # env_experiments:  dict_keys(['markov', 'stochastic', 'adaptive', 'onlineadaptive', 'none'])
-        env_experiments = get_val(state, 'env_experiments', {})
+        env_experiments = get_val(state, 'env_experiments', {}) or {}
+        if not isinstance(env_experiments, dict):
+            env_experiments = {}
         # evaluation_results:  dict_keys(['stochastic', 'markov', 'adaptive', 'onlineadaptive', 'none', 'scenarios_results'])
-        evaluation_results = get_val(state, 'evaluation_results', {})
-        # scenarios_results:  dict_keys(['stochastic', 'markov', 'adaptive', 'onlineadaptive', 'none'])
-        eval_scenrios_results = get_val(state, 'evaluation_results', {}).get("scenarios_results", {})
+        evaluation_results = get_val(state, 'evaluation_results', {}) or {}
+        if not isinstance(evaluation_results, dict):
+            evaluation_results = {}
+        # Newer schema: evaluation_results["scenarios_results"][scenario_name] -> aggregated scenario stats
+        eval_scenrios_results = evaluation_results.get("scenarios_results", {})
+        if not isinstance(eval_scenrios_results, dict):
+            eval_scenrios_results = {}
         if not env_experiments:
             print(f"  ⚠️  No experiment data found")
             return []
@@ -1914,14 +1959,79 @@ def extract_data_from_state_file(state_file_path):
         # ['stochastic', 'markov', 'adaptive', 'onlineadaptive', 'none']
         # print("scenarios_results: ", eval_scenrios_results.keys())
 
+        def _mean(values):
+            vals = []
+            for v in values or []:
+                fv = _as_float(v)
+                if fv is not None:
+                    vals.append(fv)
+            return (sum(vals) / len(vals)) if vals else None
+
+        def _fallback_scenario_aggregates(experiments_dict):
+            """Best-effort scenario aggregates from per-experiment results.
+
+            Older MultiRunEvaluator states may not include evaluation_results['scenarios_results'].
+            """
+            from collections import Counter, defaultdict
+
+            winner_counts = Counter()
+            metrics = defaultdict(lambda: {"eff": [], "avg_reward": [], "gap": []})
+
+            if not isinstance(experiments_dict, dict):
+                return {
+                    "scenario_winner": None,
+                    "scen_winner_eff": None,
+                    "scen_winner_reward": None,
+                    "scen_winner_gap": None,
+                    "model_avg_eff": {},
+                }
+
+            for exp_data in experiments_dict.values():
+                if not isinstance(exp_data, dict):
+                    continue
+                w = exp_data.get('winner')
+                if isinstance(w, str) and w:
+                    winner_counts[w] += 1
+
+                results = exp_data.get('results') or {}
+                if not isinstance(results, dict):
+                    continue
+                for model_name, model_data in results.items():
+                    if not isinstance(model_data, dict):
+                        continue
+                    eff = model_data.get('efficiency')
+                    if eff is not None:
+                        metrics[model_name]["eff"].append(eff)
+                    ar = model_data.get('avg_reward')
+                    if ar is not None:
+                        metrics[model_name]["avg_reward"].append(ar)
+                    gap = model_data.get('gap')
+                    if gap is not None:
+                        metrics[model_name]["gap"].append(gap)
+
+            scenario_winner = winner_counts.most_common(1)[0][0] if winner_counts else None
+            model_avg_eff = {mn: _mean(m.get('eff')) for mn, m in metrics.items()}
+
+            winner_eff = _mean(metrics.get(scenario_winner, {}).get('eff')) if scenario_winner else None
+            winner_reward = _mean(metrics.get(scenario_winner, {}).get('avg_reward')) if scenario_winner else None
+            winner_gap = _mean(metrics.get(scenario_winner, {}).get('gap')) if scenario_winner else None
+
+            return {
+                "scenario_winner": scenario_winner,
+                "scen_winner_eff": winner_eff,
+                "scen_winner_reward": winner_reward,
+                "scen_winner_gap": winner_gap,
+                "model_avg_eff": model_avg_eff,
+            }
+
         for scenario_name, experiments in env_experiments.items():
             if not isinstance(experiments, dict):
                 continue
             # scenario_res = evaluation_results.get(scenario_name, {})
             cenario_qubit_caps = None
             scenerio_attrs = eval_scenrios_results.get(scenario_name, {})
-            if not isinstance(scenerio_attrs, dict) or not scenerio_attrs:
-                continue
+            if not isinstance(scenerio_attrs, dict):
+                scenerio_attrs = {}
             scenario_qubits_caps = eval_scen_qubits_caps.get(scenario_name, {})
             if scenario_qubits_caps: 
                 # print(json.dumps(scenario_qubits_caps, indent=2))
@@ -1940,10 +2050,17 @@ def extract_data_from_state_file(state_file_path):
             # ['Oracle', 'GNeuralUCB', 'EXPUCB', 'EXPNeuralUCB']
             # print(scenerio_attrs["all_model_metrics"].keys())
             # print(scenario_res["avg_efficiency_stats"]["all_model_metrics"].keys())
-            all_model_metrics = scenerio_attrs.get("all_model_metrics")
-            winner_avg_metrics = scenerio_attrs.get("winner_avg_metrics")
-            if not isinstance(all_model_metrics, dict) or not isinstance(winner_avg_metrics, dict):
-                continue
+            all_model_metrics = scenerio_attrs.get("all_model_metrics") or {}
+            winner_avg_metrics = scenerio_attrs.get("winner_avg_metrics") or {}
+            winner_efficients = scenerio_attrs.get("winner_efficients") or {}
+            if not isinstance(all_model_metrics, dict):
+                all_model_metrics = {}
+            if not isinstance(winner_avg_metrics, dict):
+                winner_avg_metrics = {}
+            if not isinstance(winner_efficients, dict):
+                winner_efficients = {}
+
+            fallback = _fallback_scenario_aggregates(experiments) if not scenerio_attrs else None
 
             # ['avg_reward', 'avg_gap', 'efficiency_list', 'wins', 'avg_efficiency', 'reward_list', 'creward_list']
             # print(f"evaluation_results for scenario {scenario_name}: ", scenerio_attrs["winner_avg_metrics"].keys())
@@ -2068,18 +2185,41 @@ def extract_data_from_state_file(state_file_path):
                     # ['regret_list', 'reward_list', 'path_action_list', 'final_regret', 'final_reward', 'oracle_path', 'oracle_action', 'mode']
                     # print(model_data["model_results"].keys())
                     
-                    failed_attempts = model_data.get('failed_attempts', {})
+                    failed_attempts = model_data.get('failed_attempts') or {}
+                    if not isinstance(failed_attempts, dict):
+                        failed_attempts = {}
+
+                    model_results = model_data.get('model_results') or {}
+                    if not isinstance(model_results, dict):
+                        model_results = {}
+
+                    model_avg_eff = winner_efficients.get(model_name)
+                    if model_avg_eff is None and fallback:
+                        model_avg_eff = (fallback.get('model_avg_eff') or {}).get(model_name)
+
+                    scenario_winner = scenerio_attrs.get("overall_winner")
+                    scen_winner_eff = attack_winner_attrs.get("avg_efficiency")
+                    scen_winner_reward = attack_winner_attrs.get("avg_reward")
+                    scen_winner_gap = attack_winner_attrs.get("avg_gap")
+                    if fallback:
+                        scenario_winner = scenario_winner or fallback.get("scenario_winner")
+                        if scen_winner_eff is None:
+                            scen_winner_eff = fallback.get("scen_winner_eff")
+                        if scen_winner_reward is None:
+                            scen_winner_reward = fallback.get("scen_winner_reward")
+                        if scen_winner_gap is None:
+                            scen_winner_gap = fallback.get("scen_winner_gap")
 
                     row = {
                         # === SOURCE & METADATA ===
-                        'source_file': state.get("file_name"),          # Origin log file
-                        'total_time': state.get("total_time"),          # Total execution time
+                        'source_file': path_filename,                   # Origin state filename
+                        'total_time': get_val(state, "total_time"),     # Total execution time
                         'qubit_caps': exp_qubits_caps or qubit_alloc_clean,  # Qubit allocation
                         
                         # === ENVIRONMENT CONFIG ===
-                        'env_type': state.get("key_attrs").get("env_type"),  # Environment type
-                        'runs': state.get("key_attrs").get("runs") or state.get("runs_id"),  # Number of runs
-                        'allocator': state.get("allocator_id"),         # Allocation strategy
+                        'env_type': key_attrs.get("env_type"),          # Environment type
+                        'runs': key_attrs.get("runs") or get_val(state, "runs_id"),  # Number of runs
+                        'allocator': get_val(state, "allocator_id") or key_attrs.get("allocator"),  # Allocation strategy
                         
                         # === SCENARIO INFO ===
                         'scenario': scenario_name.upper(),              # Scenario name (STOCHASTIC, MARKOV, etc.)
@@ -2100,9 +2240,9 @@ def extract_data_from_state_file(state_file_path):
                         'frames': model_data.get('frames_count'),       # Frame count executed
                         'model': model_name.upper(),                    # Model name
                         'reward': model_data.get('final_reward'),       # Final reward
-                        'regret': model_data["model_results"]['final_regret'],  # Final regret vs Oracle
+                        'regret': model_results.get('final_regret'),     # Final regret vs Oracle
                         'avg_reward': model_data.get('avg_reward'),     # Average reward per frame
-                        'model_avg_eff': scenerio_attrs["winner_efficients"].get(model_name, 0),  # Model's avg eff across scenario
+                        'model_avg_eff': model_avg_eff,                 # Model's avg eff across scenario (best-effort)
                         
                         # === EFFICIENCY & GAP ===
                         'eff_pct': model_data.get('efficiency'),        # Efficiency percentage vs Oracle
@@ -2114,10 +2254,10 @@ def extract_data_from_state_file(state_file_path):
                         'misses_thrs': failed_attempts.get('under_threshold', 0),  # Below threshold
                         
                         # === SCENARIO WINNER (AGGREGATE ACROSS ALL EXPERIMENTS) ===
-                        'scenario_winner': scenerio_attrs["overall_winner"],  # Winner of entire scenario
-                        'scen_winner_eff': attack_winner_attrs["avg_efficiency"],  # Scenario winner's avg efficiency
-                        'scen_winner_reward': attack_winner_attrs["avg_reward"],   # Scenario winner's avg reward
-                        'scen_winner_gap': attack_winner_attrs["avg_gap"],         # Scenario winner's avg gap
+                        'scenario_winner': scenario_winner,             # Winner of entire scenario (best-effort)
+                        'scen_winner_eff': scen_winner_eff,             # Scenario winner's avg efficiency (best-effort)
+                        'scen_winner_reward': scen_winner_reward,       # Scenario winner's avg reward (best-effort)
+                        'scen_winner_gap': scen_winner_gap,             # Scenario winner's avg gap (best-effort)
                     }
                     all_rows.append(row)
     except Exception as e:
@@ -2258,17 +2398,27 @@ if __name__ == "__main__":
 
     # key = r"(3|5)_(\(18_9_6_2\)_)?S\d+([._]\d+)?Tb?"
     # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_Hybrid.csv"
-    # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
+    # convert_key_state_files_to_csv(
+    #     path,
+    #     output=output_path,
+    #     keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)",
+    # )
 
-    key = "1000_1000_1"
-    output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key}_paper8.csv"
-    convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*1000_1000_1_S.*T_paper8.*\.pkl)")
+    # key = "1000_1000_1_S"
+    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key}_paper8.csv"
+    # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*1000_1000_1_S.*T_paper8.*\.pkl)")
 
     # key = "4000_2000_5_S"
     # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_paper2_4000_2000_5_ST.csv"
     # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key+'.*_paper2'}\.pkl)")
 
 
-    # key = "50_50_5_S.*T"
-    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_paper8{key}.csv"
-    # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key+'paper8'}\.pkl)")
+    # key = "50_50_5_S"
+    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_paper7{key}.csv"
+    # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key+'.*T_paper7'}\.pkl)")
+
+
+    # Default_All_All-4000_2000_5_S2T_paper2.pkl
+    key = "4000_2000_5_S"
+    output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_paper7{key}.csv"
+    convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key+'.*T_paper7'}\.pkl)")

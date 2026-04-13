@@ -148,19 +148,30 @@ TBD rule:
 
 10. `tab:testbed_comparison`
     - source datasets:
-      - `Validated_Logs/Master_Dataset_paper2_4000_2000_5_ST.csv`
-      - `Validated_Logs/Master_Dataset_paper7_50_50_5_ST.csv`
-      - `Validated_Logs/Master_Dataset_paper12_1500_500_5_ST.csv`
-      - `Validated_Logs/Master_Dataset_1000_1000_1_paper8.csv`
+      - `Validated_Logs/native/Master_Dataset_paper2_4000_2000.csv`
+      - `Validated_Logs/native/Master_Dataset_paper7_50_50.csv`
+      - `Validated_Logs/native/Master_Dataset_paper12_1500_500.csv`
+      - `Validated_Logs/native/Master_Dataset_paper8_1000_1000.csv`
     - status:
       - directly reproducible
 
 11. `tab:model_family_comparison`
     - source datasets:
       - all four internal master datasets
-      - all four external testbed master datasets
+      - all four external testbed native-family master datasets
     - status:
       - directly reproducible
+
+### Native vs Standardized Family Contract
+
+- Native/original paper-testbed tables now validate from `Validated_Logs/native/`.
+- Standardized `4000_2000` manuscript tables validate from `Validated_Logs/standardized/`.
+- Similar-looking outputs can still be correct because they come from different source families.
+- The native family is currently anchored to the existing validated paper-config corpora:
+  - Paper 2 → 4K/2K/5R
+  - Paper 7 → 50/50/5R
+  - Paper 12 → 1.5K/500/5R
+  - Paper 8 → 1K/1K/1R
 
 ### Deferred Artifact
 

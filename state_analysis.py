@@ -33,6 +33,9 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 
 # Build absolute paths
 PROJECT_ROOT = SCRIPT_DIR / "Dynamic_Routing_Eval_Framework"
+VALIDATED_LOGS_ROOT = SCRIPT_DIR.parent / "Validated_Logs"
+NATIVE_MASTER_DATA_DIR = VALIDATED_LOGS_ROOT / "native"
+STANDARDIZED_MASTER_DATA_DIR = VALIDATED_LOGS_ROOT / "standardized"
 
 
 DATALAKE_ROOT = Path("/content/drive/Shareddrives/ai_quantum_computing/quantum_data_lake")
@@ -51,6 +54,34 @@ STATE_ROOTS_DATALAKE = [
 
 
 ALL_STATE_ROOTS = STATE_ROOTS_LOCAL + STATE_ROOTS_DATALAKE
+
+
+NATIVE_DATASET_SPECS = {
+    "paper2": {
+        "config_key": "4000_2000",
+        "canonical_csv": VALIDATED_LOGS_ROOT / "Master_Dataset_paper2-4000_2000_5.csv",
+        "keyword": r"(?=.*MultiRunEvaluator)(?=.*paper2)(?=.*4000_2000_5.*\.pkl)",
+    },
+    "paper7": {
+        "config_key": "50_50",
+        "canonical_csv": VALIDATED_LOGS_ROOT / "Master_Dataset_paper7_50_50_5.csv",
+        "keyword": r"(?=.*MultiRunEvaluator)(?=.*paper7)(?=.*50_50_5.*\.pkl)",
+    },
+    "paper8": {
+        "config_key": "1000_1000",
+        "canonical_csv": VALIDATED_LOGS_ROOT / "Master_Dataset_1000_1000_1_paper8.csv",
+        "keyword": r"(?=.*MultiRunEvaluator)(?=.*1000_1000_1.*\.pkl)",
+    },
+    "paper12": {
+        "config_key": "1500_500",
+        "canonical_csv": VALIDATED_LOGS_ROOT / "Master_Dataset_paper12-1500_500_5_ST.csv",
+        "keyword": r"(?=.*MultiRunEvaluator)(?=.*paper12)(?=.*1500_500_.*\.pkl)",
+    },
+}
+
+
+STANDARDIZED_PAPER_ORDER = ["paper2", "paper7", "paper8", "paper12"]
+STANDARDIZED_CONFIG_KEY = "4000_2000"
 
 
 # Valid model classes from your config
@@ -2373,6 +2404,153 @@ def convert_key_state_files_to_csv(root_dir, output="", keyword=r"(?=.*MultiRunE
     if output and not df.empty:
         print(df.head())
         df.to_csv(output, index=False)
+    return df
+
+
+def _coerce_int_string(value):
+    try:
+        if value is None or value == "":
+            return None
+        return str(int(float(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def derive_config_key(base_frames, frame_step, fallback=None):
+    base_str = _coerce_int_string(base_frames)
+    step_str = _coerce_int_string(frame_step)
+    if base_str and step_str:
+        return f"{base_str}_{step_str}"
+    return fallback
+
+
+def infer_paper_label(source_file, fallback=None):
+    if source_file:
+        match = re.search(r"_(paper\d+)\.pkl$", str(source_file))
+        if match:
+            return match.group(1)
+    return fallback
+
+
+def normalize_master_dataset(df, paper_hint=None, config_key_hint=None):
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    out = df.copy()
+
+    if "paper" not in out.columns:
+        if "paper_id" in out.columns:
+            out["paper"] = out["paper_id"].apply(
+                lambda value: f"paper{str(value).strip()}" if pd.notna(value) and str(value).strip() else paper_hint
+            )
+        else:
+            out["paper"] = paper_hint
+
+    out["paper"] = out.apply(
+        lambda row: infer_paper_label(row.get("source_file"), row.get("paper") or paper_hint),
+        axis=1,
+    )
+
+    if "config_key" not in out.columns:
+        out["config_key"] = out.apply(
+            lambda row: derive_config_key(row.get("base_frames"), row.get("frame_step"), config_key_hint),
+            axis=1,
+        )
+    else:
+        out["config_key"] = out["config_key"].fillna(
+            out.apply(
+                lambda row: derive_config_key(row.get("base_frames"), row.get("frame_step"), config_key_hint),
+                axis=1,
+            )
+        )
+
+    if "source_file" not in out.columns:
+        out["source_file"] = None
+
+    preferred_cols = ["paper", "config_key", "source_file"]
+    remaining_cols = [col for col in out.columns if col not in preferred_cols]
+    return out[preferred_cols + remaining_cols]
+
+
+def write_master_dataset(df, output_path):
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, index=False)
+    print(f"  ✅ Wrote {output_path} ({len(df)} rows)")
+    return output_path
+
+
+def export_native_master_dataset_family(root_dir=STATE_ROOTS_LOCAL[0], output_dir=NATIVE_MASTER_DATA_DIR):
+    root_dir = Path(root_dir)
+    output_dir = Path(output_dir)
+    combined_frames = []
+    written = []
+
+    print(f"\n{'='*80}")
+    print("EXPORTING NATIVE MASTER DATASET FAMILY")
+    print(f"{'='*80}")
+
+    for paper, spec in NATIVE_DATASET_SPECS.items():
+        canonical_csv = Path(spec["canonical_csv"])
+        if canonical_csv.exists():
+            print(f"  ↪ Using canonical native CSV for {paper}: {canonical_csv.name}")
+            df = pd.read_csv(canonical_csv)
+        else:
+            print(f"  ↪ Canonical native CSV missing for {paper}; falling back to state extraction")
+            df = convert_key_state_files_to_csv(root_dir, keyword=spec["keyword"], ext=".pkl")
+
+        df = normalize_master_dataset(df, paper_hint=paper, config_key_hint=spec["config_key"])
+        if df.empty:
+            print(f"  ⚠️ No native rows found for {paper}")
+            continue
+
+        per_paper_path = output_dir / f"Master_Dataset_{paper}_{spec['config_key']}.csv"
+        write_master_dataset(df, per_paper_path)
+        written.append(per_paper_path)
+        combined_frames.append(df)
+
+    combined_df = pd.concat(combined_frames, ignore_index=True) if combined_frames else pd.DataFrame()
+    combined_path = output_dir / "Master_Dataset_Papers.csv"
+    if not combined_df.empty:
+        write_master_dataset(combined_df, combined_path)
+        written.append(combined_path)
+    else:
+        print("  ⚠️ Combined native dataset not written (no native rows found)")
+
+    return written
+
+
+def export_standardized_master_dataset_family(
+    combined_dataset=VALIDATED_LOGS_ROOT / "Master_Dataset_papers-4000_2000.csv",
+    output_dir=STANDARDIZED_MASTER_DATA_DIR,
+):
+    combined_dataset = Path(combined_dataset)
+    output_dir = Path(output_dir)
+
+    if not combined_dataset.exists():
+        raise FileNotFoundError(f"Missing standardized combined dataset: {combined_dataset}")
+
+    print(f"\n{'='*80}")
+    print("EXPORTING STANDARDIZED MASTER DATASET FAMILY")
+    print(f"{'='*80}")
+
+    df = pd.read_csv(combined_dataset)
+    df = normalize_master_dataset(df, config_key_hint=STANDARDIZED_CONFIG_KEY)
+    written = []
+
+    for paper in STANDARDIZED_PAPER_ORDER:
+        paper_df = df[df["paper"] == paper].copy()
+        if paper_df.empty:
+            print(f"  ⚠️ No standardized rows found for {paper}")
+            continue
+        per_paper_path = output_dir / f"Master_Dataset_{paper}_{STANDARDIZED_CONFIG_KEY}.csv"
+        write_master_dataset(paper_df, per_paper_path)
+        written.append(per_paper_path)
+
+    combined_path = output_dir / "Master_Dataset_papers-4000_2000.csv"
+    write_master_dataset(df, combined_path)
+    written.append(combined_path)
+    return written
 
 # Update main
 if __name__ == "__main__":
@@ -2418,7 +2596,5 @@ if __name__ == "__main__":
     # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key+'.*T_paper7'}\.pkl)")
 
 
-    # Default_All_All-4000_2000_5_S2T_paper2.pkl
-    key = "4000_2000_5_S"
-    output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_paper7{key}.csv"
-    convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key+'.*T_paper7'}\.pkl)")
+    export_native_master_dataset_family(path)
+    export_standardized_master_dataset_family()

@@ -95,3 +95,9 @@ This entry documents an unintended scope pivot that occurred while the user was 
 
 No Drive upload/download operations were executed, and no resume/state logic code paths were changed in this thread.
 
+## 2026-04-13 — Manuscript hygiene + RQ3b tracking
+
+- An internal manuscript `\\todo{...}` note in `GA Papers/QuantumFaultTolerant/main.tex` was removed entirely to keep the manuscript source free of internal TODOs/notes.
+- The removed note’s intent (for internal tracking): for $T$-anchored RQ3b at 6K under Default (=Fixed), the validated master was missing the full $s{=}1.5$ grid (even in the 3-run view). Until repaired, RQ3b reporting uses $T_b$-anchoring with pandas as the canonical engine; a proof snapshot is exported under `paper_validation/snapshots/`.
+- Reproducibility coverage: `Dynamic_Routing_Eval_Framework/notebooks/H-MABs_MasterDataset_VerificationHub.ipynb` contains a section that regenerates the standardized external-testbed LaTeX tables (4K/2K/5R) and checks exact match vs. `main.tex`, including paper7 denominator audits.
+

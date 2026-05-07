@@ -130,6 +130,7 @@ Icon
 # notebooks
 *.ipynb
 .ipynb_checkpoints/
+Dynamic_Routing_Eval_Framework/notebooks/generated/
 
 
 # macOS System Files

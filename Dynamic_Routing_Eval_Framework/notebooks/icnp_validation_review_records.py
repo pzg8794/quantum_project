@@ -823,7 +823,8 @@ class CodeRenderCollector:
         return result
 
     def mpl_colorbar(self, fig: Any, mappable: Any, *args: Any, **kwargs: Any) -> Any:
-        result = self.original_mpl_colorbar(fig, mappable, *args, **kwargs)
+        with self.suspend_mpl_mirror():
+            result = self.original_mpl_colorbar(fig, mappable, *args, **kwargs)
         if self._mpl_mirror_depth or id(mappable) not in self.mpl_mappable_shadows:
             return result
         shadow_mappable = self.mpl_mappable_shadows[id(mappable)]

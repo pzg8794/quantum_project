@@ -63,6 +63,13 @@ HIDDEN_REVIEW_RECORDS: set[tuple[str, str]] = {
     ("G11 Heatmap", "figures/icnp-exported-assets2/script_9.py"),
     ("G12 4Panel", "figures/icnp_graphs/build_G10_G14.py"),
     ("G12 4Panel", "figures/icnp-exported-assets2/script_10.py"),
+    ("G12 4Panel Gap Analysis", "figures/icnp-exported-assets2/script_7.py"),
+    ("G12 4Panel Gap Analysis — Panel A: Efficiency by Scenario (Radar-style bar)", "figures/icnp-exported-assets2/script_7.py"),
+    ("G12 4Panel Gap Analysis — Panel B: Worst-Case Gap: Stochastic vs Adaptive", "figures/icnp-exported-assets2/script_7.py"),
+    ("G12 4Panel Gap Analysis — Panel C: Oracle Gap % — Mean ± Spread", "figures/icnp-exported-assets2/script_7.py"),
+    ("G12 4Panel Gap Analysis — Panel D: Model Family Ranking (All Scenarios Avg)", "figures/icnp-exported-assets2/script_7.py"),
+    ("G12 4Panel — Panel A: Efficiency by Scenario (top 4)", "figures/icnp-exported-assets2/script_10.py"),
+    ("G12 4Panel — Panel B: Worst-Case Gap Scatter", "figures/icnp-exported-assets2/script_10.py"),
     ("G12 4Panel — Panel A: Efficiency by Scenario", "figures/icnp-exported-assets2/script_11.py"),
     ("G12 4Panel — Panel B: Stochastic vs Adaptive Gap", "figures/icnp-exported-assets2/script_11.py"),
     ("G12 4Panel — Panel C: Mean Oracle Gap +/- Std", "figures/icnp_graphs/build_G10_G14.py"),
@@ -71,6 +78,7 @@ HIDDEN_REVIEW_RECORDS: set[tuple[str, str]] = {
     ("G12 4Panel — Panel D: Overall Model Ranking", "figures/icnp-exported-assets2/script_11.py"),
     ("G13 Capacity Paradox", "figures/icnp-exported-assets2/script_7.py"),
     ("G13 Capacity Paradox", "figures/icnp-exported-assets2/script_12.py"),
+    ("G14 Regret", "figures/icnp_graphs/build_G10_G14.py"),
     ("G14 Regret", "figures/icnp-exported-assets2/script_13.py"),
     ("G9 Network Gap Analysis — Panel I: Panel I", "figures/icnp-exported-assets/build_G8_G9.py"),
 }
@@ -423,6 +431,61 @@ def annotate_plotly_horizontal_bar_values(fig: Any, *, suffix: str = "%") -> Non
         )
 
 
+def annotate_plotly_vertical_bar_values(fig: Any, *, suffix: str = "%") -> None:
+    for trace in fig.data:
+        values = list(getattr(trace, "y", []) or [])
+        if not values:
+            continue
+        trace.update(
+            text=[f"{float(value):.1f}{suffix}" for value in values],
+            textposition="outside",
+            cliponaxis=False,
+        )
+
+
+def add_plotly_last_point_value_labels(fig: Any, *, suffix: str = "%") -> None:
+    y_offsets = [10, 2, 14, -6, -14, 6, -10, 0]
+    for index, trace in enumerate(fig.data):
+        y_values = [float(value) for value in getattr(trace, "y", []) if value is not None]
+        x_values = list(getattr(trace, "x", []) or [])
+        if not y_values or not x_values:
+            continue
+        color = getattr(getattr(trace, "line", None), "color", None) or getattr(getattr(trace, "marker", None), "color", None) or "#444444"
+        add_plotly_annotation(
+            fig,
+            x=1.01,
+            y=y_values[-1],
+            xref="paper",
+            yref="y",
+            text=f"{y_values[-1]:.1f}{suffix}",
+            showarrow=False,
+            xanchor="left",
+            yshift=y_offsets[index % len(y_offsets)],
+            font=dict(size=8, color=color),
+            bgcolor="rgba(255,255,255,0.72)",
+            bordercolor="rgba(0,0,0,0.10)",
+            borderwidth=1,
+        )
+
+
+def remove_plotly_annotations_containing(fig: Any, snippets: tuple[str, ...]) -> None:
+    keep = []
+    for annotation in list(fig.layout.annotations or []):
+        text = str(getattr(annotation, "text", "") or "")
+        if any(snippet in text for snippet in snippets):
+            continue
+        keep.append(annotation)
+    fig.update_layout(annotations=keep)
+
+
+def set_plotly_y_top(fig: Any, *, top: float, bottom_padding: float = 1.0) -> None:
+    numeric_values: list[float] = []
+    for trace in fig.data:
+        numeric_values.extend(float(value) for value in getattr(trace, "y", []) if value is not None)
+    bottom = max(min(numeric_values) - bottom_padding, 0.0) if numeric_values else 0.0
+    fig.update_yaxes(range=[bottom, top])
+
+
 def add_plotly_last_point_delta_labels(fig: Any) -> None:
     y_offsets = [12, 4, 16, -4, -14, 8, -10, 2]
     for index, trace in enumerate(fig.data):
@@ -473,7 +536,9 @@ def review_legend(
 
 def apply_plotly_review_overrides(fig: Any, title: str) -> Any:
     if title == "Fig3 Floor":
-        fig.update_layout(legend=review_legend(x=0.5, y=0.99, yanchor="top", font_size=9))
+        fig.update_layout(legend=review_legend(x=0.99, y=0.99, xanchor="right", yanchor="top", font_size=9))
+        annotate_plotly_vertical_bar_values(fig)
+        fig.update_yaxes(range=[0, 104])
 
     elif title == "Fig5 Win Share":
         fig.update_layout(legend=review_legend(x=0.5, y=0.90, font_size=8))
@@ -495,12 +560,16 @@ def apply_plotly_review_overrides(fig: Any, title: str) -> Any:
         )
 
     elif title == "Fig9 Capacity":
-        fig.update_yaxes(range=[76, 95])
-        fig.update_layout(margin=dict(l=60, r=84, t=8, b=42, pad=0))
-        add_plotly_last_point_delta_labels(fig)
+        fig.update_yaxes(range=[78, 94])
+        fig.update_layout(
+            legend=review_legend(x=0.99, y=0.99, xanchor="right", yanchor="top", font_size=8),
+            margin=dict(l=60, r=116, t=8, b=42, pad=0),
+        )
+        add_plotly_last_point_value_labels(fig)
 
     elif title == "Fig10 Threat Rules":
-        fig.update_yaxes(range=[62, 95])
+        fig.update_yaxes(range=[65, 95])
+        fig.update_layout(legend=review_legend(x=0.99, y=0.99, orientation="v", xanchor="right", yanchor="top", font_size=8))
         add_threshold_line(fig, axis="y", value=85, color="#555555")
         add_plotly_annotation(
             fig,
@@ -516,8 +585,12 @@ def apply_plotly_review_overrides(fig: Any, title: str) -> Any:
         )
 
     elif title == "Fig14 Context Hybrid":
-        fig.update_layout(legend=review_legend(x=0.99, y=0.90, orientation="v", xanchor="right", yanchor="top", font_size=8))
+        fig.update_layout(
+            legend=review_legend(x=0.99, y=0.90, orientation="v", xanchor="right", yanchor="top", font_size=8),
+            margin=dict(l=60, r=116, t=8, b=42, pad=0),
+        )
         add_threshold_line(fig, axis="y", value=95, color="#3498db")
+        add_plotly_last_point_value_labels(fig)
         add_plotly_annotation(
             fig,
             x=0.02,
@@ -571,6 +644,8 @@ def apply_plotly_review_overrides(fig: Any, title: str) -> Any:
             borderwidth=1,
             xanchor="right",
         )
+        remove_plotly_annotations_containing(fig, ("T-type (s: 1→2)", "Tb-type (s: 1→2)"))
+        fig.update_layout(legend=review_legend(x=0.5, y=0.99, xanchor="center", yanchor="top", font_size=9), showlegend=True)
 
     elif title == "G3 Family Summary":
         fig.update_yaxes(range=[60, 95])
@@ -579,6 +654,7 @@ def apply_plotly_review_overrides(fig: Any, title: str) -> Any:
         fig.update_layout(legend=review_legend(x=0.02, y=0.98, orientation="v", xanchor="left", yanchor="top", font_size=8))
 
     elif title == "G5 Convergence":
+        set_plotly_y_top(fig, top=90)
         fig.update_layout(
             legend=review_legend(
                 x=0.12,
@@ -590,6 +666,9 @@ def apply_plotly_review_overrides(fig: Any, title: str) -> Any:
             )
         )
         fig.update_xaxes(range=[-0.2, 7.5])
+
+    elif title == "Fig13 Convergence":
+        set_plotly_y_top(fig, top=90)
 
     elif title in {"G10 Gap Box", "G10 Nn Gap Boxplot"}:
         add_threshold_line(fig, axis="y", value=15, color="#555555")
@@ -609,6 +688,7 @@ def apply_plotly_review_overrides(fig: Any, title: str) -> Any:
 
     elif title.startswith("G12 4Panel Gap Analysis — Panel A:") or title.startswith("G12 4Panel — Panel A:"):
         fig.update_layout(legend=review_legend(x=0.5, y=0.88, font_size=8))
+        annotate_plotly_vertical_bar_values(fig)
         add_threshold_line(fig, axis="y", value=85, color="#3498db")
         add_plotly_annotation(
             fig,
@@ -616,7 +696,7 @@ def apply_plotly_review_overrides(fig: Any, title: str) -> Any:
             y=0.96,
             xref="paper",
             yref="paper",
-            text="CPursuit peaks at 95.9%; EXPNeuralUCB falls to 59.9% in Stochastic",
+            text="85%+ clears target | CPursuit peaks at 95.9%; EXPNeuralUCB falls to 59.9% and under-performs in Stochastic",
             showarrow=False,
             xanchor="left",
             yanchor="top",
@@ -647,14 +727,19 @@ def apply_plotly_review_overrides(fig: Any, title: str) -> Any:
         if x_values and y_values and labels:
             best_index = min(range(len(x_values)), key=lambda index: float(x_values[index]) + float(y_values[index]))
             worst_index = max(range(len(x_values)), key=lambda index: float(x_values[index]) + float(y_values[index]))
-            for idx, anchor, yshift in ((best_index, "left", -10), (worst_index, "right", 10)):
+            labels_by_index = {
+                best_index: ("robust", "left", -10),
+                worst_index: ("under-performing", "right", 10),
+            }
+            for idx, (quality, anchor, yshift) in labels_by_index.items():
+                combined_gap = float(x_values[idx]) + float(y_values[idx])
                 add_plotly_annotation(
                     fig,
                     x=float(x_values[idx]),
                     y=float(y_values[idx]),
                     xref="x",
                     yref="y",
-                    text=f"{labels[idx]} ({float(x_values[idx]):.1f}%, {float(y_values[idx]):.1f}%)",
+                    text=f"{labels[idx]} | {combined_gap:.1f}pp total gap | {quality}",
                     showarrow=True,
                     arrowhead=1,
                     ax=25 if anchor == "left" else -25,
@@ -665,46 +750,122 @@ def apply_plotly_review_overrides(fig: Any, title: str) -> Any:
 
     elif title.startswith("G12 4Panel Gap Analysis — Panel C:") or title.startswith("G12 4Panel — Panel C:"):
         add_threshold_line(fig, axis="y", value=15, color="#555555")
+        min_label = None
+        max_label = None
+        min_value = None
+        max_value = None
         for trace in fig.data:
             y_values = list(getattr(trace, "y", []) or [])
+            x_values = list(getattr(trace, "x", []) or [])
             if not y_values:
                 continue
             trace.update(text=[f"{float(value):.1f}%" for value in y_values], textposition="outside", cliponaxis=False)
+            if x_values:
+                local_min = min(range(len(y_values)), key=lambda index: float(y_values[index]))
+                local_max = max(range(len(y_values)), key=lambda index: float(y_values[index]))
+                min_label = str(x_values[local_min])
+                max_label = str(x_values[local_max])
+                min_value = float(y_values[local_min])
+                max_value = float(y_values[local_max])
         add_plotly_annotation(
             fig,
             x=0.98,
             y=0.92,
             xref="paper",
             yref="paper",
-            text="Spread shown by error bars",
+            text="Lower mean gap is better | error bars show spread across scenarios",
             showarrow=False,
             xanchor="right",
             font=dict(size=9, color="#555555"),
             bgcolor="rgba(255,255,255,0.72)",
         )
+        if min_label is not None and min_value is not None and max_label is not None and max_value is not None:
+            add_plotly_annotation(
+                fig,
+                x=min_label,
+                y=min_value,
+                xref="x",
+                yref="y",
+                text=f"{min_label} {min_value:.1f}% | tightest gap",
+                showarrow=True,
+                arrowhead=1,
+                ax=18,
+                ay=-24,
+                font=dict(size=8, color="#444444"),
+                bgcolor="rgba(255,255,255,0.72)",
+            )
+            add_plotly_annotation(
+                fig,
+                x=max_label,
+                y=max_value,
+                xref="x",
+                yref="y",
+                text=f"{max_label} {max_value:.1f}% | under-performing",
+                showarrow=True,
+                arrowhead=1,
+                ax=-18,
+                ay=22,
+                font=dict(size=8, color="#444444"),
+                bgcolor="rgba(255,255,255,0.72)",
+            )
 
     elif title.startswith("G12 4Panel Gap Analysis — Panel D:") or title.startswith("G12 4Panel — Panel D:"):
         add_threshold_line(fig, axis="x", value=85, color="#3498db")
         annotate_plotly_horizontal_bar_values(fig)
+        trace = fig.data[0] if fig.data else None
+        x_values = list(getattr(trace, "x", []) or []) if trace is not None else []
+        y_values = list(getattr(trace, "y", []) or []) if trace is not None else []
         add_plotly_annotation(
             fig,
             x=0.98,
             y=0.10,
             xref="paper",
             yref="paper",
-            text="85% target",
+            text="Longer bar = stronger avg efficiency | shortest bar = under-performing",
             showarrow=False,
             xanchor="right",
-            font=dict(size=9, color="#3498db"),
+            font=dict(size=9, color="#555555"),
             bgcolor="rgba(255,255,255,0.72)",
         )
+        if x_values and y_values:
+            best_index = max(range(len(x_values)), key=lambda index: float(x_values[index]))
+            worst_index = min(range(len(x_values)), key=lambda index: float(x_values[index]))
+            add_plotly_annotation(
+                fig,
+                x=float(x_values[best_index]),
+                y=str(y_values[best_index]),
+                xref="x",
+                yref="y",
+                text=f"{float(x_values[best_index]):.1f}% | best overall",
+                showarrow=True,
+                arrowhead=1,
+                ax=-28,
+                ay=-14,
+                font=dict(size=8, color="#444444"),
+                bgcolor="rgba(255,255,255,0.72)",
+            )
+            add_plotly_annotation(
+                fig,
+                x=float(x_values[worst_index]),
+                y=str(y_values[worst_index]),
+                xref="x",
+                yref="y",
+                text=f"{float(x_values[worst_index]):.1f}% | under-performing",
+                showarrow=True,
+                arrowhead=1,
+                ax=28,
+                ay=14,
+                font=dict(size=8, color="#444444"),
+                bgcolor="rgba(255,255,255,0.72)",
+            )
 
     elif title == "G13 Capacity Paradox":
-        fig.update_layout(legend=review_legend(x=0.5, y=0.05, font_size=8))
+        fig.update_layout(legend=review_legend(x=0.99, y=0.98, orientation="v", xanchor="right", yanchor="top", font_size=8))
+        fig.update_yaxes(range=[75, 96])
         add_threshold_line(fig, axis="y", value=95, color="#3498db")
 
     elif title in {"G14 Regret", "G14 Regret Trajectory"}:
-        fig.update_layout(legend=review_legend(x=0.5, y=0.99, font_size=7, yanchor="top"))
+        fig.update_layout(legend=review_legend(x=0.5, y=0.05, font_size=7))
 
     return fig
 
@@ -809,6 +970,7 @@ def copy_mpl_axis_from_code(ax: Any, display_path: Path, savefig_func: Any) -> N
     import matplotlib.pyplot as plt
     import matplotlib.patches as mpatches
     from matplotlib.collections import PathCollection, PolyCollection
+    from matplotlib.lines import Line2D
 
     fig2, ax2 = plt.subplots(figsize=(8.5, 5.4))
 
@@ -825,6 +987,8 @@ def copy_mpl_axis_from_code(ax: Any, display_path: Path, savefig_func: Any) -> N
 
     for patch in ax.patches:
         if isinstance(patch, mpatches.Rectangle):
+            if abs(patch.get_width()) < 1e-9 and abs(patch.get_height()) < 1e-9:
+                continue
             rect = mpatches.Rectangle(
                 patch.get_xy(),
                 patch.get_width(),
@@ -919,9 +1083,44 @@ def copy_mpl_axis_from_code(ax: Any, display_path: Path, savefig_func: Any) -> N
     if ax.get_yticklabels():
         ax2.set_yticklabels([tick.get_text() for tick in ax.get_yticklabels()])
     if ax.get_legend() is not None:
-        handles, labels = ax2.get_legend_handles_labels()
-        if labels:
-            ax2.legend(handles, labels, frameon=True)
+        source_handles, source_labels = ax.get_legend_handles_labels()
+        legend_handles = []
+        legend_labels = []
+        for handle, label in zip(source_handles, source_labels):
+            if not label or str(label).startswith("_"):
+                continue
+            if isinstance(handle, mpatches.Patch):
+                legend_handles.append(
+                    mpatches.Patch(
+                        facecolor=handle.get_facecolor(),
+                        edgecolor=handle.get_edgecolor(),
+                        alpha=handle.get_alpha() if handle.get_alpha() is not None else 1.0,
+                    )
+                )
+            elif isinstance(handle, Line2D):
+                legend_handles.append(
+                    Line2D(
+                        [0],
+                        [0],
+                        color=handle.get_color(),
+                        linestyle=handle.get_linestyle(),
+                        linewidth=handle.get_linewidth(),
+                        marker=handle.get_marker(),
+                        markersize=handle.get_markersize(),
+                    )
+                )
+            else:
+                continue
+            legend_labels.append(label)
+        if legend_labels:
+            source_legend = ax.get_legend()
+            ax2.legend(
+                legend_handles,
+                legend_labels,
+                frameon=source_legend.get_frame().get_visible(),
+                loc=getattr(source_legend, "_loc", "best"),
+                ncol=getattr(source_legend, "_ncols", 1),
+            )
     ax2.grid(ax.xaxis._major_tick_kw.get("gridOn", False) or ax.yaxis._major_tick_kw.get("gridOn", False), alpha=0.25)
     fig2.tight_layout()
     savefig_func(fig2, str(display_path), dpi=180, bbox_inches="tight", facecolor="white")

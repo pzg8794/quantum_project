@@ -29,6 +29,7 @@ from typing import Any
 
 import pandas as pd
 from IPython.display import Image, Markdown, display
+from PIL import Image as PilImage, ImageChops
 
 
 GA_WORK_ROOT = Path("/Users/pitergarcia/DataScience/Semester4/GA-Work")
@@ -42,6 +43,37 @@ SOURCE_DIRS = [
     PAPER_REPO / "tools/icnp-exported-assets-2",
     PAPER_REPO / "figures",
 ]
+
+HIDDEN_REVIEW_RECORDS: set[tuple[str, str]] = {
+    ("G1 Capacity Paradox", "figures/icnp_graphs/code_and_plots/script_1.py"),
+    ("G1 Capacity Paradox", "tools/icnp-exported-assets-2/icnp_graphs.py"),
+    ("G1 Capacity Paradox", "tools/icnp-exported-assets-2/icnp_graphs_1.py"),
+    ("G2 Robustness Floor", "tools/icnp-exported-assets-2/icnp_graphs.py"),
+    ("G2 Robustness Floor", "tools/icnp-exported-assets-2/icnp_graphs_1.py"),
+    ("G3 Family Summary", "tools/icnp-exported-assets-2/icnp_graphs.py"),
+    ("G3 Family Summary", "tools/icnp-exported-assets-2/icnp_graphs_1.py"),
+    ("G4 Deployment Rules", "tools/icnp-exported-assets-2/icnp_graphs.py"),
+    ("G4 Deployment Rules", "tools/icnp-exported-assets-2/icnp_graphs_1.py"),
+    ("G5 Convergence", "tools/icnp-exported-assets-2/icnp_graphs.py"),
+    ("G5 Convergence", "tools/icnp-exported-assets-2/icnp_graphs_1.py"),
+    ("G6 Heatmap", "tools/icnp-exported-assets-2/icnp_graphs.py"),
+    ("G6 Heatmap", "tools/icnp-exported-assets-2/icnp_graphs_1.py"),
+    ("G10 Gap Box", "figures/icnp-exported-assets2/script_8.py"),
+    ("G11 Heatmap", "figures/icnp_graphs/build_G10_G14.py"),
+    ("G11 Heatmap", "figures/icnp-exported-assets2/script_9.py"),
+    ("G12 4Panel", "figures/icnp_graphs/build_G10_G14.py"),
+    ("G12 4Panel", "figures/icnp-exported-assets2/script_10.py"),
+    ("G12 4Panel — Panel A: Efficiency by Scenario", "figures/icnp-exported-assets2/script_11.py"),
+    ("G12 4Panel — Panel B: Stochastic vs Adaptive Gap", "figures/icnp-exported-assets2/script_11.py"),
+    ("G12 4Panel — Panel C: Mean Oracle Gap +/- Std", "figures/icnp_graphs/build_G10_G14.py"),
+    ("G12 4Panel — Panel C: Mean Oracle Gap ± Std", "figures/icnp-exported-assets2/script_11.py"),
+    ("G12 4Panel — Panel D: Overall Model Ranking", "figures/icnp_graphs/build_G10_G14.py"),
+    ("G12 4Panel — Panel D: Overall Model Ranking", "figures/icnp-exported-assets2/script_11.py"),
+    ("G13 Capacity Paradox", "figures/icnp-exported-assets2/script_7.py"),
+    ("G13 Capacity Paradox", "figures/icnp-exported-assets2/script_12.py"),
+    ("G14 Regret", "figures/icnp-exported-assets2/script_13.py"),
+    ("G9 Network Gap Analysis — Panel I: Panel I", "figures/icnp-exported-assets/build_G8_G9.py"),
+}
 
 
 @dataclass
@@ -101,6 +133,10 @@ def natural_key(path: Path) -> list[object]:
     return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", text)]
 
 
+def natural_text_key(text: str) -> list[object]:
+    return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", text)]
+
+
 def source_label(path: Path | None) -> str:
     if path is None:
         return ""
@@ -113,11 +149,34 @@ def source_label(path: Path | None) -> str:
             return str(path)
 
 
+def should_hide_review_record(record: RenderRecord) -> bool:
+    return (record.title, source_label(record.source_script)) in HIDDEN_REVIEW_RECORDS
+
+
+def filter_review_records(records: list[RenderRecord]) -> list[RenderRecord]:
+    return [record for record in records if not should_hide_review_record(record)]
+
+
 def safe_slug(*parts: object) -> str:
     raw = "__".join(str(part) for part in parts)
     digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
     slug = re.sub(r"[^A-Za-z0-9]+", "_", raw).strip("_")[:120]
     return f"{slug}_{digest}"
+
+
+def trim_export_border(path: Path, border_px: int = 2) -> None:
+    with PilImage.open(path) as image:
+        base = image.convert("RGBA")
+        background = PilImage.new("RGBA", base.size, base.getpixel((0, 0)))
+        diff = ImageChops.difference(base, background)
+        bbox = diff.getbbox()
+        if bbox is None:
+            return
+        left = max(bbox[0] - border_px, 0)
+        top = max(bbox[1] - border_px, 0)
+        right = min(bbox[2] + border_px, base.width)
+        bottom = min(bbox[3] + border_px, base.height)
+        base.crop((left, top, right, bottom)).save(path)
 
 
 def panel_label_from_index(index: int) -> str:
@@ -151,6 +210,10 @@ def map_mpl_shadow_kwargs(kwargs: dict[str, Any], source_ax: Any, shadow_ax: Any
         mapped["transform"] = shadow_ax.transAxes
     elif mapped.get("transform") == source_ax.transData:
         mapped["transform"] = shadow_ax.transData
+    if mapped.get("bbox_transform") == source_ax.transAxes:
+        mapped["bbox_transform"] = shadow_ax.transAxes
+    elif mapped.get("bbox_transform") == source_ax.transData:
+        mapped["bbox_transform"] = shadow_ax.transData
     return mapped
 
 
@@ -276,6 +339,376 @@ def strip_plotly_titles(fig: Any) -> Any:
     return clean
 
 
+def normalize_plotly_figure(fig: Any, legend_font_size: int = 10) -> Any:
+    clean = strip_plotly_titles(fig)
+    margin = dict(getattr(getattr(clean.layout, "margin", None), "to_plotly_json", lambda: {})())
+    if not margin or margin.get("t", 0) > 12 or margin.get("b", 0) > 48 or margin.get("r", 0) > 20:
+        left = int(margin.get("l", 54) or 54)
+        clean.update_layout(margin=dict(l=min(max(left, 48), 72), r=12, t=8, b=42, pad=0))
+
+    legendable = any(getattr(trace, "showlegend", True) and getattr(trace, "name", None) for trace in clean.data)
+    legend = dict(getattr(getattr(clean.layout, "legend", None), "to_plotly_json", lambda: {})())
+    legend_y = legend.get("y")
+    if legendable and bool(getattr(clean.layout, "showlegend", True)) and (
+        legend.get("orientation") != "h" or legend_y is None or legend_y > 0.25
+    ):
+        clean.update_layout(
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=0.02,
+                xanchor="center",
+                x=0.5,
+                bgcolor="rgba(255,255,255,0.78)",
+                bordercolor="rgba(0,0,0,0.10)",
+                borderwidth=1,
+                font=dict(size=legend_font_size),
+            )
+        )
+    return clean
+
+
+def add_plotly_annotation(fig: Any, **annotation: Any) -> None:
+    annotations = list(fig.layout.annotations or [])
+    annotations.append(annotation)
+    fig.update_layout(annotations=annotations)
+
+
+def add_threshold_line(fig: Any, *, axis: str, value: float, color: str, dash: str = "dash") -> None:
+    if axis == "x":
+        fig.add_vline(x=value, line_color=color, line_dash=dash, line_width=1.2, opacity=0.8)
+    else:
+        fig.add_hline(y=value, line_color=color, line_dash=dash, line_width=1.2, opacity=0.8)
+
+
+def annotate_plotly_box_means(fig: Any, *, prefix: str = "avg", padding: float = 1.4) -> None:
+    numeric_traces = []
+    max_y = None
+    for trace in fig.data:
+        values = [float(value) for value in getattr(trace, "y", []) if value is not None]
+        if not values:
+            continue
+        mean_value = sum(values) / len(values)
+        trace_max = max(values)
+        max_y = trace_max if max_y is None else max(max_y, trace_max)
+        numeric_traces.append((trace, mean_value, trace_max))
+
+    if max_y is None:
+        return
+
+    fig.update_yaxes(range=[0, max(max_y + padding + 1.2, 18)])
+    for trace, mean_value, trace_max in numeric_traces:
+        add_plotly_annotation(
+            fig,
+            x=getattr(trace, "name", ""),
+            y=trace_max + padding,
+            xref="x",
+            yref="y",
+            text=f"{prefix} {mean_value:.1f}%",
+            showarrow=False,
+            font=dict(size=8, color="#444444"),
+            bgcolor="rgba(255,255,255,0.75)",
+        )
+
+
+def annotate_plotly_horizontal_bar_values(fig: Any, *, suffix: str = "%") -> None:
+    for trace in fig.data:
+        values = list(getattr(trace, "x", []) or [])
+        if not values:
+            continue
+        trace.update(
+            text=[f"{float(value):.1f}{suffix}" for value in values],
+            textposition="outside",
+            cliponaxis=False,
+        )
+
+
+def add_plotly_last_point_delta_labels(fig: Any) -> None:
+    y_offsets = [12, 4, 16, -4, -14, 8, -10, 2]
+    for index, trace in enumerate(fig.data):
+        y_values = [float(value) for value in getattr(trace, "y", []) if value is not None]
+        x_values = list(getattr(trace, "x", []) or [])
+        if len(y_values) < 2 or not x_values:
+            continue
+        delta = y_values[-1] - y_values[0]
+        color = getattr(getattr(trace, "line", None), "color", None) or "#444444"
+        add_plotly_annotation(
+            fig,
+            x=1.01,
+            y=y_values[-1],
+            xref="paper",
+            yref="y",
+            text=f"{trace.name} {delta:+.1f}pp",
+            showarrow=False,
+            xanchor="left",
+            yshift=y_offsets[index % len(y_offsets)],
+            font=dict(size=8, color=color),
+            bgcolor="rgba(255,255,255,0.72)",
+            bordercolor="rgba(0,0,0,0.10)",
+            borderwidth=1,
+        )
+
+
+def review_legend(
+    *,
+    x: float,
+    y: float,
+    orientation: str = "h",
+    xanchor: str = "center",
+    yanchor: str = "bottom",
+    font_size: int = 9,
+) -> dict[str, Any]:
+    return dict(
+        orientation=orientation,
+        x=x,
+        y=y,
+        xanchor=xanchor,
+        yanchor=yanchor,
+        bgcolor="rgba(255,255,255,0.80)",
+        bordercolor="rgba(0,0,0,0.12)",
+        borderwidth=1,
+        font=dict(size=font_size),
+    )
+
+
+def apply_plotly_review_overrides(fig: Any, title: str) -> Any:
+    if title == "Fig3 Floor":
+        fig.update_layout(legend=review_legend(x=0.5, y=0.99, yanchor="top", font_size=9))
+
+    elif title == "Fig5 Win Share":
+        fig.update_layout(legend=review_legend(x=0.5, y=0.90, font_size=8))
+
+    elif title == "Fig6 Context Capacity":
+        fig.update_yaxes(range=[74, 95])
+
+    elif title == "Fig7 Penalties":
+        fig.update_yaxes(range=[0, 14])
+        fig.update_layout(
+            legend=review_legend(
+                x=0.99,
+                y=0.98,
+                orientation="v",
+                xanchor="right",
+                yanchor="top",
+                font_size=8,
+            )
+        )
+
+    elif title == "Fig9 Capacity":
+        fig.update_yaxes(range=[76, 95])
+        fig.update_layout(margin=dict(l=60, r=84, t=8, b=42, pad=0))
+        add_plotly_last_point_delta_labels(fig)
+
+    elif title == "Fig10 Threat Rules":
+        fig.update_yaxes(range=[62, 95])
+        add_threshold_line(fig, axis="y", value=85, color="#555555")
+        add_plotly_annotation(
+            fig,
+            x=0.02,
+            y=0.06,
+            xref="paper",
+            yref="paper",
+            text="85% target | Random trails by 11-22pp under threat",
+            showarrow=False,
+            xanchor="left",
+            font=dict(size=8, color="#555555"),
+            bgcolor="rgba(255,255,255,0.72)",
+        )
+
+    elif title == "Fig14 Context Hybrid":
+        fig.update_layout(legend=review_legend(x=0.99, y=0.90, orientation="v", xanchor="right", yanchor="top", font_size=8))
+        add_threshold_line(fig, axis="y", value=95, color="#3498db")
+        add_plotly_annotation(
+            fig,
+            x=0.02,
+            y=0.92,
+            xref="paper",
+            yref="paper",
+            text="95% threshold",
+            showarrow=False,
+            font=dict(size=9, color="#3498db"),
+            bgcolor="rgba(255,255,255,0.70)",
+        )
+        add_plotly_annotation(
+            fig,
+            x=0.02,
+            y=0.06,
+            xref="paper",
+            yref="paper",
+            text="CPursuit clears 85% in every threat; EXP3 trails by 8-18pp",
+            showarrow=False,
+            xanchor="left",
+            font=dict(size=8, color="#555555"),
+            bgcolor="rgba(255,255,255,0.72)",
+        )
+
+    elif title == "G1 Capacity Paradox":
+        fig.update_layout(showlegend=False)
+        add_plotly_annotation(
+            fig,
+            x=-9.0,
+            y=0.98,
+            xref="x",
+            yref="paper",
+            text="T-type (s: 1→2)",
+            showarrow=False,
+            font=dict(size=10, color="#2980b9"),
+            bgcolor="rgba(255,255,255,0.82)",
+            bordercolor="rgba(41,128,185,0.35)",
+            borderwidth=1,
+        )
+        add_plotly_annotation(
+            fig,
+            x=10.2,
+            y=0.98,
+            xref="x",
+            yref="paper",
+            text="Tb-type (s: 1→2)",
+            showarrow=False,
+            font=dict(size=10, color="#e67e22"),
+            bgcolor="rgba(255,255,255,0.82)",
+            bordercolor="rgba(230,126,34,0.35)",
+            borderwidth=1,
+            xanchor="right",
+        )
+
+    elif title == "G3 Family Summary":
+        fig.update_yaxes(range=[60, 95])
+
+    elif title == "G4 Deployment Rules":
+        fig.update_layout(legend=review_legend(x=0.02, y=0.98, orientation="v", xanchor="left", yanchor="top", font_size=8))
+
+    elif title == "G5 Convergence":
+        fig.update_layout(
+            legend=review_legend(
+                x=0.12,
+                y=0.22,
+                orientation="v",
+                xanchor="left",
+                yanchor="bottom",
+                font_size=8,
+            )
+        )
+        fig.update_xaxes(range=[-0.2, 7.5])
+
+    elif title in {"G10 Gap Box", "G10 Nn Gap Boxplot"}:
+        add_threshold_line(fig, axis="y", value=15, color="#555555")
+        annotate_plotly_box_means(fig)
+        add_plotly_annotation(
+            fig,
+            x=0.98,
+            y=0.42,
+            xref="paper",
+            yref="paper",
+            text="15% gap target\nLower is better",
+            showarrow=False,
+            xanchor="right",
+            font=dict(size=9, color="#555555"),
+            bgcolor="rgba(255,255,255,0.72)",
+        )
+
+    elif title.startswith("G12 4Panel Gap Analysis — Panel A:") or title.startswith("G12 4Panel — Panel A:"):
+        fig.update_layout(legend=review_legend(x=0.5, y=0.88, font_size=8))
+        add_threshold_line(fig, axis="y", value=85, color="#3498db")
+        add_plotly_annotation(
+            fig,
+            x=0.02,
+            y=0.96,
+            xref="paper",
+            yref="paper",
+            text="CPursuit peaks at 95.9%; EXPNeuralUCB falls to 59.9% in Stochastic",
+            showarrow=False,
+            xanchor="left",
+            yanchor="top",
+            font=dict(size=8, color="#555555"),
+            bgcolor="rgba(255,255,255,0.72)",
+        )
+
+    elif title.startswith("G12 4Panel Gap Analysis — Panel B:") or title.startswith("G12 4Panel — Panel B:"):
+        add_threshold_line(fig, axis="x", value=15, color="#555555", dash="dot")
+        add_threshold_line(fig, axis="y", value=15, color="#555555", dash="dot")
+        add_plotly_annotation(
+            fig,
+            x=0.02,
+            y=0.98,
+            xref="paper",
+            yref="paper",
+            text="Lower-left is better",
+            showarrow=False,
+            xanchor="left",
+            yanchor="top",
+            font=dict(size=9, color="#555555"),
+            bgcolor="rgba(255,255,255,0.72)",
+        )
+        trace = fig.data[0] if fig.data else None
+        x_values = list(getattr(trace, "x", []) or []) if trace is not None else []
+        y_values = list(getattr(trace, "y", []) or []) if trace is not None else []
+        labels = list(getattr(trace, "text", []) or []) if trace is not None else []
+        if x_values and y_values and labels:
+            best_index = min(range(len(x_values)), key=lambda index: float(x_values[index]) + float(y_values[index]))
+            worst_index = max(range(len(x_values)), key=lambda index: float(x_values[index]) + float(y_values[index]))
+            for idx, anchor, yshift in ((best_index, "left", -10), (worst_index, "right", 10)):
+                add_plotly_annotation(
+                    fig,
+                    x=float(x_values[idx]),
+                    y=float(y_values[idx]),
+                    xref="x",
+                    yref="y",
+                    text=f"{labels[idx]} ({float(x_values[idx]):.1f}%, {float(y_values[idx]):.1f}%)",
+                    showarrow=True,
+                    arrowhead=1,
+                    ax=25 if anchor == "left" else -25,
+                    ay=yshift,
+                    font=dict(size=8, color="#444444"),
+                    bgcolor="rgba(255,255,255,0.72)",
+                )
+
+    elif title.startswith("G12 4Panel Gap Analysis — Panel C:") or title.startswith("G12 4Panel — Panel C:"):
+        add_threshold_line(fig, axis="y", value=15, color="#555555")
+        for trace in fig.data:
+            y_values = list(getattr(trace, "y", []) or [])
+            if not y_values:
+                continue
+            trace.update(text=[f"{float(value):.1f}%" for value in y_values], textposition="outside", cliponaxis=False)
+        add_plotly_annotation(
+            fig,
+            x=0.98,
+            y=0.92,
+            xref="paper",
+            yref="paper",
+            text="Spread shown by error bars",
+            showarrow=False,
+            xanchor="right",
+            font=dict(size=9, color="#555555"),
+            bgcolor="rgba(255,255,255,0.72)",
+        )
+
+    elif title.startswith("G12 4Panel Gap Analysis — Panel D:") or title.startswith("G12 4Panel — Panel D:"):
+        add_threshold_line(fig, axis="x", value=85, color="#3498db")
+        annotate_plotly_horizontal_bar_values(fig)
+        add_plotly_annotation(
+            fig,
+            x=0.98,
+            y=0.10,
+            xref="paper",
+            yref="paper",
+            text="85% target",
+            showarrow=False,
+            xanchor="right",
+            font=dict(size=9, color="#3498db"),
+            bgcolor="rgba(255,255,255,0.72)",
+        )
+
+    elif title == "G13 Capacity Paradox":
+        fig.update_layout(legend=review_legend(x=0.5, y=0.05, font_size=8))
+        add_threshold_line(fig, axis="y", value=95, color="#3498db")
+
+    elif title in {"G14 Regret", "G14 Regret Trajectory"}:
+        fig.update_layout(legend=review_legend(x=0.5, y=0.99, font_size=7, yanchor="top"))
+
+    return fig
+
+
 def plotly_axis_name(trace_axis: str | None, prefix: str) -> str:
     axis = trace_axis or prefix
     if axis == prefix:
@@ -327,20 +760,23 @@ def render_plotly_subplots(
         panel.update_layout(
             template=getattr(fig.layout, "template", None),
             showlegend=bool(getattr(fig.layout, "showlegend", True)),
-            width=getattr(fig.layout, "width", None) or 900,
-            height=max(500, int((getattr(fig.layout, "height", None) or 700) * 0.75)),
-            margin=dict(l=70, r=40, t=30, b=70),
+            width=getattr(fig.layout, "width", None) or 860,
+            height=max(460, int((getattr(fig.layout, "height", None) or 620) * 0.72)),
+            margin=dict(l=60, r=16, t=8, b=40, pad=0),
             xaxis=get_layout_axis(fig, xaxis_id, "x"),
             yaxis=get_layout_axis(fig, yaxis_id, "y"),
         )
-        panel = strip_plotly_titles(panel)
+        panel = normalize_plotly_figure(panel, legend_font_size=9)
+        panel_title = f"{title_base} — Panel {panel_label}"
+        panel = apply_plotly_review_overrides(panel, panel_title)
 
         display_path = collector.next_output_path(source_script, f"{declared_output}_panel_{panel_label}", "plotly_panel")
         collector.original_plotly_write_image(panel, str(display_path))
+        trim_export_border(display_path)
         records.append(
             RenderRecord(
                 review_id=collector.next_review_id(),
-                title=f"{title_base} — Panel {panel_label}",
+                title=panel_title,
                 source_script=source_script,
                 declared_output=declared_output,
                 display_path=display_path,
@@ -674,13 +1110,15 @@ class CodeRenderCollector:
         ]
         records: list[RenderRecord] = []
         for shadow in shadows:
-            panel = strip_plotly_titles(shadow.fig)
-            panel.update_layout(width=950, height=560, margin=dict(l=70, r=40, t=30, b=70))
+            panel = normalize_plotly_figure(shadow.fig, legend_font_size=9)
+            panel.update_layout(width=860, height=500)
+            title = f"{title_base} — Panel {shadow.label}: {shadow.title}"
+            panel = apply_plotly_review_overrides(panel, title)
             display_path = self.next_output_path(self.current_script, f"{declared}_panel_{shadow.label}", "plotly_source_panel")
             with self.suspend_plotly_mirror():
                 self.original_plotly_write_image(panel, str(display_path))
+            trim_export_border(display_path)
             review_id = self.next_review_id()
-            title = f"{title_base} — Panel {shadow.label}: {shadow.title}"
             record_type = "individual panel rendered by mirroring source Plotly subplot calls"
             panel_code_path = write_panel_code_manifest(
                 source_script=self.current_script,
@@ -773,10 +1211,12 @@ class CodeRenderCollector:
         shadow_kwargs = map_mpl_shadow_kwargs(dict(kwargs), ax, shadow.ax)
         with self.suspend_mpl_mirror():
             try:
-                if method_name == "legend" and (args or kwargs):
-                    shadow_result = getattr(shadow.ax, method_name)()
-                else:
+                try:
                     shadow_result = getattr(shadow.ax, method_name)(*args, **shadow_kwargs)
+                except TypeError:
+                    if method_name != "legend":
+                        raise
+                    shadow_result = getattr(shadow.ax, method_name)()
                 self.map_mpl_result(result, shadow_result)
                 if method_name in {"imshow", "scatter"}:
                     self.mpl_mappable_shadows[id(result)] = shadow_result
@@ -858,7 +1298,8 @@ class CodeRenderCollector:
             shadow.fig.tight_layout()
             display_path = self.next_output_path(self.current_script, f"{declared}_panel_{shadow.label}", "matplotlib_source_panel")
             with self.suspend_mpl_mirror():
-                self.original_mpl_savefig(shadow.fig, str(display_path), dpi=180, bbox_inches="tight", facecolor="white")
+                self.original_mpl_savefig(shadow.fig, str(display_path), dpi=180, bbox_inches="tight", pad_inches=0.02, facecolor="white")
+            trim_export_border(display_path)
             review_id = self.next_review_id()
             title = f"{title_base} — Panel {shadow.label}: {shadow.title}"
             record_type = "individual panel rendered by mirroring source Matplotlib axis calls"
@@ -896,9 +1337,11 @@ class CodeRenderCollector:
         panel_records = self.render_plotly_panel_shadows(fig, declared, review_id, title_base)
         self.records.extend(panel_records)
         display_path = self.next_output_path(self.current_script, declared, "plotly")
-        clean = strip_plotly_titles(fig)
+        clean = normalize_plotly_figure(fig)
+        clean = apply_plotly_review_overrides(clean, title_base)
         with self.suspend_plotly_mirror():
             self.original_plotly_write_image(clean, str(display_path), *args, **kwargs)
+        trim_export_border(display_path)
         self.mirror_declared_output(display_path, declared)
         self.records.append(
             RenderRecord(
@@ -932,9 +1375,11 @@ class CodeRenderCollector:
         strip_mpl_titles(fig)
         kwargs = dict(kwargs)
         kwargs.setdefault("bbox_inches", "tight")
+        kwargs.setdefault("pad_inches", 0.02)
         kwargs.setdefault("facecolor", "white")
         with self.suspend_mpl_mirror():
             self.original_mpl_savefig(fig, str(display_path), *args, **kwargs)
+        trim_export_border(display_path)
         self.mirror_declared_output(display_path, declared)
         self.records.append(
             RenderRecord(
@@ -1139,13 +1584,67 @@ def build_code_rendered_records(force: bool = True) -> tuple[list[RenderRecord],
     return collector.records, pd.DataFrame(run_rows)
 
 
-def validation_markdown(record: RenderRecord) -> Markdown:
+def review_source_priority(path: Path | None) -> tuple[int, list[object]]:
+    label = source_label(path)
+    if label.startswith("figures/icnp_figures/"):
+        priority = 0
+    elif label.startswith("figures/icnp_graphs/"):
+        priority = 1
+    elif label.startswith("figures/icnp-exported-assets/"):
+        priority = 2
+    elif label.startswith("figures/icnp-exported-assets2/"):
+        priority = 3
+    elif label.startswith("tools/"):
+        priority = 4
+    else:
+        priority = 5
+    return priority, natural_text_key(label)
+
+
+def group_review_records(records: list[RenderRecord]) -> tuple[list[RenderRecord], dict[str, bool], dict[str, int]]:
+    grouped: dict[tuple[str, str], list[RenderRecord]] = {}
+    for record in records:
+        grouped.setdefault((record.title, record.record_type), []).append(record)
+
+    ordered: list[RenderRecord] = []
+    duplicate_flags: dict[str, bool] = {}
+    duplicate_group_sizes: dict[str, int] = {}
+
+    group_keys = sorted(grouped, key=lambda item: (natural_text_key(item[0]), item[1].lower()))
+    for group_key in group_keys:
+        items = sorted(
+            grouped[group_key],
+            key=lambda record: (
+                review_source_priority(record.source_script),
+                source_label(record.source_script).lower(),
+                str(record.declared_output).lower(),
+            ),
+        )
+        group_size = len(items)
+        for index, record in enumerate(items):
+            ordered.append(record)
+            duplicate_flags[record.review_id] = index > 0
+            duplicate_group_sizes[record.review_id] = group_size
+
+    return ordered, duplicate_flags, duplicate_group_sizes
+
+
+def validation_markdown(record: RenderRecord, is_duplicate: bool = False, duplicate_group_size: int = 1) -> Markdown:
     parent = record.parent_review_id or "not grouped"
     panel_code = f"`{source_label(record.panel_code_path)}`" if record.panel_code_path else "not applicable"
+    duplicate_heading = " — **DUPLICATED**" if is_duplicate else ""
+    duplicate_rows = ""
+    if duplicate_group_size > 1:
+        duplicate_label = "**DUPLICATED**" if is_duplicate else "primary entry in duplicate group"
+        duplicate_rows = (
+            f"| Duplicate review entry | {duplicate_label} |\n"
+            f"| Duplicate group size | {duplicate_group_size} |\n"
+        )
     return Markdown(
-        f"### {record.review_id} — {record.title}\n"
+        f"### {record.review_id} — {record.title}{duplicate_heading}\n"
         f"| Field | Validation record |\n"
         f"|---|---|\n"
+        f"{duplicate_rows}"
         f"| Source script | `{source_label(record.source_script)}` |\n"
         f"| Panel-specific code manifest | {panel_code} |\n"
         f"| Declared output in code | `{record.declared_output}` |\n"
@@ -1169,11 +1668,17 @@ def render_icnp_graph_validation_hub(image_width: int = 760, force: bool = True)
     if not records:
         raise RuntimeError("No code-rendered graph records were created. Check the script run ledger.")
 
+    visible_records = filter_review_records(records)
+    ordered_records, duplicate_flags, duplicate_group_sizes = group_review_records(visible_records)
+    hidden_record_count = len(records) - len(visible_records)
+
     ledger = pd.DataFrame(
         [
             {
                 "review_id": record.review_id,
                 "title": record.title,
+                "duplicate_status": "DUPLICATED" if duplicate_flags[record.review_id] else "",
+                "duplicate_group_size": duplicate_group_sizes[record.review_id],
                 "renderer": record.renderer,
                 "record_type": record.record_type,
                 "source_script": source_label(record.source_script),
@@ -1182,7 +1687,7 @@ def render_icnp_graph_validation_hub(image_width: int = 760, force: bool = True)
                 "panel_code_manifest": source_label(record.panel_code_path),
                 "parent_review_id": record.parent_review_id or "",
             }
-            for record in records
+            for record in ordered_records
         ]
     )
 
@@ -1195,7 +1700,8 @@ def render_icnp_graph_validation_hub(image_width: int = 760, force: bool = True)
     display(
         Markdown(
             f"**Graph-producing scripts discovered:** {len(run_ledger)}. "
-            f"**Code-rendered review records:** {len(records)}. "
+            f"**Code-rendered review records:** {len(ordered_records)}. "
+            f"**Suppressed review records:** {hidden_record_count}. "
             f"**Rendered assets:** `{RENDER_DIR}`. "
             f"**Panel code manifests:** `{PANEL_CODE_DIR}`."
         )
@@ -1205,8 +1711,14 @@ def render_icnp_graph_validation_hub(image_width: int = 760, force: bool = True)
     display(Markdown("### Rendered Graph Review Ledger"))
     display(ledger)
 
-    for record in records:
-        display(validation_markdown(record))
+    for record in ordered_records:
+        display(
+            validation_markdown(
+                record,
+                is_duplicate=duplicate_flags[record.review_id],
+                duplicate_group_size=duplicate_group_sizes[record.review_id],
+            )
+        )
         display(Image(filename=str(record.display_path), width=image_width))
 
     return ledger

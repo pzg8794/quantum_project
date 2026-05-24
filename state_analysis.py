@@ -1242,7 +1242,7 @@ def parse_log_header(header_text):
     else:
         return None
 
-def generate_master_csv(tests_type, path="/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/"):
+def generate_master_csv(tests_type, path="<local-path>"):
     print("\n========== GENERATING MASTER CSV ==========")
     if path is None: return
 
@@ -2558,24 +2558,24 @@ if __name__ == "__main__":
     # generate_master_csv("Hybrid_Tests")
     # generate_master_csv("EXP3_Tests")
     # generate_master_csv("iCMABs_Tests")
-    path = "/Users/pitergarcia/DataScience/Semester4/GA-Work/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/config/framework_state/"
+    path = "<local-path>"
     # print(files)
     # df = convert_state_files_to_csv(path, keyword="MultiRunEvaluator", ext=".pkl")
 
     # key = "EXP3"
-    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key}.csv"
+    # output_path = f"<local-path>"
     # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
 
     # key = "iCMABs"
-    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key.replace("i", "")}.csv"
+    # output_path = f"<local-path>"i", "")}.csv"
     # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
 
     # key = "iCMABs2"
-    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key.replace("2", "")}.csv"
+    # output_path = f"<local-path>"2", "")}.csv"
     # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key}\.pkl)")
 
     # key = r"(3|5)_(\(18_9_6_2\)_)?S\d+([._]\d+)?Tb?"
-    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_Hybrid.csv"
+    # output_path = f"<local-path>"
     # convert_key_state_files_to_csv(
     #     path,
     #     output=output_path,
@@ -2583,16 +2583,16 @@ if __name__ == "__main__":
     # )
 
     # key = "1000_1000_1_S"
-    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_{key}_paper8.csv"
+    # output_path = f"<local-path>"
     # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*1000_1000_1_S.*T_paper8.*\.pkl)")
 
     # key = "4000_2000_5_S"
-    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_paper2_4000_2000_5_ST.csv"
+    # output_path = f"<local-path>"
     # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key+'.*_paper2'}\.pkl)")
 
 
     # key = "50_50_5_S"
-    # output_path = f"/Users/pitergarcia/DataScience/Semester4/GA-Work/Validated_Logs/Master_Dataset_paper7{key}.csv"
+    # output_path = f"<local-path>"
     # convert_key_state_files_to_csv(path, output=output_path, keyword=fr"(?=.*MultiRunEvaluator)(?=.*{key+'.*T_paper7'}\.pkl)")
 
 

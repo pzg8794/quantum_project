@@ -70,7 +70,7 @@ try:
     import google.colab
     from google.colab import drive
     drive.mount('/content/drive')
-    project_dir = '/content/drive/MyDrive/GA-Work/hybrid_variable_framework/Dynamic_Routing_Eval_Framework'
+    project_dir = 'Dynamic_Routing_Eval_Framework'
     os.chdir(project_dir)
     print("Running in Google Colab")
     project_code_dir = os.path.join(project_dir, 'src')
@@ -236,7 +236,7 @@ FRAMEWORK_CONFIG = {
         'network_scale': 'small',
         'min_qubits_per_route': 2,
         'reward_mode': 'neg_hop',    # or 'neg_length', etc.
-        'topology_path': '/Users/pitergarcia/DataScience/Semester4/GA-Work/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/core/topology_data/as20000101.txt',
+        'topology_path': '<local-path>',
 
 
         # 🆕 NEW: Feature toggles

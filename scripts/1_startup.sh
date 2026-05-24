@@ -10,9 +10,9 @@ set -e
 # ==============================
 # Configuration with defaults
 # ==============================
-GITHUB_USERNAME="${GITHUB_USERNAME:-pzg8794}"
+GITHUB_USERNAME="${GITHUB_USERNAME:-anonymous-artifact}"
 GITHUB_REPO="${GITHUB_REPO:-quantum_project}"
-GITHUB_TOKEN="${GITHUB_TOKEN:-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}"
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 TARGET_BRANCH="${TARGET_BRANCH:-gcp-main}"
 
 LOG_DIR="${LOG_DIR:-$HOME/quantum_logs}"
@@ -98,9 +98,6 @@ log "================================"
 log "PHASE 3: Git Configuration"
 log "================================"
 
-if [ -z "$GITHUB_TOKEN" ]; then
-    error "GitHub token required!"
-fi
 git config --global user.email "automation@local"
 git config --global user.name "Quantum MAB Bot"
 success "Git configured"
@@ -122,8 +119,13 @@ if [ -d "$REPO_DIR" ]; then
     rm -rf "$REPO_DIR"
 fi
 
-# Fresh clone every run
-REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
+# Fresh clone every run. Public anonymous artifacts can be cloned without a token;
+# set GITHUB_TOKEN only when cloning a private fork.
+if [ -n "$GITHUB_TOKEN" ]; then
+    REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
+else
+    REPO_URL="https://github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
+fi
 log "🚀 Cloning $GITHUB_USERNAME/$GITHUB_REPO (branch: $TARGET_BRANCH)..."
 git clone --branch "$TARGET_BRANCH" --single-branch "$REPO_URL" "$REPO_DIR" || error "Clone failed"
 

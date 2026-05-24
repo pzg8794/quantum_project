@@ -530,4 +530,4 @@ Use the following order when restoring this pipeline:
 - `hybrid_variable_framework/state_analysis.py`
 - `docs/guides/STATE_LAYERS_AND_RESUME.md`
 - `docs/updates/FRAMEWORK_DESIGN_LOG.md`
-- `GA Papers/QuantumFaultTolerant/tracking/PAPER-CHANGES-TRACKER.md`
+- `manuscript/tracking/PAPER-CHANGES-TRACKER.md`

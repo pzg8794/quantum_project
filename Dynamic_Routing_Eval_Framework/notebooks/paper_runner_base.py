@@ -37,7 +37,7 @@ class PaperRunner(ABC):
             import google.colab
             from google.colab import drive
             drive.mount('/content/drive')
-            project_dir = '/content/drive/MyDrive/GA-Work/hybrid_variable_framework/DynamicRoutingEvalFramework'
+            project_dir = './DynamicRoutingEvalFramework'
             os.chdir(project_dir)
             print("Running in Google Colab")
             project_code_dir = os.path.join(project_dir, 'src')

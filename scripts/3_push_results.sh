@@ -97,7 +97,7 @@ for attempt in $(seq 1 $MAX_RETRIES); do
     git push origin "$TARGET_BRANCH" >> "$LOG_FILE" 2>&1
     if [ $? -eq 0 ]; then
         success "Results pushed to GitHub!"
-        log "URL: https://github.com/pzg8794/quantum_project/tree/${TARGET_BRANCH}/Dynamic_Routing_Eval_Framework/results"
+        log "Results path: Dynamic_Routing_Eval_Framework/results on branch ${TARGET_BRANCH}"
         break
     fi
     

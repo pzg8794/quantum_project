@@ -22,17 +22,17 @@ You're ready to run the notebook end-to-end with two parameter configurations to
 ### How to Run
 
 **Option A: From VS Code**
-1. Open the notebook: `quantum_project_hub/notebooks/H-MABs_Eval-T_XQubit_Alloc_XQRuns copy.ipynb`
+1. Open one of the restored notebooks in `Dynamic_Routing_Eval_Framework/notebooks/`
 2. Click **"Run All"** (Ctrl+Shift+Alt+Enter or via Run menu)
 3. Wait for all cells to complete (~30-45 minutes estimated)
 
 **Option B: From Terminal**
 ```bash
 source ~/.quantum/bin/activate
-cd ~/DataScience/Semester4/GA-Work/quantum_project_hub/notebooks
+cd Dynamic_Routing_Eval_Framework/notebooks
 
 jupyter nbconvert --to notebook --execute \
-  "H-MABs_Eval-T_XQubit_Alloc_XQRuns copy.ipynb" \
+  "H-MABs_MasterDataset_VerificationHub.ipynb" \
   --ExecutePreprocessor.timeout=3600 \
   --inplace
 ```

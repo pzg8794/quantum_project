@@ -283,7 +283,7 @@ So the safe rule is:
 - only repair evaluator files when evaluator top-level metadata disagrees with runner-derived truth
 - do **not** rewrite a live evaluator state that already matches its runner states
 
-## Capacity-allocation handoff audit (Paper 7 / Paper 12)
+## Capacity-allocation transfer audit (Paper 7 / Paper 12)
 
 This section answers a narrower diagnostic question:
 
@@ -313,7 +313,7 @@ Observed examples:
   - `key_attrs['qubit_capacities'] = (30, 30, 30, 30)`
   - `runner_qubit_caps[...] = same 4-path tuple`
 
-### Runtime handoff path
+### Runtime transfer path
 
 There are **three different stages** where capacity allocations are created or propagated:
 
@@ -746,9 +746,9 @@ Registry follow-up:
 
 - live registry cache was cleared again after the rename so the next resume scan rebuilds from the post-rename filesystem state.
 
-### Drive-backed GA-Work mirror and automatic filesystem fallback (2026-03-08)
+### Drive-backed anonymous-workspace mirror and automatic filesystem fallback (2026-03-08)
 
-The backup manager now auto-detects a mirrored `GA-Work` under macOS Google Drive Desktop when the same repo tree exists there.
+The backup manager now auto-detects a mirrored `anonymous-workspace` under macOS Google Drive Desktop when the same repo tree exists there.
 
 Current behavior:
 

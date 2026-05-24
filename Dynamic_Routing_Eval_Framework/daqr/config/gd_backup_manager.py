@@ -16,7 +16,7 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 class GoogleDriveBackupManager:
     """Unified JSON registry backup to Google Drive Shared Drive."""
 
-    DEFAULT_DRIVE_FOLDER_ID = "0AK0VchnNyM-xUk9PVA"
+    DEFAULT_DRIVE_FOLDER_ID = "<drive-folder-id>"
 
     def __init__(self, date_str, config_dir, verbose=False):
         self.drive = None
@@ -408,7 +408,7 @@ class GoogleDriveBackupManager:
     def _find_workspace_root(self, start_path: Path):
         start_path = Path(start_path).resolve()
         for parent in [start_path, *start_path.parents]:
-            if parent.name == "GA-Work":
+            if parent.name == "anonymous-workspace":
                 return parent
         return None
 

@@ -165,7 +165,7 @@ def test_paper7_topology_and_paths():
         n_qisps=3,
         base_seed=42,
         use_synthetic=False,
-        topology_path='/Users/pitergarcia/DataScience/Semester4/GA-Work/hybrid_variable_framework/Dynamic_Routing_Eval_Framework/daqr/core/topology_data/as20000101.txt'
+        topology_path='<local-path>'
     )
     dt = time.time() - t0
 

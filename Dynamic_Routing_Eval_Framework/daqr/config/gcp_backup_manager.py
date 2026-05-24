@@ -9,7 +9,7 @@ from datetime import datetime
 class GCPBackupManager:
     """Unified JSON registry backup to GCS (fast, NoSQL-style)"""
 
-    def __init__(self, date_str, config_dir, bucket_name="quantum-backups-piter", verbose=False):
+    def __init__(self, date_str, config_dir, bucket_name="quantum-backups-anonymous", verbose=False):
         self.new_entries = {}
         self.verbose = verbose
         self.date_str = date_str or datetime.now().strftime("%Y%m%d")
@@ -17,7 +17,7 @@ class GCPBackupManager:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.backup_registry_path = self.dir / "backup_registry.json"
         self.backup_pickle_path = self.dir / "backup_registry.pkl"
-        self.bucket_name = bucket_name
+        self.bucket_name = bucket_name or os.environ.get("DAQR_GCS_BUCKET")
         self.regkey = "registry/backup_registry.json"
 
         # === Credential auto-discovery ===
@@ -30,7 +30,7 @@ class GCPBackupManager:
         # === Try connecting to GCS ===
         try:
             self.storage_client = storage.Client()
-            self.bucket = self.storage_client.bucket(bucket_name)
+            self.bucket = self.storage_client.bucket(self.bucket_name)
             self.remote_available = self._validate_bucket()
         except Exception as e:
             self.remote_available = False

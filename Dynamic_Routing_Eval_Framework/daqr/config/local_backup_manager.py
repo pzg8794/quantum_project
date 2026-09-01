@@ -4,7 +4,7 @@ import threading
 import os, sys, io
 import shutil, pathlib
 import re
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
@@ -450,7 +450,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
             }
         return summary
 
-    def upload_files_by_pattern(self, pattern, components=None, date_str=None, status_callback=None, progress_every=25):
+    def upload_files_by_pattern(self, pattern, components=None, date_str=None, status_callback=None, progress_every=25, workers=1):
         local_matches = self._collect_local_state_files_by_pattern(
             pattern,
             components=components,
@@ -472,30 +472,73 @@ class LocalBackupManager(GoogleDriveBackupManager):
                 )
                 date_uploaded = []
                 date_failed = []
-                for idx, path in enumerate(files, start=1):
-                    matched.append(path.name)
-                    try:
-                        ok = self._upload_file_to_drive(
+                matched.extend(path.name for path in files)
+
+                if workers and workers > 1 and len(files) > 1:
+                    thread_local = threading.local()
+
+                    def _worker_manager():
+                        manager = getattr(thread_local, "manager", None)
+                        if manager is None:
+                            manager = create_pattern_drive_manager(current_date, self.dir, verbose=self.verbose)
+                            thread_local.manager = manager
+                        return manager
+
+                    def _upload_one(path):
+                        manager = _worker_manager()
+                        ok = manager._upload_file_to_drive(
                             component=component,
                             date_str=current_date,
                             local_path=str(path),
                             filename=path.name,
                         )
-                        if ok:
-                            uploaded.append(path.name)
-                            date_uploaded.append(path.name)
-                        else:
+                        return path.name, bool(ok)
+
+                    completed = 0
+                    with ThreadPoolExecutor(max_workers=int(workers)) as pool:
+                        futures = [pool.submit(_upload_one, path) for path in files]
+                        for future in as_completed(futures):
+                            completed += 1
+                            try:
+                                name, ok = future.result()
+                            except Exception:
+                                name, ok = "<unknown>", False
+                            if ok:
+                                uploaded.append(name)
+                                date_uploaded.append(name)
+                            else:
+                                failed.append(name)
+                                date_failed.append(name)
+
+                            if completed % progress_every == 0 or completed == len(files):
+                                self._emit_pattern_status(
+                                    status_callback,
+                                    f"PROGRESS {component} {current_date} {completed}/{len(files)} uploaded={len(date_uploaded)} failed={len(date_failed)} workers={workers}",
+                                )
+                else:
+                    for idx, path in enumerate(files, start=1):
+                        try:
+                            ok = self._upload_file_to_drive(
+                                component=component,
+                                date_str=current_date,
+                                local_path=str(path),
+                                filename=path.name,
+                            )
+                            if ok:
+                                uploaded.append(path.name)
+                                date_uploaded.append(path.name)
+                            else:
+                                failed.append(path.name)
+                                date_failed.append(path.name)
+                        except Exception:
                             failed.append(path.name)
                             date_failed.append(path.name)
-                    except Exception:
-                        failed.append(path.name)
-                        date_failed.append(path.name)
 
-                    if idx % progress_every == 0 or idx == len(files):
-                        self._emit_pattern_status(
-                            status_callback,
-                            f"PROGRESS {component} {current_date} {idx}/{len(files)} uploaded={len(date_uploaded)} failed={len(date_failed)}",
-                        )
+                        if idx % progress_every == 0 or idx == len(files):
+                            self._emit_pattern_status(
+                                status_callback,
+                                f"PROGRESS {component} {current_date} {idx}/{len(files)} uploaded={len(date_uploaded)} failed={len(date_failed)}",
+                            )
 
                 remote_names = self._list_remote_state_names(component, date_str=current_date)
                 date_verified = [name for name in date_uploaded if name in remote_names]
@@ -1124,6 +1167,7 @@ def migrate_files_by_pattern(
     verbose=False,
     status_callback=None,
     progress_every=25,
+    workers=1,
 ):
     """
     Batch data-management helper for Drive uploads by filename/testbed regex.
@@ -1148,6 +1192,7 @@ def migrate_files_by_pattern(
             date_str=date_str,
             status_callback=status_callback,
             progress_every=progress_every,
+            workers=workers,
         )[component]
 
         deleted_local = []

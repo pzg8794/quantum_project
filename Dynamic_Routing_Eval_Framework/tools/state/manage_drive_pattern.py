@@ -60,6 +60,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run components in parallel.",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of per-file upload workers per component. Keep modest for Drive API stability.",
+    )
+    parser.add_argument(
         "--progress-every",
         type=int,
         default=25,
@@ -96,6 +102,7 @@ def main(argv: list[str] | None = None) -> int:
             verbose=False,
             status_callback=_print_status,
             progress_every=args.progress_every,
+            workers=args.workers,
         )
 
     if args.json:

@@ -67,6 +67,12 @@ Expected shared-drive state roots:
 
 ## 4) Constraints and rules
 
+- **Cleanup Rule 0:** never delete by age, size, or duplicate-looking name alone.
+  A local file is eligible for removal only when it is explicitly approved and
+  is either verified in `quantum_data_lake/framework_state/` or
+  `quantum_data_lake/model_state/`, known to be generated/cache output, or an
+  obsolete local state-run archive after the canonical state-management path is
+  confirmed.
 - **No code changes are applied without explicit review/approval.**
 - Every proposed modification should go through:
   - task

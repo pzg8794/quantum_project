@@ -115,6 +115,7 @@ For the full file map, see [`REPOSITORY_STRUCTURE.md`](REPOSITORY_STRUCTURE.md) 
 | **[Framework Tools](Dynamic_Routing_Eval_Framework/tools/README.md)** | Small tests + state repair tools (naming/resume, qubit-cap metadata) | Developers |
 | **[State/Resume Log](Dynamic_Routing_Eval_Framework/STATE-RESUME-QUbitCaps-LOG.md)** | Issue → diagnosis → fixes for state/resume metadata | Developers |
 | **[State Analysis Contract](docs/guides/STATE_ANALYSIS_EVALUATOR_CONTRACT.md)** | Canonical evaluator-state payload contract for `state_analysis.py` | Developers |
+| **[Medium-Scale Execution Preparation](Dynamic_Routing_Eval_Framework/docs/guides/MEDIUM_SCALE_EXECUTION_PREPARATION.md)** | Source-grounded F-08 preparation, instrumentation, preflight, and scientific decisions; experiments remain on hold | Researchers / developers |
 | **[Assessments](docs/assessments/)** | Assessment reports and corrections | Researchers |
 | **[Planning](docs/planning/)** | Project planning and schedules | Team |
 | **[Updates](docs/updates/)** | Change logs and summaries | Everyone |

@@ -374,7 +374,7 @@ class EXPNeuralUCB(QuantumModel):
             self.group_rewards[selected_path] += observed_reward
             self.group_counts[selected_path] += 1
 
-    def run(self, attack_list, verbose=None):
+    def run(self, attack_list, verbose=None, event_sink=None):
         """Enhanced batch/episode runner with clean progress output"""
         if verbose is None: verbose = self.verbose
         
@@ -400,9 +400,13 @@ class EXPNeuralUCB(QuantumModel):
                     self.X_n = new_contexts
                     self.reward_list = new_rewards            
             
+            if event_sink is not None:
+                event_sink.preselection(frame, self.X_n)
             selected_path, prob_array = self.select_group(frame)
             selected_action = self.select_action(selected_path)
             self.path_action_list.append([selected_path, selected_action])
+            if event_sink is not None:
+                event_sink.decision(frame, selected_path, selected_action, prob_array)
             
             base_reward = self.reward_list[selected_path][selected_action]
             # Clamp reward to [0, 1] for probability usage (Paper7 has rewards > 1.0)
@@ -410,9 +414,16 @@ class EXPNeuralUCB(QuantumModel):
             d_t = np.random.choice([0, 1], p=[1 - base_reward_prob, base_reward_prob])
             dt = d_t * attack_list[frame][selected_path]
             observed_reward = base_reward * attack_list[frame][selected_path]
+            if event_sink is not None:
+                event_sink.outcome(frame, base_reward, attack_list[frame][selected_path],
+                                   observed_reward, d_t, dt)
             
             self.update_algorithms(selected_path, selected_action, base_reward, attack_list, frame)
             self.update_group_selection(selected_path, dt, prob_array)
+            if event_sink is not None:
+                applied = bool(attack_list[frame][selected_path] > 0)
+                event_sink.update(frame, base_reward if applied else None, applied,
+                                  group_target=dt)
             
             oracle_reward = (self.reward_list[self.oracle_path][self.oracle_action] *
                             attack_list[frame][self.oracle_path])

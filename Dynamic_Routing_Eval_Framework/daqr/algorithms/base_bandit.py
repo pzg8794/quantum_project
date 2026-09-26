@@ -315,6 +315,8 @@ class QuantumModel(ABC):
         Args:
             verbose: If True, print cleanup details
         """
+        # Isolated campaigns may disable teardown sleeps; legacy callers retain 1s.
+        cooldown_seconds = getattr(getattr(self, "configs", None), "cleanup_cooldown_seconds", cooldown_seconds)
         try:
             cleanup_items = []
             if cooldown_seconds > 0: time.sleep(cooldown_seconds)

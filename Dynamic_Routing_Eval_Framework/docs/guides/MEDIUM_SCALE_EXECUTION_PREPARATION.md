@@ -2,7 +2,9 @@
 
 Date: 2026-09-26
 
-Phase: **source recovery and engineering design; execution not authorized**
+Phase: **engineering implemented and bounded technical preflight passed; substantive execution held**
+
+> **Current implementation checkpoint:** [September 26 preflight evidence](MEDIUM_SCALE_PREFLIGHT_2026-09-26.md) records implementation commit `265b9a75`, exact four-route regression, the three 15-node/10-route catalogs and 550-action invariants, deterministic identities, passive logging equivalence, 72 passing required tests, four disclosed failures in untouched broader-suite paths, and eight-frame technical fixtures. EXPNeuralUCB is predeclared as a sparse-feedback stress condition. Independent pre-run audit and Piter's launch approval remain pending. Earlier planning language below is preserved as the engineering history and is superseded where this checkpoint reports implementation.
 
 Execution owner: Quantum framework (`pzg8794/quantum_project`)
 

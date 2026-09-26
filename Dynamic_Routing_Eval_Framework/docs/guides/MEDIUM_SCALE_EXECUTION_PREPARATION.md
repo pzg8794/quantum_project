@@ -12,6 +12,10 @@ This is a public-safe engineering preparation record. It does not approve a
 scientific configuration, close F-08/F-09, report new results, or authorize a
 campaign launch. No substantive experiment was run during this inspection.
 
+## Reviewer-first change control
+
+This engineering record supports the **new reviewer-required F-08/F-09 medium-scale experiment only**. Current-code discrepancies, sparse-feedback observations, and future-realism opportunities are tracked as bounded design/provenance questions; they do not by themselves reopen, rewrite, or retroactively invalidate the existing manuscript or its historical evidence. No manuscript edit is authorized here. Engineering work may proceed on route-metadata generalization, regression/invariant tests, deterministic identity, and passive logging while scientific interpretation of the proposed hybrid medium run remains separately gated.
+
 ## September 26 scientific proposal — approval and preflight required
 
 **PROPOSED SCIENTIFIC CONTRACT — PITER APPROVAL REQUIRED BEFORE SUBSTANTIAL EXECUTION.** A current scientific adjudication proposes `layered-primary-form-v1`: 15 nodes (source, seven first-layer relays, six second-layer relays, destination), ten distinct three-hop source–destination routes from a seeded, degree-bounded, covering bipartite middle-edge catalog, and all 15 nodes represented on routes. This is a controlled synthetic route-breadth anchor, **not** a geometric-network claim or a causal comparison with the historical four-route diamond. The matched Tier-2 continuation would use the same family at `(nodes,routes)=(7,4),(11,7),(15,10)`; a 19/13 extension is deferred. Node and route count co-vary, and graph overlap has no effect on payoff, route-level masks or resource contention in this inherited model; a separately prespecified fixed-topology route-subset check may probe catalog breadth without claiming physical overlap resilience.

@@ -12,6 +12,16 @@ This is a public-safe engineering preparation record. It does not approve a
 scientific configuration, close F-08/F-09, report new results, or authorize a
 campaign launch. No substantive experiment was run during this inspection.
 
+## September 26 scientific proposal — approval and preflight required
+
+**PROPOSED SCIENTIFIC CONTRACT — PITER APPROVAL REQUIRED BEFORE SUBSTANTIAL EXECUTION.** A current scientific adjudication proposes `layered-primary-form-v1`: 15 nodes (source, seven first-layer relays, six second-layer relays, destination), ten distinct three-hop source–destination routes from a seeded, degree-bounded, covering bipartite middle-edge catalog, and all 15 nodes represented on routes. This is a controlled synthetic route-breadth anchor, **not** a geometric-network claim or a causal comparison with the historical four-route diamond. The matched continuation would use the same family at `(nodes,routes)=(7,4),(11,7),(15,10),(19,13)`; node and route count co-vary, with a separately prespecified fixed-topology route-subset check if needed.
+
+The proposed fixed allocator gives nine qubits per route (90 total for ten routes); each three-hop route has 55 nonnegative integer within-route allocations summing to nine (550 route–action pairs). Preserve the implemented primary product-form payoff with its `entanglement_success_factor=100`, route-local effective per-hop rates, route availability gate, and an exact four-route regression fixture. The new medium quality catalog assigns five routes `p_e=2e-4` and five `p_e=1.5e-4` per hop by stable metadata/seed. Shared physical edges are not presently modeled as shared rate/failure/resource coupling. Do not substitute Paper2/Paper8's different action/reward semantics.
+
+The proposed Tier-1 comparison is privileged frame-wise `Oracle`, `CEpsilonGreedy`, and explicit `EXPNeuralUCB(mode='hybrid')`, crossed with `NoAttack` and verified independent `RandomAttack` at **0.0625 effective interruption per route/frame**, one fixed `T_b` replay setting (`s=2`, capacity 12,000), and 6,000 frames. Three predeclared paired topology/environment seed blocks yield **18 policy-run units**; the first six-unit block is only a descriptive pilot. Current pursuit-named model configurations do not activate their pursuit/informed branches under `mode='neural'`, so pursuit comparison requires a separate mode/provenance audit. Current adaptive labels may fall back to random without selection traces.
+
+Hard preflight: deterministic domain-separated SHA-256 seeds (not Python `hash`); valid distinct routes/all-node coverage; 550 aligned contexts/actions/rewards; policy mode and mask nonanticipation; expected-payoff versus sampled learner-feedback distinction; exact attempt retention and completion hashes. The current manuscript describes a different per-link exponent and Bernoulli observed reward than the primary code's `100*x` exponent and continuous accumulated payoff. Resolve data-producing provenance before a GA result claim; do not silently edit either scientific interpretation. Valid zero/poor outcomes must be retained, and performance-triggered/best-attempt reruns bypassed. No exact mid-frame resume is claimed. F-09 remains held for Piter/F-08 approval and passing technical checks; F-10 remains a separate 100-node diagnosis.
+
 ## Authority and inspected source state
 
 The governing public decision is the manuscript project's
@@ -301,6 +311,8 @@ pass. The next action is **M01/M02: freeze the inspected source/runtime
 provenance and have Sol record the scientific contract**, using the specific
 primary-versus-external semantics findings above. Then implement M03–M08 in
 scoped changes and complete technical preflight before requesting a launch.
+
+**Updated September 26 next action:** the proposal above now supplies candidate M01/M02 scientific values, pending Piter approval. Engineering may prepare the metadata-driven catalog/context/reward path and four-route plus medium invariant tests, then seed/logging/attempt checks. It must not treat this proposal as F-08 signoff or launch F-09. The earlier unresolved-values queue is retained for historical traceability, not as the current decision state.
 
 ## Pinned source register
 

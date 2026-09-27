@@ -1,6 +1,6 @@
 # M-Q Q-05 — Default/Fixed Medium-Scale Result Checkpoint
 
-**Status:** RUN COMPLETE / MANAGER VALIDATED / INDEPENDENT RESULT REVIEW PENDING  
+**Status:** RUN COMPLETE / MANAGER VALIDATED / INDEPENDENT RESULT REVIEW ACCEPTED
 **Execution commit:** `fdcefee58adc8df8d802d33f8c079666d115d68d`  
 **Execution mode:** Serial, proven `AllocatorRunner -> MultiRunEvaluator -> QuantumExperimentRunner` workflow  
 **Started:** `2026-09-27T21:08:29Z`  
@@ -52,9 +52,9 @@ The across-threat efficiency floor in this matrix is 25.68% for `CEpsilonGreedy`
 
 ## Bounded interpretation
 
-Within this exact fixed-allocator medium anchor, `CEpsilonGreedy` ranks above `EXPNeuralUCB` in every threat regime and every paired block. The result therefore demonstrates a clear hierarchy reversal relative to any expectation that the tested neural/adversarial representative would dominate the simpler contextual learner at this scale and action-space size.
+Within this exact fixed-allocator medium anchor, `CEpsilonGreedy` ranks above `EXPNeuralUCB` in all five threat regimes and all 15 block/threat comparisons. This establishes the observed non-Oracle ordering for the frozen matrix. Describing it as a reversal requires an explicitly pinned prior comparator or preregistered ordering and is not established by this run alone.
 
-This result does **not** establish that node count alone caused the reversal, does not test allocator sensitivity, and does not directly adjudicate the pursuit/context-aware-neural family because those policies are not part of the frozen Tier-1 matrix. It is one controlled medium-anchor result that motivates the already-separated scale-spectrum and 100-node diagnostic work; it must not be pooled with heterogeneous external testbeds as though they were one controlled scaling curve.
+This result does **not** establish that node count alone caused the observed ordering, does not test allocator sensitivity, and does not directly adjudicate the pursuit/context-aware-neural family because those policies are not part of the frozen Tier-1 matrix. It is one controlled medium-anchor result that motivates the already-separated scale-spectrum and 100-node diagnostic work; it must not be pooled with heterogeneous external testbeds as though they were one controlled scaling curve.
 
 ## Immutable evidence
 

@@ -17,6 +17,7 @@ from daqr.config.experiment_config import ExperimentConfiguration
 from daqr.config.local_backup_manager import LocalBackupManager
 from daqr.core.catalog_components import LayeredPrimaryCatalog, PrimaryPayoff
 from daqr.core.qubit_allocator import QubitAllocator
+from daqr.core.scenario_execution import ScenarioExecutionComponent
 from daqr.evaluation.allocator_runner import AllocatorRunner
 from daqr.evaluation.campaign_evidence import file_hash
 
@@ -120,6 +121,12 @@ def test_frozen_notebook_config_and_external_catalog():
         assert sum(len(actions) for actions in params["external_contexts"]) == 550
         assert all(actions.shape[1] == 3 for actions in params["external_contexts"])
         assert params["_campaign_catalog_identity"]["block"] == block
+        components = params["_scenario_execution_components"]
+        assert list(components) == list(SCENARIOS)
+        assert all(
+            isinstance(component, ScenarioExecutionComponent)
+            for component in components.values()
+        )
         identities.append(params["_campaign_catalog_identity"])
     assert len({item["topology_hash"] for item in identities}) == 3
 

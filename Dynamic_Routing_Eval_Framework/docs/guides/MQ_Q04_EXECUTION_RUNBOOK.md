@@ -94,3 +94,23 @@ fabricate a static approximation.
 - Scientific 6,000-frame execution: not launched.
 - Scope: execution-layer causal-session integration only; no substitute runner,
   threat/model semantics, allocator architecture, or manuscript change.
+
+## Q-04 plugin-dispatch corrective checkpoint — 2026-09-27
+
+- DEV commit: `c6833b9c`.
+- Focused capability/session and valid-zero regressions: `5 passed in 7.74s`.
+- Real notebook-helper and tiny 45-cell matrix path: `7 passed in 44.32s`.
+- Current expanded PR #2 regression command, which includes the historical
+  72-test gate: `121 passed in 101.95s`.
+- The runner contains no campaign import or Adaptive/OnlineAdaptive name dispatch.
+  A typed `ScenarioExecutionComponent` injects the configured strategy and frozen
+  seed, while the environment delegates causal lifecycle creation to
+  `AttackStrategy.open_session`.
+- Static strategies retain precomputed masks. Causal strategies expose no
+  fabricated environment mask; each policy obtains a fresh causal session.
+- **BLOCKER:** the existing `campaign_evidence.py` bundle remains a reduced
+  two-phase post-run schema and is not the frozen PR #2 four-phase
+  `AttemptBundle`/`EventRecorder` contract. This checkpoint is not launch-ready
+  until that contract and its catalog/provenance artifacts are integrated through
+  the proven workflow and independently reviewed.
+- Scientific 6,000-frame Q-05 execution: not launched.

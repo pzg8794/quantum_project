@@ -247,6 +247,7 @@ class AllocatorRunner:
         total_qubits = config.get('total_qubits', 35)
         initial_state = config.get('initial_state', None)
         min_qubits = config.get('min_qubits_per_route', 2)
+        baseline_allocation = config.get('baseline_allocation')
         if initial_state is not None: total_qubits = config.get('state_total_qubits', {})[initial_state]
 
         
@@ -316,6 +317,7 @@ class AllocatorRunner:
                     total_qubits=total_qubits,
                     num_paths=num_paths,  # ✅ Use num_paths consistently
                     min_qubits_per_route=min_qubits,
+                    baseline_allocation=baseline_allocation,
                     testbed=testbed,  # ✅ CRITICAL FIX
                     testbed_config=config
                 )

@@ -24,7 +24,7 @@ The bounded repository-history search did not recover a unique canonical impleme
 
 The following remain accepted because they do not depend on choosing among the unresolved candidates:
 
-1. `Markov` must be exogenous to routing history and may share one identical realized mask across paired policies.
+1. `Markov` must be exogenous to routing history and must share one identical realized mask across paired policies within a block.
 2. `Adaptive` and `OnlineAdaptive` must remain causal: frame `t` can use completed routing history only through `t-1`.
 3. History-dependent scenarios must use common addressable exogenous innovations with policy-conditioned realized masks and per-policy mask hashes; identical adaptive masks are invalid.
 4. New results cannot be pooled with or described as reproducing historical scenario rows without a data-producing provenance tie.

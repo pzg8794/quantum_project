@@ -3,13 +3,14 @@
 ## Status
 
 - **Slice:** Q-02 — F-08 scientific-semantic closure for `Markov`, `Adaptive`, and `OnlineAdaptive`.
-- **SDLC stage:** INDEPENDENT REVIEW complete with verdict **REVISE BEFORE DEV**; **not accepted**.
+- **SDLC stage:** revised DESIGN after bounded provenance reconciliation; awaiting second independent review; **not accepted**.
 - **PR:** [pzg8794/quantum_project#2](https://github.com/pzg8794/quantum_project/pull/2), frozen baseline `d97dbde30241cd04b561cdd187a3b622a35b7592`.
 - **Manager branch:** `codex/mq-q02-integration`.
 - **Scientific-definition worker:** ULTRA / Extra High, source checkpoint `88849da91c5aed99215be94a5486c1425f6c7ac1`, integrated as `28d727e7`.
 - **Code/config inspection worker:** HIGH, source checkpoint `a7e2fc69eac684abcccbe5cf04080a205244e6f7`, integrated as `48a09a33`.
 - **Runtime verification:** `20 passed in 60.80s` for the bounded scenario/config/causality selection listed in `Q02_SCENARIO_CODE_INSPECTION.md`. This is technical evidence, not scientific validation.
 - **Independent reviewer:** ULTRA / Extra High, checkpoint `9f9b0c774aec24484bbbd31fab7f10168003b50b`, integrated as `2d1ce7c6`; independent rerun **20/20 passed in 55.44s**.
+- **Provenance inspector:** HIGH, checkpoint `c122ff4da6a1e308998783f01d630c62bb1659e8`, integrated as `07b6b750`; all three canonical scenario definitions remain unrecovered from data-producing provenance.
 
 No production code, test code, manuscript, validated corpus, or F-09/Q-05 run changed in this checkpoint.
 
@@ -58,11 +59,10 @@ No production code, test code, manuscript, validated corpus, or F-09/Q-05 run ch
 
 ## Next action
 
-1. Perform a bounded source/provenance reconciliation for the canonical four-state `Markov` and gamma/softmax `OnlineAdaptive` definitions; do not revalidate the historical paper or broaden into new threats.
-2. Revise the Q-02 scientific decision to either freeze evidence-backed canonical definitions or keep each unresolved scenario held.
-3. Obtain a second independent ULTRA review of the revised design before any production-code change.
-4. If accepted, implement only the smallest approved scenario/config/innovation changes on top of frozen PR #2, then run contract-specific tests and independent review.
-5. Advance to Q-03 only after Q-02 passes.
+1. Obtain a second independent ULTRA review of `Q02_REVISED_DESIGN_AFTER_PROVENANCE.md`.
+2. If the three HOLD dispositions pass, callback to Viber with the genuine owner-decision boundary; do not route routine progress through Piter.
+3. Resume only if missing provenance is supplied or the owner explicitly authorizes a new canonical versioned scenario contract.
+4. Advance to Dev/Q-03 only after Q-02 passes.
 
 ## Explicitly unchanged
 

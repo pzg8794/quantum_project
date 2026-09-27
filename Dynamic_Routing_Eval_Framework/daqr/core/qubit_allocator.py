@@ -10,6 +10,8 @@ from typing import Dict, Tuple
 # ============================================================
 class QubitAllocator:
     """Fixed allocation baseline - maintains static allocation."""
+    allocation_capability = "static"
+
     def __init__(self, total_qubits: int = 35, num_routes: int = None, num_paths: int = None, min_qubits_per_route: int = 1,
                  baseline_allocation: Tuple[int, ...] | None = None, has_uniform_base=False, testbed: str = "default", testbed_config: Dict = {}, exploration_bonus=None):
         # ✅ Accept both num_routes and num_paths parameters
@@ -119,6 +121,8 @@ class QubitAllocator:
 # ============================================================
 class RandomQubitAllocator(QubitAllocator):
     """Epsilon-controlled random allocation."""
+    allocation_capability = "stochastic"
+
     def __init__(self, total_qubits: int = 35, num_routes: int = None, num_paths: int = None, min_qubits_per_route: int = 2, epsilon: float = 1.0, 
                  epsilon_decay: float = 1.0, min_epsilon: float = 0.1, seed: int = None, testbed: str = "default", testbed_config: Dict = {}, exploration_bonus=None):
         if num_paths is not None:   num_routes = num_paths
@@ -174,6 +178,8 @@ class RandomQubitAllocator(QubitAllocator):
 # ============================================================
 class DynamicQubitAllocator(QubitAllocator):
     """UCB based dynamic allocation."""
+    allocation_capability = "dynamic"
+
     def __init__(self, total_qubits: int = 35, num_routes: int = None, num_paths: int = None, min_qubits_per_route: int = 2, epsilon: float = 1.0, 
                  epsilon_decay: float = 1.0, min_epsilon: float = 0.1, seed: int = None, testbed: str = "default", testbed_config: Dict = {}, exploration_bonus=None):
         if num_paths is not None:   num_routes = num_paths
@@ -240,6 +246,8 @@ class DynamicQubitAllocator(QubitAllocator):
 # ============================================================
 class ThompsonSamplingAllocator(QubitAllocator):
     """Thompson Sampling based dynamic allocation."""
+    allocation_capability = "history_dependent"
+
     def __init__(self, total_qubits: int = 35, num_routes: int = None, num_paths: int = None, min_qubits_per_route: int = 2,
                  alpha_prior: float = 1.0, beta_prior: float = 1.0, seed: int = None, testbed: str = "default", testbed_config: Dict = {}, exploration_bonus=None):
         if num_paths is not None:   num_routes = num_paths

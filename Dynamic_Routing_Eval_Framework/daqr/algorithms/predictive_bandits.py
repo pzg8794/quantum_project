@@ -497,6 +497,13 @@ class CMABModelBase(QuantumModel):
 # =============================================================================
 
 class CEpsilonGreedy(CMABModelBase):
+    supports_causal_scenarios = True
+
+    def diagnostic_snapshot(self):
+        return {"path_rewards": copy.deepcopy(self.path_rewards),
+                "path_counts": copy.deepcopy(self.path_counts),
+                "bandits": [copy.deepcopy(b.bandit.__dict__) for b in self.path_bandits]}
+
     def __init__(self, configs, X_n, reward_list, frame_number, **kwargs):
         super().__init__(configs,  X_n, reward_list, frame_number, **kwargs)
         

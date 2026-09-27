@@ -55,6 +55,9 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 
+EXP3_PROBABILITY_FLOOR = 1e-12  # existing numerical safeguard, shared with trace validation
+
+
 class EXPNeuralUCB(QuantumModel):
     """
     Enhanced Unified Quantum Routing Algorithm Framework
@@ -65,6 +68,29 @@ class EXPNeuralUCB(QuantumModel):
     - 'exp3': EXP3 + Linear UCB (EXPUCB equivalent)
     """
     
+    @staticmethod
+    def trace_contract(mode):
+        if mode != "hybrid":
+            raise ValueError("HOLD: passive update contract currently qualified only for hybrid mode")
+        return {"feedback": "bernoulli-route-continuous-allocation-v2",
+                "privileged": False, "probability_floor": EXP3_PROBABILITY_FLOOR}
+
+    supports_causal_scenarios = True
+
+    @classmethod
+    def execution_trace_contract(cls, kwargs):
+        return cls.trace_contract(kwargs["mode"])
+
+    def diagnostic_snapshot(self):
+        return {"group_estimates": copy.deepcopy(self.estimate_group_reward),
+                "neural": [{
+                    "parameters": {k:v.detach().cpu().clone() for k,v in n.net.state_dict().items()},
+                    "gradients": [None if p.grad is None else p.grad.detach().cpu().clone() for p in n.net.parameters()],
+                    "optimizer": copy.deepcopy(n.optimizer.state_dict()),
+                    "sigma_inv": n.sigma_inv.copy(),
+                    "replay": copy.deepcopy(n.replay_buffer.__dict__), "T": n.T,
+                } for n in self.neuralucb_list]}
+
     @property
     def model_type(self):
         return 'batch'
@@ -366,7 +392,7 @@ class EXPNeuralUCB(QuantumModel):
         if self.mode in ['hybrid', 'exp3']:
             for group_index in range(self.num_groups):
                 if group_index == selected_path:
-                    safe_p = max(float(prob_array[selected_path]), 1e-12)
+                    safe_p = max(float(prob_array[selected_path]), EXP3_PROBABILITY_FLOOR)
                     self.estimate_group_reward[group_index].append(observed_reward / safe_p)
                 else:
                     self.estimate_group_reward[group_index].append(0)
@@ -374,7 +400,7 @@ class EXPNeuralUCB(QuantumModel):
             self.group_rewards[selected_path] += observed_reward
             self.group_counts[selected_path] += 1
 
-    def run(self, attack_list, verbose=None):
+    def run(self, attack_list, verbose=None, event_sink=None, scenario_session=None):
         """Enhanced batch/episode runner with clean progress output"""
         if verbose is None: verbose = self.verbose
         
@@ -393,6 +419,8 @@ class EXPNeuralUCB(QuantumModel):
 
         # FIX: Add disable parameter
         for frame in tqdm(range(self.frame_number), desc=f"- {self.mode.upper()} Progress", disable=not verbose):  # Now respects verbose parameter
+            if scenario_session is not None:
+                scenario_session.begin(frame)
         
             if self.transition_trigger and frame > 0 and frame % self.transition_interval == 0:
                 new_contexts, new_rewards = self.transition_trigger()
@@ -400,9 +428,13 @@ class EXPNeuralUCB(QuantumModel):
                     self.X_n = new_contexts
                     self.reward_list = new_rewards            
             
+            if event_sink is not None:
+                event_sink.preselection(frame, self.X_n)
             selected_path, prob_array = self.select_group(frame)
             selected_action = self.select_action(selected_path)
             self.path_action_list.append([selected_path, selected_action])
+            if event_sink is not None:
+                event_sink.decision(frame, selected_path, selected_action, prob_array)
             
             base_reward = self.reward_list[selected_path][selected_action]
             # Clamp reward to [0, 1] for probability usage (Paper7 has rewards > 1.0)
@@ -410,9 +442,17 @@ class EXPNeuralUCB(QuantumModel):
             d_t = np.random.choice([0, 1], p=[1 - base_reward_prob, base_reward_prob])
             dt = d_t * attack_list[frame][selected_path]
             observed_reward = base_reward * attack_list[frame][selected_path]
+            if event_sink is not None:
+                event_sink.outcome(frame, base_reward, attack_list[frame][selected_path],
+                                   observed_reward, d_t, dt)
             
             self.update_algorithms(selected_path, selected_action, base_reward, attack_list, frame)
             self.update_group_selection(selected_path, dt, prob_array)
+            if event_sink is not None:
+                applied = bool(attack_list[frame][selected_path] > 0)
+                event_sink.update(frame, base_reward if applied else None, applied,
+                                  group_target=self.estimate_group_reward[selected_path][-1]
+                                  if self.mode in ["hybrid", "exp3"] else dt)
             
             oracle_reward = (self.reward_list[self.oracle_path][self.oracle_action] *
                             attack_list[frame][self.oracle_path])
@@ -425,6 +465,8 @@ class EXPNeuralUCB(QuantumModel):
             
             self.regret_list.append(self.regret)
             self.reward_list_total.append(self.total_reward)
+            if scenario_session is not None:
+                scenario_session.observe(frame, selected_path)
         
         end_time = time.time()
         elapsed_time = end_time - start_time

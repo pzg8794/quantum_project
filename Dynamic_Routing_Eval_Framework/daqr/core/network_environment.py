@@ -5,6 +5,9 @@ Attack strategies moved to attack_strategies.py for better organization.
 """
 import numpy as np
 import networkx as nx
+from daqr.core.primary_routes import (
+    LEGACY_PRIMARY_ROUTES, allocations, primary_rewards, validate_routes,
+)
 
 # Import attack strategies from separate module
 from daqr.core.attack_strategy import (
@@ -61,12 +64,14 @@ class QuantumEnvironment:
                 seed=42,
                 test_bed=None,
                 state="busy",
-                state_transition_callback=None
+                state_transition_callback=None,
+                route_metadata=None
                 ):
 
         # 🆕 NEW: Store metadata for logging/traceability
         self.metadata = metadata or {}
         self.test_bed = test_bed
+        self.route_metadata = tuple(route_metadata) if route_metadata is not None else None
 
         # Store quantum objects
         self.noise_model = noise_model
@@ -258,29 +263,18 @@ class QuantumEnvironment:
         if getattr(self, "test_bed", None) and str(self.test_bed).lower() == "paper8":
             return self._generate_paper8_contexts()
 
-        ctxs = []
         qubit_capacities = self._normalize_qubit_capacities(self.qubit_capacities)
-        for path_idx, capacity in enumerate(qubit_capacities):
-            if not re.search(r'^\d+$', str(capacity)): continue
-            try:
-                # ✅ FIX: Ensure capacity is an int
-                if isinstance(capacity, str): capacity = int(capacity)
-                else: capacity = int(capacity)
-                
-                if path_idx < 2:  # 2-hop paths
-                    path_ctx = [np.array([i, capacity - i]) for i in range(capacity + 1)]
-                else:  # 3-hop paths
-                    path_ctx = []
-                    for i in range(capacity + 1):
-                        for j in range(capacity + 1 - i):
-                            path_ctx.append(np.array([i, j, capacity - i - j]))
-                
-                ctxs.append(np.array(path_ctx))
-            except Exception as e:
-                print(f"\t Error Generating Contexts for {self}: path_id={path_idx}, cap={capacity}")
-                print(f"\t\t{type(e).__name__}: {e}")
-                ctxs.append(np.array([]))
-        return ctxs
+        routes = self._primary_routes()
+        return [allocations(capacity, route.hops)
+                for route, capacity in zip(routes, qubit_capacities)]
+
+    def _primary_routes(self):
+        routes = getattr(self, "route_metadata", None)
+        if routes is None:
+            if len(self.qubit_capacities) != 4:
+                raise ValueError("Non-four-route primary environments require explicit route_metadata")
+            routes = LEGACY_PRIMARY_ROUTES
+        return validate_routes(routes, self.qubit_capacities)
 
     def _generate_paper8_contexts(self):
         """
@@ -347,33 +341,11 @@ class QuantumEnvironment:
         if getattr(self, "test_bed", None) and str(self.test_bed).lower() == "paper8":
             return self._calculate_paper8_path_rewards()
 
-        try:
-            # The 'A' factor is now a fixed hyperparameter of the environment, not the experiment length.
-            A = self.entanglement_success_factor
-
-            def p(pe): return 1 - (1 - pe) ** A
-
-            # The rest of your original, correct physics-based calculation remains unchanged.
-            # Path 1
-            pe1, pe2 = 1.5e-4, 1.5e-4
-            p1, p2 = p(pe1), p(pe2)
-            r1 = [(1 - (1 - p1) ** c[0]) * (1 - (1 - p2) ** c[1]) for c in self.contexts[0]]
-            # Path 2
-            pe1, pe2 = 1e-4, 1e-4
-            p1, p2 = p(pe1), p(pe2)
-            r2 = [(1 - (1 - p1) ** c[0]) * (1 - (1 - p2) ** c[1]) for c in self.contexts[1]]
-            # Path 3
-            pe1, pe2, pe3 = 2e-4, 2e-4, 2e-4
-            p1, p2, p3 = p(pe1), p(pe2), p(pe3)
-            r3 = [(1 - (1 - p1) ** c[0]) * (1 - (1 - p2) ** c[1]) * (1 - (1 - p3) ** c[2]) for c in self.contexts[2]]
-            # Path 4
-            pe1, pe2, pe3 = 1.5e-4, 1.5e-4, 1.5e-4
-            p1, p2, p3 = p(pe1), p(pe2), p(pe3)
-            r4 = [(1 - (1 - p1) ** c[0]) * (1 - (1 - p2) ** c[1]) * (1 - (1 - p3) ** c[2]) for c in self.contexts[3]]
-        
-            return [r1, r2, r3, r4]
-        except Exception as e: print(f"\t Error Calculating Path Rewards for {self}\n\t\t{e}")
-        return []
+        routes = self._primary_routes()
+        if len(self.contexts) != len(routes):
+            raise ValueError("Primary route/context count mismatch")
+        return [primary_rewards(route, contexts, self.entanglement_success_factor)
+                for route, contexts in zip(routes, self.contexts)]
 
     def _calculate_paper8_path_rewards(self):
         """

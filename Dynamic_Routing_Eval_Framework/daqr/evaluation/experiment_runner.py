@@ -1014,11 +1014,14 @@ class QuantumExperimentRunner:
         print(f"\t{'Getting' if not reset else 'Resetting'} Oracle Rewards ...")
         model = None
         overwrite = self.configs.overwrite
+        retain_completed_zero = bool(
+            getattr(self.configs, 'disable_outcome_retries', False)
+        )
         while oracle_reward <= 0:
             self.configs.overwrite = False
             self.results[base_model], model = self.run_algorithm(base_model)
             oracle_reward = self.results[base_model].get('final_reward', 0.0)
-            if bool(getattr(self.configs, 'disable_outcome_retries', False)):
+            if retain_completed_zero:
                 break
         
         if model is not None:
@@ -1032,7 +1035,13 @@ class QuantumExperimentRunner:
             
         self.configs.overwrite = overwrite
 
-        if oracle_reward == 0.0:
+        if retain_completed_zero and self.results[base_model].get('error'):
+            raise RuntimeError(
+                f"[FATAL] Oracle technical execution failed: "
+                f"{self.results[base_model]['error']}"
+            )
+
+        if oracle_reward == 0.0 and not retain_completed_zero:
             raise RuntimeError(
                 "[FATAL] Oracle returned zero total reward. "
                 "This indicates reward generation or attack pattern is invalid."

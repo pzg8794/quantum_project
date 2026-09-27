@@ -93,6 +93,7 @@ from daqr.config.local_backup_manager import LocalBackupManager
 from daqr.core.catalog_components import LayeredPrimaryCatalog, PrimaryPayoff
 from daqr.core.qubit_allocator import QubitAllocator
 from daqr.campaigns.medium_spec import build_catalog
+from daqr.campaigns.medium_execution_evidence import MediumExecutionEvidencePlugin
 from daqr.evaluation.allocator_runner import AllocatorRunner
 
 print('✓ medium-scale catalog components and real AllocatorRunner loaded')
@@ -103,7 +104,13 @@ SOURCE_NOTEBOOK_COMMIT = '96b327de7e3571ad3cbf05bbeee02cfb922ca2c3'
 SOURCE_NOTEBOOK_BLOB = '599bb49b58a41fc98ff7d6f10c4077c941507269'
 SOURCE_NOTEBOOK_SHA256 = '714eefbd1eafc3c66347fc6b0460e6aaf706ad25b1ea411bcc89ac317a4711c9'
 
-models = ['Oracle', 'CEpsilonGreedy', 'EXPNeuralUCB']
+models = [
+    'Oracle',
+    'GNeuralUCB',
+    'EXPNeuralUCB',
+    'CPursuitNeuralUCB',
+    'iCPursuitNeuralUCB',
+]
 BASE_FRAMES = 6000
 FRAME_STEP = 0
 RUNS = [3]
@@ -133,7 +140,7 @@ MEDIUM_CONFIG = {
     'baseline_allocation': (9,) * 10,
     'entanglement_success_factor': 100,
     'physics_model_name': 'medium_tier1',
-    'state_suffix': 'medium_tier1_default',
+    'state_suffix': 'medium_tier1_default_full_roster_v2',
 }
 
 FRAMEWORK_CONFIG = {
@@ -158,7 +165,7 @@ FRAMEWORK_CONFIG = {
 }
 
 assert list(test_scenarios) == ['stochastic', 'markov', 'adaptive', 'onlineadaptive', 'none']
-assert len(models) * len(test_scenarios) * RUNS[0] == 45
+assert len(models) * len(test_scenarios) * RUNS[0] == 75
 assert BASE_FRAMES * SCALES[0] == 12000
 
 print('BASE_FRAMES:', BASE_FRAMES)
@@ -204,7 +211,7 @@ def _catalog_configuration(base_seed: int, qubit_cap):
         reward_component=PrimaryPayoff(),
     )
     config.execution = ExecutionSettings(
-        protocol_namespace='f08-tier1-default-fixed-v1',
+        protocol_namespace='f08-tier1-default-fixed-full-roster-v2',
         horizon=BASE_FRAMES,
         base_horizon=BASE_FRAMES,
         scale_points=(3,),
@@ -225,6 +232,9 @@ def get_physics_params(
     if int(current_frames) != BASE_FRAMES:
         raise ValueError(f'Frozen horizon is {BASE_FRAMES}, got {current_frames}')
 
+    from daqr.campaigns.medium_spec import seed_manifest
+    from daqr.core.scenario_execution import ScenarioExecutionComponent
+
     scenario_config = _catalog_configuration(base_seed, qubit_cap)
     catalog = build_catalog(
         scenario_config,
@@ -240,6 +250,21 @@ def get_physics_params(
     assert graph.number_of_nodes() == 15
     assert len(contexts) == len(rewards) == 10
     assert sum(len(actions) for actions in contexts) == 550
+
+    scenario_execution_components = {}
+    for scenario in test_scenarios:
+        strategy = scenario_config.resolve_attack_strategy(scenario)
+        threat_seed = seed_manifest(
+            scenario_config,
+            block=int(block_id),
+            policy=models[0],
+            threat=scenario,
+            scale_m=3,
+        )['threat']['actual_seed']
+        scenario_execution_components[scenario] = ScenarioExecutionComponent(
+            strategy=strategy,
+            seed=threat_seed,
+        )
 
     print(f'📊 Medium topology: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges')
     print(f'📊 Medium routes/actions: {len(contexts)} routes, {sum(len(x) for x in contexts)} actions')
@@ -259,7 +284,8 @@ def get_physics_params(
             'physics_hash': catalog['physics_hash'],
         },
         '_campaign_trace_catalog': catalog,
-        '_campaign_scenario_config': scenario_config,
+        '_scenario_execution_components': scenario_execution_components,
+        '_execution_evidence_configuration': scenario_config,
     }
 
 
@@ -279,7 +305,11 @@ def configure_external_persistence(custom_config, output_root):
     custom_config.backup_mgr.in_share_drive = False
     custom_config.backup_mgr.mode = 'local'
     custom_config.scientific_evidence_root = root / 'q04-evidence'
-    custom_config.scientific_seed_namespace = 'f08-tier1-default-fixed-v1'
+    custom_config.execution_evidence_plugin = MediumExecutionEvidencePlugin(
+        custom_config.scientific_evidence_root,
+        scale_m=3,
+    )
+    custom_config.scientific_seed_namespace = 'f08-tier1-default-fixed-full-roster-v2'
     custom_config.scientific_campaign_base_seed = BASE_SEED
     custom_config.disable_outcome_retries = True
     return custom_config
@@ -302,7 +332,7 @@ overwrite = False
 
 OUTPUT_ROOT = Path(os.environ.get(
     'QUANTUM_MEDIUM_OUTPUT_ROOT',
-    '/content/drive/MyDrive/GA-Work/quantum_experiment_evidence/medium-tier1/default-fixed',
+    '/content/drive/MyDrive/GA-Work/quantum_experiment_evidence/medium-tier1/default-fixed-full-roster-v2',
 )).expanduser().resolve()
 
 print('' + '=' * 70, '🎯 F-08 TIER-1 DEFAULT ALLOCATOR EVALUATION', '=' * 70)
@@ -361,7 +391,8 @@ print('DEFAULT ALLOCATOR FULL-SPECTRUM RUN COMPLETE!')
         "metadata": {},
         "source": lines("""## Evidence Boundary
 
-- This notebook covers only the authorized Default/fixed allocator and all five established threats.
+- This notebook covers the authorized Default/fixed allocator, the pinned five-model `NEURAL_MODELS` roster, and all five established threats.
+- It writes a fresh campaign and does not reuse or pool any cell from the preserved 45-cell reduced diagnostic.
 - Three equal 6,000-frame blocks are represented by `RUNS=[3]`, `BASE_FRAMES=6000`, and `FRAME_STEP=0` in the proven runner.
 - Raw state/evidence must remain under the configured external output root.
 - Random is under separate native-semantics reassessment; DynamicUCB and ThompsonSampling remain on hold.
@@ -379,8 +410,15 @@ print('DEFAULT ALLOCATOR FULL-SPECTRUM RUN COMPLETE!')
         "copied_source_cells": list(range(10)),
         "allocator": "Default",
         "runner_module": "daqr.evaluation.allocator_runner",
+        "required_models": [
+            "Oracle",
+            "GNeuralUCB",
+            "EXPNeuralUCB",
+            "CPursuitNeuralUCB",
+            "iCPursuitNeuralUCB",
+        ],
         "required_threats": ["stochastic", "markov", "adaptive", "onlineadaptive", "none"],
-        "required_cells": 45,
+        "required_cells": 75,
         "execution_mode": "serial-proven-runner",
     }
     OUTPUT.write_text(json.dumps(notebook, indent=1) + "\n", encoding="utf-8")

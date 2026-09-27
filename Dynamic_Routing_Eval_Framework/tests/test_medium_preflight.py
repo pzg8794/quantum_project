@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import torch
 
-from medium_fixtures import prepare_manifest,run_policy,execute_preflight
+from medium_fixtures import FULL_MODEL_ROSTER,prepare_manifest,run_policy,execute_preflight
 from daqr.campaigns.medium_runner import FRAME_LIMIT
 from daqr.campaigns.medium_trace import (
     EventRecorder,AttemptBundle,validate_completion,run_identity,
@@ -30,7 +30,7 @@ def exact_equal(a,b):
         assert a==b
 
 
-@pytest.mark.parametrize("policy",["Oracle","CEpsilonGreedy","EXPNeuralUCB"])
+@pytest.mark.parametrize("policy",FULL_MODEL_ROSTER)
 @pytest.mark.parametrize("threat",["NoAttack","RandomAttack"])
 def test_real_policy_logging_exact_equivalence(policy,threat,tmp_path):
     manifest,cat,mask=prepare_manifest(policy,threat,frames=8)
@@ -60,9 +60,21 @@ def test_real_policy_logging_exact_equivalence(policy,threat,tmp_path):
             assert decision["joint_action_propensity"] is None
             assert update["allocation_update_applied"]==bool(mask[frame,route])
             assert update["allocation_update_target"]==(rewards[route][action] if mask[frame,route] else None)
+            assert outcome["sampled_bernoulli_draw"] in (0,1)
+            assert update["importance_weighted_route_update"] is not None
+        elif policy in {"GNeuralUCB","CPursuitNeuralUCB"}:
+            assert decision["route_probability_vector"] is None
+            assert outcome["sampled_bernoulli_draw"] in (0,1)
+            assert update["direct_route_update"]==outcome["masked_route_feedback"]
+        elif policy=="iCPursuitNeuralUCB":
+            assert decision["route_probability_vector"] is None
+            assert outcome["sampled_bernoulli_draw"] is None
+            assert outcome["masked_route_feedback"] is None
+            assert update["direct_route_update"]==outcome["selected_continuous_payoff"]
         else:
             assert outcome["sampled_bernoulli_draw"] is None
             assert decision["route_probability_vector"] is None
+            assert update["policy_update_target"]==outcome["selected_continuous_payoff"]
 
 
 class CapturingSink:
@@ -91,15 +103,15 @@ def test_logging_equivalence_exercises_real_optimizer_and_masked_feedback():
     assert [int(x[5]) for x in outcomes]==[1,1,0,1,1,1]
 
 
-def test_current_mask_not_read_by_learner_selectors():
+@pytest.mark.parametrize("policy",FULL_MODEL_ROSTER[1:])
+def test_current_mask_not_read_by_learner_selectors(policy):
     contexts=[np.array([[1,0],[0,1]]) for _ in range(10)]
     rewards=[[0.1,0.2] for _ in range(10)]
     # Single decision before either mask can become historical feedback.
-    for policy in ("CEpsilonGreedy","EXPNeuralUCB"):
-        one,_=run_policy(policy,contexts,rewards,np.ones((1,10)),321)
-        zero,_=run_policy(policy,contexts,rewards,np.zeros((1,10)),321)
-        exact_equal(one["path_action_list"],zero["path_action_list"])
-        if policy=="EXPNeuralUCB": exact_equal(one["prob_list"],zero["prob_list"])
+    one,_=run_policy(policy,contexts,rewards,np.ones((1,10)),321)
+    zero,_=run_policy(policy,contexts,rewards,np.zeros((1,10)),321)
+    exact_equal(one["path_action_list"],zero["path_action_list"])
+    if "prob_list" in one: exact_equal(one["prob_list"],zero["prob_list"])
 
 
 def test_logger_calls_no_rng_or_selector_and_copies_values():
@@ -221,7 +233,7 @@ def test_logging_does_not_repeat_selectors_or_gradients(monkeypatch):
     assert counts["group"]==counts["action"]==3
 
 
-@pytest.mark.parametrize("policy",["Oracle","CEpsilonGreedy","EXPNeuralUCB"])
+@pytest.mark.parametrize("policy",FULL_MODEL_ROSTER)
 def test_tiny_end_to_end_real_policy_bundle(policy,tmp_path):
     directory,completion=execute_preflight(tmp_path,policy=policy,frames=4)
     assert completion["state"]=="COMPLETE"

@@ -21,6 +21,7 @@ from daqr.core.catalog_components import LayeredPrimaryCatalog, PrimaryPayoff
 from daqr.core.qubit_allocator import QubitAllocator
 from daqr.core.scenario_execution import ScenarioExecutionComponent
 from daqr.evaluation.allocator_runner import AllocatorRunner
+from medium_fixtures import FULL_MODEL_ROSTER
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,7 +80,8 @@ def test_notebook_preserves_pinned_setup_through_default_run():
     assert provenance["copied_source_cells"] == list(range(10))
     assert provenance["runner_module"] == "daqr.evaluation.allocator_runner"
     assert provenance["required_threats"] == list(SCENARIOS)
-    assert provenance["required_cells"] == 45
+    assert provenance["required_models"] == FULL_MODEL_ROSTER
+    assert provenance["required_cells"] == 75
     assert all(
         cell.get("execution_count") is None and not cell.get("outputs")
         for cell in notebook["cells"]
@@ -104,7 +106,7 @@ def test_frozen_notebook_config_and_external_catalog():
     assert namespace["FRAME_STEP"] == 0
     assert namespace["RUNS"] == [3]
     assert namespace["SCALES"] == [2]
-    assert namespace["models"] == ["Oracle", "CEpsilonGreedy", "EXPNeuralUCB"]
+    assert namespace["models"] == FULL_MODEL_ROSTER
     assert list(namespace["test_scenarios"]) == list(SCENARIOS)
     assert namespace["FRAMEWORK_CONFIG"]["capacity"] == 12000
     assert namespace["FRAMEWORK_CONFIG"]["scientific_block_ids"] == [0, 1, 2]
@@ -132,7 +134,7 @@ def test_frozen_notebook_config_and_external_catalog():
         )
         evidence_config = params["_execution_evidence_configuration"]
         assert evidence_config.execution.horizon == 6000
-        assert evidence_config.execution.protocol_namespace == "f08-tier1-default-fixed-v1"
+        assert evidence_config.execution.protocol_namespace == "f08-tier1-default-fixed-full-roster-v2"
         identities.append(params["_campaign_catalog_identity"])
     assert len({item["topology_hash"] for item in identities}) == 3
 
@@ -231,7 +233,7 @@ def test_real_runner_dispatches_frozen_full_spectrum(monkeypatch):
     def bounded_dispatch(**kwargs):
         calls.append(kwargs)
         assert list(runner.custom_config.test_scenarios) == list(SCENARIOS)
-        assert runner.custom_config.models == ["Oracle", "CEpsilonGreedy", "EXPNeuralUCB"]
+        assert runner.custom_config.models == FULL_MODEL_ROSTER
         assert kwargs["physics_params"]["external_topology"].number_of_nodes() == 15
         assert len(kwargs["physics_params"]["external_contexts"]) == 10
         return True
@@ -299,13 +301,13 @@ def test_real_runner_tiny_full_matrix_writes_complete_event_evidence(tmp_path, m
 
     evidence_root = tmp_path / "q04-evidence"
     campaign = json.loads((evidence_root / "campaign-receipt.json").read_text())
-    assert campaign["required_cells"] == campaign["completed_cells"] == 45
+    assert campaign["required_cells"] == campaign["completed_cells"] == 75
     assert campaign["state"] == "COMPLETE"
-    assert len(campaign["bundle_completion_hashes"]) == 45
+    assert len(campaign["bundle_completion_hashes"]) == 75
     assert not (evidence_root / "receipts").exists()
 
     bundles = sorted(evidence_root.glob("*/attempt-*"))
-    assert len(bundles) == 45
+    assert len(bundles) == 75
     manifests = [json.loads((bundle / "manifest.json").read_text()) for bundle in bundles]
     assert {
         (item["identity"]["block_id"], item["identity"]["threat"], item["identity"]["policy"])
@@ -388,6 +390,13 @@ def test_real_runner_tiny_full_matrix_writes_complete_event_evidence(tmp_path, m
             if manifest["identity"]["policy"] == "EXPNeuralUCB":
                 assert outcome["sampled_bernoulli_draw"] in (0, 1)
                 assert update["importance_weighted_route_update"] is not None
+            elif manifest["identity"]["policy"] in {"GNeuralUCB", "CPursuitNeuralUCB"}:
+                assert outcome["sampled_bernoulli_draw"] in (0, 1)
+                assert update["direct_route_update"] == outcome["masked_route_feedback"]
+            elif manifest["identity"]["policy"] == "iCPursuitNeuralUCB":
+                assert outcome["sampled_bernoulli_draw"] is None
+                assert outcome["masked_route_feedback"] is None
+                assert update["direct_route_update"] == outcome["selected_continuous_payoff"]
             else:
                 assert update["policy_update_target"] == outcome["selected_continuous_payoff"]
     assert zero_outcomes > 0

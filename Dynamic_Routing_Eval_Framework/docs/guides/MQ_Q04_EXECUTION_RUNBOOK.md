@@ -2,11 +2,12 @@
 
 ## Frozen inputs
 
-- Scientific contract: `MQ_Q03_TIER1_SCIENTIFIC_CONTRACT.md` at manager commit `7036f0d0044bac576c61093c6361fb6739dfc292`.
+- Scientific contract: corrected `MQ_Q03_TIER1_SCIENTIFIC_CONTRACT.md` at manager commit `7be586af`.
 - Copied workflow source: `H-MABs_Eval-Testbed-Paper8-PaperRunConfig.ipynb` at commit `96b327de7e3571ad3cbf05bbeee02cfb922ca2c3`, blob `599bb49b58a41fc98ff7d6f10c4077c941507269`, SHA-256 `714eefbd1eafc3c66347fc6b0460e6aaf706ad25b1ea411bcc89ac317a4711c9`.
 - Execution notebook: `notebooks/H-MABs_Eval-MediumScale-Default-FullThreat.ipynb`.
 - Allocator: Default/fixed only.
-- Matrix: 3 policies × 5 threats × 3 blocks = 45 cells, 6,000 frames each.
+- Matrix: 5 policies × 5 threats × 3 blocks = 75 cells, 6,000 frames each.
+- Campaign isolation: fresh namespace/output root; no cell from the preserved 45-cell reduced diagnostic is reused or pooled.
 
 ## Before execution
 
@@ -21,18 +22,18 @@
 
 ## Acceptance
 
-- The executed notebook must cover all three policies under all five configured threats for three equal 6,000-frame runs (45 policy × threat × block cells in the scientific matrix).
+- The executed notebook must cover the complete pinned five-model roster under all five configured threats for three equal 6,000-frame runs (75 policy × threat × block cells in the scientific matrix).
 - `BASE_FRAMES=6000`, `FRAME_STEP=0`, `RUNS=[3]`, `SCALES=[2]`, `base_capacity=True`, and seed 12345 must remain unchanged.
 - The external catalog must report 15 nodes, 10 routes, and 550 route-action pairs with a fixed 90-qubit budget.
 - State, logs, and outputs must remain under `QUANTUM_MEDIUM_OUTPUT_ROOT`, outside the source repository.
-- Each of the 45 cells must have an immutable PR2 `AttemptBundle` under
+- Each of the 75 cells must have an immutable PR2 `AttemptBundle` under
   `q04-evidence/<run_id>/attempt-<n>/` containing:
   - `manifest.json` with block, threat, policy, actual seed, config identity, catalog identity, and trajectory identity;
   - `availability.json` with the full route-availability trajectory;
   - `events.jsonl` with ordered, joinable `PRESELECTION`, `DECISION`, `OUTCOME`, and `UPDATE` events for every frame;
   - `result.json` with the bounded outcome summary;
   - `completion.json` with status, four-phase event counts, and hashes covering every artifact, including `result.json`.
-- `q04-evidence/campaign-receipt.json` must account for exactly 45 unique
+- `q04-evidence/campaign-receipt.json` must account for exactly 75 unique
   block/threat/policy cells. A cell or campaign with recorded failures is not
   scientific completion.
 - The executed notebook, output-root inventory, source commit, and test receipt form the handoff package.
@@ -46,7 +47,7 @@ Notebook SHA-256 after execution:
 External output root:
 Start/end time:
 Execution mode: serial proven AllocatorRunner
-Policies/threats/blocks: 3/5/3
+Policies/threats/blocks: 5/5/3
 External catalog: 15 nodes / 10 routes / 550 actions
 External state/log inventory:
 Campaign receipt SHA-256:
@@ -66,7 +67,7 @@ Independent review decision:
 
 ## Holds
 
-- Random remains conditional on a separately proven deterministic one-time catalog contract.
+- Random remains on separate native-stochastic provenance qualification; changing allocations are expected, but every result must bind the allocation/catalog/environment that generated it.
 - DynamicUCB and ThompsonSampling remain held; do not label initialization-only allocation as adaptive execution.
 - Process acceleration is OPTIONAL and remains deferred; it must not replace or shadow the proven runner.
 - No manuscript, historical corpus, Tier-2, or F-10 change is authorized by this runbook.

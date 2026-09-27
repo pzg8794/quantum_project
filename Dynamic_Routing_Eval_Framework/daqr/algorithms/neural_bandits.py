@@ -70,10 +70,13 @@ class EXPNeuralUCB(QuantumModel):
     
     @staticmethod
     def trace_contract(mode):
-        if mode != "hybrid":
-            raise ValueError("HOLD: passive update contract currently qualified only for hybrid mode")
-        return {"feedback": "bernoulli-route-continuous-allocation-v2",
-                "privileged": False, "probability_floor": EXP3_PROBABILITY_FLOOR}
+        if mode == "hybrid":
+            return {"feedback": "bernoulli-route-continuous-allocation-v2",
+                    "privileged": False, "probability_floor": EXP3_PROBABILITY_FLOOR}
+        if mode in {"neural", "cmab"}:
+            return {"feedback": "bernoulli-route-direct-continuous-allocation-v1",
+                    "privileged": False}
+        raise ValueError(f"HOLD: unsupported passive trace mode {mode}")
 
     supports_causal_scenarios = True
 
@@ -82,7 +85,9 @@ class EXPNeuralUCB(QuantumModel):
         return cls.trace_contract(kwargs["mode"])
 
     def diagnostic_snapshot(self):
-        return {"group_estimates": copy.deepcopy(self.estimate_group_reward),
+        return {"group_estimates": copy.deepcopy(getattr(self, "estimate_group_reward", None)),
+                "group_rewards": copy.deepcopy(getattr(self, "group_rewards", None)),
+                "group_counts": copy.deepcopy(getattr(self, "group_counts", None)),
                 "neural": [{
                     "parameters": {k:v.detach().cpu().clone() for k,v in n.net.state_dict().items()},
                     "gradients": [None if p.grad is None else p.grad.detach().cpu().clone() for p in n.net.parameters()],

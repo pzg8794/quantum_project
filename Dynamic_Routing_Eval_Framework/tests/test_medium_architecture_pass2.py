@@ -5,7 +5,7 @@ import json
 import numpy as np
 import pytest
 
-from medium_fixtures import fixture_config
+from medium_fixtures import FULL_MODEL_ROSTER, fixture_config
 from test_medium_preflight import exact_equal
 from daqr.config.execution_contract import resolve_configuration
 from daqr.core.attack_strategy import (
@@ -242,7 +242,7 @@ def test_session_rejects_wrong_phase_and_no_premature_completion():
 
 
 @pytest.mark.parametrize("scenario",["adaptive","onlineadaptive"])
-@pytest.mark.parametrize("policy",["Oracle","CEpsilonGreedy","EXPNeuralUCB"])
+@pytest.mark.parametrize("policy",FULL_MODEL_ROSTER)
 def test_real_causal_policies_logging_exact_equivalence(scenario,policy,tmp_path):
     cfg=fixture_config(frames=8)
     cfg.test_scenarios={scenario:{"strategy":scenario,"parameters":{"attack_rate":.2}}}

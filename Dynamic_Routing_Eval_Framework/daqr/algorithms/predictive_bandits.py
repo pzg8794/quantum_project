@@ -126,6 +126,13 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
     - Neural UCB for action selection
     - Anomaly detection for reward filtering
     """        
+    @classmethod
+    def execution_trace_contract(cls, kwargs):
+        return {
+            "feedback": "continuous-route-direct-continuous-allocation-v1",
+            "privileged": False,
+        }
+
     def __init__(self, configs, X_n, reward_list, frame_number, attack_list, 
                 capacity, mode='icmab', beta=0.2, gamma_factor=0.1, eta_factor=0.005, 
                 learning_rate=0.1, arima_update_interval=200, warmup_frames=50, obs=None, obs_noise=0.1, n_experts=4, verbose=False):
@@ -253,7 +260,7 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
             super().update_group_selection(selected_path, observed_reward, advice)
 
     
-    def run(self, attack_list, verbose=False):
+    def run(self, attack_list, verbose=False, event_sink=None, scenario_session=None):
         """Enhanced batch runner with progress suppression"""
         if verbose: self.verbose = verbose
                 
@@ -271,15 +278,22 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
         
         for frame in tqdm(range(self.frame_number), desc=f"- {self.mode.upper()} Progress", disable=not self.verbose):  # Now respects verbose
 
+            if scenario_session is not None:
+                scenario_session.begin(frame)
+
             if self.transition_trigger and frame > 0 and frame % self.transition_interval == 0:
                 new_contexts, new_rewards = self.transition_trigger()
                 if new_contexts is not None:
                     self.Xn = new_contexts
                     self.reward_list = new_rewards
 
-            selected_path, _ = self.select_group(frame)
+            if event_sink is not None:
+                event_sink.preselection(frame, self.X_n)
+            selected_path, probabilities = self.select_group(frame)
             selected_action = self.select_action(selected_path)
             self.path_action_list.append([selected_path, selected_action])
+            if event_sink is not None:
+                event_sink.decision(frame, selected_path, selected_action, probabilities)
             
             base_reward = self.reward_list[selected_path][selected_action]
             # Clamp reward to [0, 1] for probability usage (Paper7 has rewards > 1.0)
@@ -287,6 +301,13 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
             d_t = np.random.choice([0, 1], p=[1 - base_reward_prob, base_reward_prob])
             dt = d_t * attack_list[frame][selected_path]
             observed_reward = base_reward * attack_list[frame][selected_path]
+            if event_sink is not None:
+                event_sink.outcome(
+                    frame,
+                    base_reward,
+                    attack_list[frame][selected_path],
+                    observed_reward,
+                )
             
             self.update_algorithms(selected_path, selected_action, base_reward, attack_list, frame)
             
@@ -309,6 +330,14 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
                 obs=obs,
                 arm_rewards=arm_rewards
             )
+            if event_sink is not None:
+                applied = bool(attack_list[frame][selected_path] > 0)
+                event_sink.update(
+                    frame,
+                    base_reward if applied else None,
+                    applied,
+                    group_target=observed_reward,
+                )
             
             oracle_reward = (self.reward_list[self.oracle_path][self.oracle_action] * 
                            attack_list[frame][self.oracle_path])
@@ -319,6 +348,8 @@ class iCPursuitNeuralUCB(CPursuitNeuralUCB):
             self.total_reward += observed_reward
             self.regret_list.append(self.regret)
             self.reward_list_total.append(self.total_reward)
+            if scenario_session is not None:
+                scenario_session.observe(frame, selected_path)
         
         end_time = time.time()
         elapsed_time = end_time - start_time

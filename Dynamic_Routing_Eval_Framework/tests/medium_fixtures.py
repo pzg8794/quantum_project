@@ -7,10 +7,19 @@ from daqr.core.catalog_components import LayeredPrimaryCatalog, PrimaryPayoff
 from daqr.campaigns import medium_spec, medium_runner
 
 
+FULL_MODEL_ROSTER = [
+    "Oracle",
+    "GNeuralUCB",
+    "EXPNeuralUCB",
+    "CPursuitNeuralUCB",
+    "iCPursuitNeuralUCB",
+]
+
+
 def fixture_config(frames=8, scale_m=3, budget=9, rates=(1e-4, 1.5e-4, 2e-4)):
     routes = 3*scale_m+1
     cfg = ExperimentConfiguration(
-        models=["Oracle","CEpsilonGreedy","EXPNeuralUCB"],
+        models=FULL_MODEL_ROSTER,
         scenarios={"NoAttack":{"strategy":"none","parameters":{}},
                    "RandomAttack":{"strategy":"random","parameters":{"attack_rate":0.0625}}},
         runs=5, scale=2, base_capacity=True, base_seed=12345,

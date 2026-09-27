@@ -12,6 +12,18 @@ from daqr.campaigns.medium_spec import canonical_json, digest
 from daqr.core.scenario_execution import ScenarioSession
 
 PHASES = ("PRESELECTION", "DECISION", "OUTCOME", "UPDATE")
+EXP3_NEURAL_FEEDBACK = "bernoulli-route-continuous-allocation-v2"
+DIRECT_BERNOULLI_NEURAL_FEEDBACK = "bernoulli-route-direct-continuous-allocation-v1"
+DIRECT_CONTINUOUS_NEURAL_FEEDBACK = "continuous-route-direct-continuous-allocation-v1"
+NEURAL_ALLOCATION_FEEDBACK = {
+    EXP3_NEURAL_FEEDBACK,
+    DIRECT_BERNOULLI_NEURAL_FEEDBACK,
+    DIRECT_CONTINUOUS_NEURAL_FEEDBACK,
+}
+BERNOULLI_FEEDBACK = {
+    EXP3_NEURAL_FEEDBACK,
+    DIRECT_BERNOULLI_NEURAL_FEEDBACK,
+}
 
 
 def file_hash(path):
@@ -117,13 +129,24 @@ class EventRecorder:
 
     def update(self, frame, allocation_target, allocation_applied, group_target=None, policy_target=None):
         self.allocation_update_count += int(allocation_applied)
-        hybrid = self.manifest["identity"]["trace_contract"]["feedback"] == "bernoulli-route-continuous-allocation-v2"
+        feedback = self.manifest["identity"]["trace_contract"]["feedback"]
+        neural_allocation = feedback in NEURAL_ALLOCATION_FEEDBACK
+        importance_weighted = feedback == EXP3_NEURAL_FEEDBACK
+        if importance_weighted:
+            route_semantics = "masked Bernoulli / selected route probability"
+        elif feedback == DIRECT_BERNOULLI_NEURAL_FEEDBACK:
+            route_semantics = "direct masked Bernoulli route update"
+        elif feedback == DIRECT_CONTINUOUS_NEURAL_FEEDBACK:
+            route_semantics = "direct continuous selected-payoff route update"
+        else:
+            route_semantics = None
         self._emit("UPDATE", frame, allocation_update_target=None if allocation_target is None else float(allocation_target),
                    allocation_update_applied=bool(allocation_applied),
-                   allocation_update_recipient="within-route NeuralUCB" if hybrid else None,
-                   allocation_update_unavailable_reason=None if allocation_applied else ("selected_route_unavailable" if hybrid else "no_within_route_NeuralUCB"),
-                   importance_weighted_route_update=None if group_target is None else float(group_target),
-                   route_update_semantics="masked Bernoulli / selected route probability" if hybrid else None,
+                   allocation_update_recipient="within-route NeuralUCB" if neural_allocation else None,
+                   allocation_update_unavailable_reason=None if allocation_applied else ("selected_route_unavailable" if neural_allocation else "no_within_route_NeuralUCB"),
+                   importance_weighted_route_update=float(group_target) if importance_weighted and group_target is not None else None,
+                   direct_route_update=float(group_target) if not importance_weighted and group_target is not None else None,
+                   route_update_semantics=route_semantics,
                    policy_update_target=None if policy_target is None else float(policy_target),
                    policy_update_semantics=None if policy_target is None else "continuous selected payoff")
 
@@ -219,9 +242,9 @@ class AttemptBundle:
             "expected_record_counts":expected, "actual_record_counts":actual,
             "file_hashes":{p.name:file_hash(p) for p in sorted(self.directory.iterdir()) if p.is_file()},
             "wall_seconds":time.perf_counter()-self.started,
-            "positive_route_feedback_count":self.recorder.positive_route_feedback_count if self.manifest["identity"]["trace_contract"]["feedback"]=="bernoulli-route-continuous-allocation-v2" else None,
-            "allocation_update_count":self.recorder.allocation_update_count if self.manifest["identity"]["trace_contract"]["feedback"]=="bernoulli-route-continuous-allocation-v2" else None,
-            "hybrid_diagnostics_unavailable_reason":None if self.manifest["identity"]["trace_contract"]["feedback"]=="bernoulli-route-continuous-allocation-v2" else "policy_has_no_hybrid_feedback_producer",
+            "positive_route_feedback_count":self.recorder.positive_route_feedback_count if self.manifest["identity"]["trace_contract"]["feedback"] in BERNOULLI_FEEDBACK else None,
+            "allocation_update_count":self.recorder.allocation_update_count if self.manifest["identity"]["trace_contract"]["feedback"] in NEURAL_ALLOCATION_FEEDBACK else None,
+            "hybrid_diagnostics_unavailable_reason":None if self.manifest["identity"]["trace_contract"]["feedback"] in NEURAL_ALLOCATION_FEEDBACK else "policy_has_no_hybrid_feedback_producer",
             "completion_record_count":1,
             "failure_kind":failure_kind, "reason":reason,
             "scientific_evidence":self.manifest["identity"]["execution_kind"]=="scientific",
@@ -299,7 +322,7 @@ def _validate_payload(directory, manifest, completion):
                     raise ValueError("Invalid decision index")
                 obs=observations["routes"][route]
                 probs=row["route_probability_vector"]
-                if identity["trace_contract"]["feedback"]=="bernoulli-route-continuous-allocation-v2":
+                if identity["trace_contract"]["feedback"]==EXP3_NEURAL_FEEDBACK:
                     if probs is None or len(probs)!=len(observations["routes"]) or not np.isfinite(probs).all() or min(probs)<0 or not np.isclose(sum(probs),1.0) or row["selected_route_probability"]!=probs[route]:
                         raise ValueError("Invalid selected-route probability")
                 if row["selected_route_id"]!=obs["route_id"] or row["selected_allocation"]!=obs["actions"][action]:
@@ -310,7 +333,7 @@ def _validate_payload(directory, manifest, completion):
                 available=mask[row["frame"]][route]
                 if row["base_expected_payoff"]!=q or row["availability"]!=available or row["selected_continuous_payoff"]!=q*available:
                     raise ValueError("Selected outcome/physics mismatch")
-                if identity["trace_contract"]["feedback"]=="bernoulli-route-continuous-allocation-v2":
+                if identity["trace_contract"]["feedback"] in BERNOULLI_FEEDBACK:
                     if row["sampled_bernoulli_draw"] not in (0,1) or row["masked_route_feedback"]!=row["sampled_bernoulli_draw"]*available:
                         raise ValueError("Sampled/masked feedback mismatch")
                     if row["positive_route_feedback"]!=bool(row["masked_route_feedback"]>0):
@@ -319,11 +342,22 @@ def _validate_payload(directory, manifest, completion):
                     raise ValueError("Fabricated sampled feedback")
                 outcome=row
             elif row["phase"]=="UPDATE":
-                if identity["trace_contract"]["feedback"]=="bernoulli-route-continuous-allocation-v2":
+                feedback = identity["trace_contract"]["feedback"]
+                if feedback==EXP3_NEURAL_FEEDBACK:
                     applied=bool(outcome["availability"])
                     target=outcome["base_expected_payoff"] if applied else None
                     if row["allocation_update_applied"]!=applied or row["allocation_update_target"]!=target or row["importance_weighted_route_update"]!=outcome["masked_route_feedback"]/max(decision["selected_route_probability"],identity["trace_contract"]["probability_floor"]):
                         raise ValueError("Hybrid update-channel mismatch")
+                elif feedback==DIRECT_BERNOULLI_NEURAL_FEEDBACK:
+                    applied=bool(outcome["availability"])
+                    target=outcome["base_expected_payoff"] if applied else None
+                    if row["allocation_update_applied"]!=applied or row["allocation_update_target"]!=target or row["direct_route_update"]!=outcome["masked_route_feedback"]:
+                        raise ValueError("Direct Bernoulli update-channel mismatch")
+                elif feedback==DIRECT_CONTINUOUS_NEURAL_FEEDBACK:
+                    applied=bool(outcome["availability"])
+                    target=outcome["base_expected_payoff"] if applied else None
+                    if row["allocation_update_applied"]!=applied or row["allocation_update_target"]!=target or row["direct_route_update"]!=outcome["selected_continuous_payoff"]:
+                        raise ValueError("Direct continuous update-channel mismatch")
                 elif row["allocation_update_applied"] or row["policy_update_target"]!=outcome["selected_continuous_payoff"]:
                     raise ValueError("Policy update-channel mismatch")
             counts[row["phase"]] += 1
@@ -332,8 +366,9 @@ def _validate_payload(directory, manifest, completion):
     expected = {p:manifest["execution_frames"] for p in PHASES}
     if dict(counts) != expected or completion["actual_record_counts"] != expected or completion["expected_record_counts"] != expected:
         raise ValueError("Record-count mismatch")
-    hybrid=identity["trace_contract"]["feedback"]=="bernoulli-route-continuous-allocation-v2"
-    if (positives if hybrid else None) != completion["positive_route_feedback_count"] or (updates if hybrid else None) != completion["allocation_update_count"]:
+    feedback=identity["trace_contract"]["feedback"]
+    if ((positives if feedback in BERNOULLI_FEEDBACK else None) != completion["positive_route_feedback_count"] or
+            (updates if feedback in NEURAL_ALLOCATION_FEEDBACK else None) != completion["allocation_update_count"]):
         raise ValueError("Feedback diagnostic mismatch")
 
 

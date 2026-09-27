@@ -29,6 +29,7 @@ from daqr.campaigns.medium_trace import AttemptBundle, run_identity, validate_co
 
 FRAME_LIMIT = 512  # technical safety ceiling, not a scientific horizon
 PREFLIGHT_LABEL = "TECHNICAL PREFLIGHT — NOT SCIENTIFIC EVIDENCE"
+SCIENTIFIC_LABEL = "SCIENTIFIC EVIDENCE — F-08 TIER-1"
 
 
 def code_identity():
@@ -213,6 +214,60 @@ def execute_preflight(output_root, configs, policy, threat, block, scale_m):
         if not bundle.terminal:
             kind="interruption" if isinstance(error,KeyboardInterrupt) else "technical_fault"
             bundle.finish("INTERRUPTED" if isinstance(error,KeyboardInterrupt) else "FAILED",kind,str(error) or type(error).__name__)
+        raise
+
+
+def execute_scientific(output_root, configs, policy, threat, block, scale_m, *, reuse_completed=True):
+    """Execute one explicitly configured scientific cell into an immutable bundle."""
+    if configs.execution.execution_kind != "scientific":
+        raise ValueError("Scientific execution requires execution_kind='scientific'")
+    frames = configs.execution.horizon
+    manifest, catalog, mask = prepare_manifest(
+        configs, policy, threat, block, scale_m=scale_m
+    )
+    validate_catalog(catalog)
+    existing = Path(output_root) / manifest["run_id"] / "attempt-1"
+    if existing.exists():
+        if not reuse_completed:
+            raise FileExistsError(f"Scientific bundle already exists: {existing}")
+        completion = validate_completion(existing, manifest)
+        return existing, completion, True
+
+    contexts = [np.asarray(route["actions"]) for route in catalog["observations"]["routes"]]
+    rewards = catalog["physics"]["base_expected_payoffs"]
+    bundle = AttemptBundle(output_root, manifest, catalog, mask)
+    try:
+        results, _ = run_policy(
+            configs,
+            policy,
+            contexts,
+            rewards,
+            mask,
+            manifest["identity"]["seeds"]["policy"]["actual_seed"],
+            bundle.recorder,
+        )
+        cumulative = float(results["final_reward"])
+        summary = {
+            "schema_version": "medium-scientific-summary-v1",
+            "label": SCIENTIFIC_LABEL,
+            "policy": policy,
+            "threat": threat,
+            "block": int(block),
+            "scale_m": int(scale_m),
+            "frames": int(frames),
+            "selected_pair_count": len(results["path_action_list"]),
+            "cumulative_continuous_payoff": cumulative,
+            "mean_continuous_payoff_per_frame": cumulative / frames,
+        }
+        write_json_exclusive(bundle.directory / "scientific_summary.json", summary)
+        completion = bundle.finish()
+        validate_completion(bundle.directory, manifest)
+        return bundle.directory, completion, False
+    except BaseException as error:
+        if not bundle.terminal:
+            kind = "interruption" if isinstance(error, KeyboardInterrupt) else "technical_fault"
+            state = "INTERRUPTED" if isinstance(error, KeyboardInterrupt) else "FAILED"
+            bundle.finish(state, kind, str(error) or type(error).__name__)
         raise
 
 

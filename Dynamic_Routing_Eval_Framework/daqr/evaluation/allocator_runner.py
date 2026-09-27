@@ -434,7 +434,14 @@ class AllocatorRunner:
 
             print("⚙ Running evaluation...")
             comparison_results = self.evaluator.test_stochastic_environment(cal_winner=True, parellel=False)
-            if getattr(self.custom_config, 'scientific_evidence_root', None):
+            evidence_plugin = getattr(self.custom_config, 'execution_evidence_plugin', None)
+            if evidence_plugin is not None:
+                from daqr.evaluation.execution_evidence import validate_execution_evidence_plugin
+                completion_path = validate_execution_evidence_plugin(
+                    evidence_plugin
+                ).finalize(self.custom_config)
+                print(f"✅ Campaign evidence complete: {completion_path}")
+            elif getattr(self.custom_config, 'scientific_evidence_root', None):
                 from daqr.evaluation.campaign_evidence import finalize_campaign_evidence
                 completion_path = finalize_campaign_evidence(self.custom_config)
                 print(f"✅ Campaign evidence complete: {completion_path}")
@@ -552,6 +559,7 @@ class AllocatorRunner:
                     catalog_identities = {}
                     trace_catalogs = {}
                     scenario_execution_components = {}
+                    evidence_configurations = {}
                     for block_id in block_ids:
                         block_payload = get_physics_params_func(
                             physics_model=physics_model,
@@ -566,6 +574,9 @@ class AllocatorRunner:
                         scenario_execution_components[int(block_id)] = block_payload.pop(
                             '_scenario_execution_components'
                         )
+                        evidence_configurations[int(block_id)] = block_payload.pop(
+                            '_execution_evidence_configuration'
+                        )
                         block_physics[int(block_id)] = block_payload
                     self.custom_config.scientific_block_physics = block_physics
                     self.custom_config.scientific_catalog_identities = catalog_identities
@@ -573,6 +584,14 @@ class AllocatorRunner:
                     self.custom_config.scenario_execution_components = (
                         scenario_execution_components
                     )
+                    evidence_plugin = getattr(
+                        self.custom_config, 'execution_evidence_plugin', None
+                    )
+                    if evidence_plugin is not None:
+                        from daqr.evaluation.execution_evidence import validate_execution_evidence_plugin
+                        evidence_plugin = validate_execution_evidence_plugin(evidence_plugin)
+                        for block_id, evidence_config in evidence_configurations.items():
+                            evidence_plugin.register_block(block_id, evidence_config)
                     self.custom_config.scientific_block_id = int(block_ids[0])
                     physics_params = block_physics[int(block_ids[0])]
                 else:

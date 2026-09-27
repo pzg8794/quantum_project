@@ -16,6 +16,7 @@ try:
 except Exception:
     torch = None
 import  gc, time
+import  random
 import  threading, json  
 import  copy
 # Keep optional heavy deps lazy-importable so resume/compare logic can be unit-tested
@@ -27,6 +28,7 @@ except Exception:
 import  multiprocessing as mp
 
 from daqr.evaluation.campaign_evidence import stable_environment_seed
+from daqr.evaluation.execution_evidence import validate_execution_evidence_plugin
 
 
 
@@ -438,6 +440,20 @@ class QuantumExperimentRunner:
             return None
         return self.environment.open_scenario_session(self.scenario_execution.seed)
 
+    def _open_execution_evidence_attempt(self, policy):
+        plugin = validate_execution_evidence_plugin(
+            getattr(self.configs, 'execution_evidence_plugin', None)
+        )
+        if plugin is None:
+            return None
+        return plugin.open_attempt(
+            runtime_config=self.configs,
+            policy=policy,
+            threat=str(self.configs.attack_type),
+            block=int(getattr(self.configs, 'scientific_block_id', 0)),
+            frames=int(self.frames_count),
+        )
+
     def _build_environment_once(self, frames_count: float, qubit_cap: tuple):
         """
         Build ONE shared environment for the whole experiment (all models),
@@ -458,10 +474,16 @@ class QuantumExperimentRunner:
         self.configs.causal_scenario_execution = self.causal_scenario_execution
 
         # Configure environment core parameters
+        environment_seed = (
+            self.scenario_execution.seed
+            if getattr(self.scenario_execution.strategy, 'uses_rng', True)
+            and self.scenario_execution.seed is not None
+            else self.experiment_seed
+        )
         self.configs.set_environment(
             qubit_cap=qubit_cap,
             frames_no=self.frames_count,
-            seed=self.experiment_seed,
+            seed=environment_seed,
             attack_intensity=self.configs.attack_intensity,
             attack_type=self.configs.attack_type,
             **self.physics_params              # ✅ Injects Paper #2 physics!
@@ -477,18 +499,20 @@ class QuantumExperimentRunner:
 
 
     def run_step_wise_oracle(
-        self, env_info, model, frames_count=4000, alg_name='Oracle', scenario_session=None
+        self, env_info, model, frames_count=4000, alg_name='Oracle',
+        scenario_session=None, event_sink=None, attack_pattern=None,
     ):
         if frames_count: self.frames_count = frames_count
         total_reward = 0.0
         for t in tqdm(range(self.frames_count), desc=f"{alg_name}", disable=not self.enable_progress):
-            attack_pattern = (
+            current_attack_pattern = (
                 scenario_session.policy_mask
                 if scenario_session is not None
+                else attack_pattern if attack_pattern is not None
                 else env_info['attack_pattern']
             )
-            if t >= attack_pattern.shape[0]:
-                print(f"\t⚠️ Frame {t} exceeds attack pattern size {env_info['attack_pattern'].shape[0]}")
+            if t >= current_attack_pattern.shape[0]:
+                print(f"\t⚠️ Frame {t} exceeds attack pattern size {current_attack_pattern.shape[0]}")
                 break
             if scenario_session is not None:
                 availability = scenario_session.begin(t)
@@ -497,6 +521,8 @@ class QuantumExperimentRunner:
                     frame_hook(t, availability)
             
             # ✅ FIX: Handle both return types (tuple or int)
+            if event_sink is not None:
+                event_sink.preselection(t, env_info['contexts'])
             action_result = model.take_action()
             
             if isinstance(action_result, tuple) and len(action_result) == 2:
@@ -505,10 +531,16 @@ class QuantumExperimentRunner:
                 path = int(action_result)  # LinUCB returns just action
                 action = 0
             
+            if event_sink is not None:
+                event_sink.decision(t, path, action)
             base_reward = env_info['reward_functions'][path][action]
-            attack_modifier = attack_pattern[t][path]
+            attack_modifier = current_attack_pattern[t][path]
             observed_reward = base_reward * attack_modifier
+            if event_sink is not None:
+                event_sink.outcome(t, base_reward, attack_modifier, observed_reward)
             model.update(path, action, observed_reward)
+            if event_sink is not None:
+                event_sink.update(t, None, False, policy_target=observed_reward)
             if scenario_session is not None:
                 scenario_session.observe(t, int(path))
             total_reward += observed_reward
@@ -517,6 +549,42 @@ class QuantumExperimentRunner:
         if oracle_results and 'final_reward' in oracle_results:
             total_reward = oracle_results['final_reward']
         return float(total_reward)
+
+    def _prepare_algorithm_execution(
+        self, alg_name, model_class, model_kwargs, env_info, fallback_seed
+    ):
+        evidence_attempt = self._open_execution_evidence_attempt(alg_name)
+        if evidence_attempt is not None:
+            algorithm_seed = evidence_attempt.policy_seed
+            scenario_session = evidence_attempt.scenario_session
+            attack_list = evidence_attempt.attack_pattern
+        else:
+            algorithm_seed = fallback_seed
+            scenario_session = self._new_scenario_session()
+            attack_list = (
+                scenario_session.policy_mask
+                if scenario_session is not None
+                else env_info['attack_pattern']
+            )
+        if torch is not None:
+            torch.manual_seed(algorithm_seed)
+        if np is not None:
+            np.random.seed(algorithm_seed)
+        random.seed(algorithm_seed)
+        if scenario_session is not None and not getattr(
+            model_class, 'supports_causal_scenarios', False
+        ):
+            raise ValueError(f"HOLD: {alg_name} does not declare causal scenario support")
+        model = model_class(
+            configs=self.configs,
+            X_n=env_info['contexts'],
+            reward_list=env_info['reward_functions'],
+            frame_number=self.frames_count,
+            attack_list=attack_list,
+            capacity=self.capacity,
+            **model_kwargs
+        )
+        return evidence_attempt, algorithm_seed, scenario_session, attack_list, model
 
     
     def run_algorithm(self, alg_name: str, enable_progress=False, base_model="Oracle"):
@@ -540,10 +608,6 @@ class QuantumExperimentRunner:
             model_kwargs['transition_interval'] = getattr(self.configs, 'paper2_transition_interval', 50)
 
         algorithm_seed = self.experiment_seed + seed_offset
-        if torch is not None:
-            torch.manual_seed(algorithm_seed)
-        if np is not None:
-            np.random.seed(algorithm_seed)
 
         results = {'final_reward': 0.0}
         total_reward, attempts = 0.0, 0
@@ -574,46 +638,22 @@ class QuantumExperimentRunner:
                 last_error = None
                 completed = False
                 while retry_count < max_retries:
-                    scenario_session = self._new_scenario_session()
-                    attack_list = (
-                        scenario_session.policy_mask
-                        if scenario_session is not None
-                        else env_info['attack_pattern']
-                    )
-                    if scenario_session is not None and not getattr(
-                        model_class, 'supports_causal_scenarios', False
-                    ):
-                        raise ValueError(
-                            f"HOLD: {alg_name} does not declare causal scenario support"
-                        )
-                    # model_kwargs['verbose'] = enable_progress
-                    self.configs.verbose = enable_progress
-                    
-                    # Debug Paper7 reward structure
-                    if alg_name == 'Oracle' and retry_count == 0:
-                        reward_funcs = env_info.get('reward_functions', [])
-                        if reward_funcs:
-                            print(f"\t📊 Reward structure for Oracle:")
-                            print(f"\t   Type: {type(reward_funcs)}")
-                            print(f"\t   Length: {len(reward_funcs)}")
-                            if len(reward_funcs) > 0:
-                                print(f"\t   First reward: {reward_funcs[0]}, type: {type(reward_funcs[0])}")
-                                if hasattr(reward_funcs[0], '__len__'):
-                                    print(f"\t   First reward length: {len(reward_funcs[0])}")
-                        else:
-                            print(f"\t⚠️ WARNING: reward_functions is empty or None!")
-                    
-                    model = model_class(
-                        configs=self.configs,
-                        X_n=env_info['contexts'],
-                        reward_list=env_info['reward_functions'],
-                        frame_number=self.frames_count,
-                        attack_list=attack_list,
-                        capacity=self.capacity, 
-                        **model_kwargs
-                    )
-                
+                    evidence_attempt = None
                     try:
+                        self.configs.verbose = enable_progress
+                        (
+                            evidence_attempt,
+                            algorithm_seed,
+                            scenario_session,
+                            attack_list,
+                            model,
+                        ) = self._prepare_algorithm_execution(
+                            alg_name,
+                            model_class,
+                            model_kwargs,
+                            env_info,
+                            algorithm_seed,
+                        )
                         result = None
                         if enable_progress: self.validate_quantum_model(model)
                         if runner_type == 'step-wise':
@@ -623,12 +663,17 @@ class QuantumExperimentRunner:
                                 self.frames_count,
                                 alg_name,
                                 scenario_session=scenario_session,
+                                event_sink=(evidence_attempt.event_sink
+                                            if evidence_attempt is not None else None),
+                                attack_pattern=attack_list,
                             ))
                         else:
                             result = model.run(
                                 attack_list=attack_list,
                                 verbose=enable_progress,
                                 scenario_session=scenario_session,
+                                event_sink=(evidence_attempt.event_sink
+                                            if evidence_attempt is not None else None),
                             )
                         if result is None:
                             mr = model.get_results() if hasattr(model, 'get_results') else {}
@@ -652,14 +697,27 @@ class QuantumExperimentRunner:
                             results['scientific_availability'] = (
                                 scenario_session.completed_mask().tolist()
                             )
-                            results['scientific_threat_seed'] = self.scenario_execution.seed
+                            results['scientific_threat_seed'] = (
+                                evidence_attempt.threat_seed
+                                if evidence_attempt is not None
+                                else self.scenario_execution.seed
+                            )
                             results['availability_semantics'] = (
                                 'policy-conditioned-causal-trajectory'
                             )
+                        if evidence_attempt is not None:
+                            evidence_attempt.complete(results)
                         completed = True
                         if model.resumed or disable_outcome_retries or total_reward > 0.0:
                             break
                     except Exception as e: 
+                        if evidence_attempt is not None:
+                            try:
+                                evidence_attempt.fail(e)
+                            except Exception as evidence_error:
+                                e = RuntimeError(
+                                    f"{e}; evidence finalization failed: {evidence_error}"
+                                )
                         model = None
                         attempts += 1
                         retry_count += 1

@@ -1514,28 +1514,30 @@ class MultiRunEvaluator:
                 )
                 experiment_results["exp_id"] = exp_id
                 experiment_results["attack_category"] = attack_category
-                record_experiment_evidence(
-                    self.configs,
-                    experiment_results,
-                    block=exp_no,
-                    threat=self.configs.attack_type,
-                    frames=self.frames_count,
-                    environment=runner.environment,
-                )
+                if getattr(self.configs, "execution_evidence_plugin", None) is None:
+                    record_experiment_evidence(
+                        self.configs,
+                        experiment_results,
+                        block=exp_no,
+                        threat=self.configs.attack_type,
+                        frames=self.frames_count,
+                        environment=runner.environment,
+                    )
                 if self.configs.attack_type not in self.env_experiments.keys():
                      self.env_experiments[self.configs.attack_type] = {}
                 self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
                 print(f"✓ Experiment {exp_id} completed successfully.")
         except Exception as e:
             print(f"❌ Experiment {exp_id} failed: {e}")
-            record_experiment_failure(
-                self.configs,
-                block=exp_no,
-                threat=self.configs.attack_type,
-                frames=self.frames_count,
-                error=e,
-                environment=getattr(runner, "environment", None),
-            )
+            if getattr(self.configs, "execution_evidence_plugin", None) is None:
+                record_experiment_failure(
+                    self.configs,
+                    block=exp_no,
+                    threat=self.configs.attack_type,
+                    frames=self.frames_count,
+                    error=e,
+                    environment=getattr(runner, "environment", None),
+                )
             raise
 
         finally:

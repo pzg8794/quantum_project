@@ -1,7 +1,11 @@
+import copy
 import inspect
 import itertools
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import networkx as nx
 import numpy as np
@@ -10,9 +14,11 @@ import pytest
 from daqr.campaigns.medium_spec import build_catalog
 from daqr.config.execution_contract import ExecutionSettings
 from daqr.config.experiment_config import ExperimentConfiguration
+from daqr.config.local_backup_manager import LocalBackupManager
 from daqr.core.catalog_components import LayeredPrimaryCatalog, PrimaryPayoff
 from daqr.core.qubit_allocator import QubitAllocator
 from daqr.evaluation.allocator_runner import AllocatorRunner
+from daqr.evaluation.campaign_evidence import file_hash
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +46,7 @@ def notebook_namespace():
         "Path": Path,
         "ExecutionSettings": ExecutionSettings,
         "ExperimentConfiguration": ExperimentConfiguration,
+        "LocalBackupManager": LocalBackupManager,
         "LayeredPrimaryCatalog": LayeredPrimaryCatalog,
         "PrimaryPayoff": PrimaryPayoff,
         "QubitAllocator": QubitAllocator,
@@ -96,18 +103,25 @@ def test_frozen_notebook_config_and_external_catalog():
     assert namespace["models"] == ["Oracle", "CEpsilonGreedy", "EXPNeuralUCB"]
     assert list(namespace["test_scenarios"]) == list(SCENARIOS)
     assert namespace["FRAMEWORK_CONFIG"]["capacity"] == 12000
+    assert namespace["FRAMEWORK_CONFIG"]["scientific_block_ids"] == [0, 1, 2]
     assert namespace["FRAMEWORK_CONFIG"]["medium_tier1"]["baseline_allocation"] == (9,) * 10
 
-    params = namespace["get_physics_params"](
-        "medium_tier1",
-        6000,
-        12345,
-        (9,) * 10,
-    )
-    assert params["external_topology"].number_of_nodes() == 15
-    assert len(params["external_contexts"]) == len(params["external_rewards"]) == 10
-    assert sum(len(actions) for actions in params["external_contexts"]) == 550
-    assert all(actions.shape[1] == 3 for actions in params["external_contexts"])
+    identities = []
+    for block in range(3):
+        params = namespace["get_physics_params"](
+            "medium_tier1",
+            6000,
+            12345,
+            (9,) * 10,
+            block_id=block,
+        )
+        assert params["external_topology"].number_of_nodes() == 15
+        assert len(params["external_contexts"]) == len(params["external_rewards"]) == 10
+        assert sum(len(actions) for actions in params["external_contexts"]) == 550
+        assert all(actions.shape[1] == 3 for actions in params["external_contexts"])
+        assert params["_campaign_catalog_identity"]["block"] == block
+        identities.append(params["_campaign_catalog_identity"])
+    assert len({item["topology_hash"] for item in identities}) == 3
 
 
 def test_external_output_root_rejects_source_repository():
@@ -120,6 +134,34 @@ def test_external_output_root_rejects_source_repository():
     )
     with pytest.raises(ValueError, match="outside"):
         namespace["configure_external_persistence"](config, ROOT)
+
+
+def test_campaign_seed_is_process_stable():
+    code = """
+from types import SimpleNamespace
+from daqr.evaluation.campaign_evidence import stable_environment_seed
+config = SimpleNamespace(
+    scientific_seed_namespace='f08-tier1-default-fixed-v1',
+    scientific_campaign_base_seed=12345,
+    base_seed=99999,
+    scientific_block_id=2,
+    attack_type='adaptive',
+)
+print(stable_environment_seed(config, 6000))
+"""
+    values = []
+    for hash_seed in ("1", "987654"):
+        env = os.environ.copy()
+        env["PYTHONHASHSEED"] = hash_seed
+        values.append(
+            subprocess.check_output(
+                [sys.executable, "-c", code],
+                cwd=ROOT,
+                env=env,
+                text=True,
+            ).strip()
+        )
+    assert values[0] == values[1]
 
 
 def test_real_runner_dispatches_frozen_full_spectrum(monkeypatch):
@@ -176,3 +218,102 @@ def test_real_runner_dispatches_frozen_full_spectrum(monkeypatch):
     assert calls[0]["current_frames"] == 6000
     assert calls[0]["frame_step"] == 0
     assert tuple(runner.allocator_obj or ()) == ()
+    assert sorted(runner.custom_config.scientific_block_physics) == [0, 1, 2]
+    assert len({
+        item["topology_hash"]
+        for item in runner.custom_config.scientific_catalog_identities.values()
+    }) == 3
+
+
+def test_real_runner_tiny_full_matrix_writes_complete_event_evidence(tmp_path, monkeypatch):
+    namespace = notebook_namespace()
+    namespace["BASE_FRAMES"] = 4
+    framework = copy.deepcopy(namespace["FRAMEWORK_CONFIG"])
+    framework["base_frames"] = 4
+    framework["capacity"] = 8
+    framework["aggregate_state"] = False
+    framework["enable_plots"] = False
+
+    initial_allocator = QubitAllocator(
+        total_qubits=90,
+        num_routes=10,
+        min_qubits_per_route=1,
+        baseline_allocation=(9,) * 10,
+    )
+    config = ExperimentConfiguration(
+        env_type=framework["main_env"],
+        scenarios=namespace["test_scenarios"],
+        use_last_backup=False,
+        resume=False,
+        models=namespace["models"],
+        attack_intensity=namespace["ATTACK_INTENSITY"],
+        attack_rate=namespace["ATTACK_INTENSITY"],
+        scale=2,
+        base_capacity=True,
+        overwrite=False,
+        base_seed=12345,
+        allocator=initial_allocator,
+        persistence=False,
+    )
+    namespace["configure_external_persistence"](config, tmp_path)
+    runner = AllocatorRunner(
+        allocator_type="Default",
+        physics_models=["medium_tier1"],
+        framework_config=framework,
+        scales=[2],
+        runs=[3],
+        models=namespace["models"],
+        test_scenarios=namespace["test_scenarios"],
+        config=config,
+    )
+    monkeypatch.setattr(runner, "_aggregate_state_dirs", lambda: False)
+    monkeypatch.setattr("daqr.evaluation.allocator_runner.time.sleep", lambda _: None)
+    runner.run(get_physics_params_func=namespace["get_physics_params"])
+
+    evidence_root = tmp_path / "q04-evidence"
+    campaign = json.loads((evidence_root / "campaign-receipt.json").read_text())
+    assert campaign["required_cells"] == campaign["accounted_cells"] == 45
+    assert campaign["state"] == "COMPLETE"
+    assert campaign["status_counts"] == {"completed": 45, "failed": 0}
+
+    receipts = [
+        json.loads(path.read_text())
+        for path in sorted((evidence_root / "receipts").glob("*.json"))
+    ]
+    assert len(receipts) == 45
+    assert {
+        (item["identity"]["block"], item["identity"]["threat"], item["identity"]["policy"])
+        for item in receipts
+    } == set(itertools.product(range(3), SCENARIOS, namespace["models"]))
+    assert len({
+        item["identity"]["catalog_identity"]["topology_hash"] for item in receipts
+    }) == 3
+
+    for receipt in receipts:
+        completion_path = Path(receipt["completion_path"])
+        assert file_hash(completion_path) == receipt["completion_sha256"]
+        completion = json.loads(completion_path.read_text())
+        bundle = Path(receipt["bundle_path"])
+        availability = json.loads((bundle / "availability.json").read_text())
+        events = [
+            json.loads(line)
+            for line in (bundle / "events.jsonl").read_text().splitlines()
+        ]
+        assert completion["status"] == "completed"
+        assert completion["availability_frames"] == 4
+        assert completion["decision_event_count"] == 4
+        assert completion["outcome_event_count"] == 4
+        assert len(availability) == 4
+        assert all(len(row) == 10 for row in availability)
+        assert len(events) == 8
+        for frame in range(4):
+            decision, outcome = events[2 * frame : 2 * frame + 2]
+            assert decision["phase"] == "DECISION"
+            assert outcome["phase"] == "OUTCOME"
+            assert decision["decision_id"] == outcome["decision_id"]
+            assert decision["selected_route_index"] == outcome["selected_route_index"]
+            route = outcome["selected_route_index"]
+            assert outcome["availability"] == availability[frame][route]
+            assert outcome["selected_continuous_payoff"] == pytest.approx(
+                outcome["base_expected_payoff"] * outcome["availability"]
+            )

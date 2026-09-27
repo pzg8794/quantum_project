@@ -15,6 +15,12 @@ except Exception:
     np = None
 import time, gc, re, json
 
+from daqr.evaluation.campaign_evidence import (
+    record_experiment_evidence,
+    record_experiment_failure,
+    stable_environment_seed,
+)
+
 
 class MultiRunEvaluator:
     """
@@ -151,7 +157,9 @@ class MultiRunEvaluator:
             # Seed independent of model to keep environment identical across algorithms
             # env_seed = self.configs.base_seed + (hash(f"{self.configs.attack_type}_{self.frames_count}") % 10000)
             base_seed = int(getattr(self.configs, "base_seed", 0))
-            env_seed = base_seed + (hash(f"{self.configs.attack_type}_{self.frames_count}") % 10000)
+            env_seed = stable_environment_seed(self.configs, self.frames_count)
+            if env_seed is None:
+                env_seed = base_seed + (hash(f"{self.configs.attack_type}_{self.frames_count}") % 10000)
 
 
             # Configure attack scenario if not already configured by MultiRun
@@ -1441,6 +1449,14 @@ class MultiRunEvaluator:
         self.capacity = self.base_frames if self.configs.base_capacity else self.frames_count
         exp_id = exp_no + 1
 
+        block_physics = getattr(self.configs, "scientific_block_physics", None)
+        if block_physics is not None:
+            if exp_no not in block_physics:
+                raise ValueError(f"Missing scientific catalog for block {exp_no}")
+            self.configs.scientific_block_id = int(exp_no)
+            self.configs.physics_params = copy.deepcopy(block_physics[exp_no])
+            self.physics_params = self.configs.physics_params
+
         print("-" * 100)
         print(f"EXPERIMENT {exp_id}: {self.frames_count} frames  <>  SCALED-CAPACITY: "
             f"{self.capacity*self.configs.scale} frames (CAPACITY:{self.capacity} X SCALE:{self.configs.scale})")
@@ -1498,12 +1514,28 @@ class MultiRunEvaluator:
                 )
                 experiment_results["exp_id"] = exp_id
                 experiment_results["attack_category"] = attack_category
+                record_experiment_evidence(
+                    self.configs,
+                    experiment_results,
+                    block=exp_no,
+                    threat=self.configs.attack_type,
+                    frames=self.frames_count,
+                    environment=runner.environment,
+                )
                 if self.configs.attack_type not in self.env_experiments.keys():
                      self.env_experiments[self.configs.attack_type] = {}
                 self.env_experiments[self.configs.attack_type][exp_id] = experiment_results
                 print(f"✓ Experiment {exp_id} completed successfully.")
         except Exception as e:
             print(f"❌ Experiment {exp_id} failed: {e}")
+            record_experiment_failure(
+                self.configs,
+                block=exp_no,
+                threat=self.configs.attack_type,
+                frames=self.frames_count,
+                error=e,
+                environment=getattr(runner, "environment", None),
+            )
             raise
 
         finally:

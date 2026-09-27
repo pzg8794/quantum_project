@@ -148,6 +148,7 @@ FRAMEWORK_CONFIG = {
     'main_env': 'stochastic',
     'aggregate_state': False,
     'enable_plots': False,
+    'scientific_block_ids': [0, 1, 2],
     'env_attrs': {
         'intensity': ATTACK_INTENSITY,
         'base_seed': BASE_SEED,
@@ -212,13 +213,23 @@ def _catalog_configuration(base_seed: int, qubit_cap):
     return config
 
 
-def get_physics_params(physics_model: str, current_frames: int, base_seed: int, qubit_cap):
+def get_physics_params(
+    physics_model: str,
+    current_frames: int,
+    base_seed: int,
+    qubit_cap,
+    block_id: int = 0,
+):
     if physics_model != 'medium_tier1':
         raise ValueError(f'Unsupported medium physics model: {physics_model}')
     if int(current_frames) != BASE_FRAMES:
         raise ValueError(f'Frozen horizon is {BASE_FRAMES}, got {current_frames}')
 
-    catalog = build_catalog(_catalog_configuration(base_seed, qubit_cap), block=0, scale_m=3)
+    catalog = build_catalog(
+        _catalog_configuration(base_seed, qubit_cap),
+        block=int(block_id),
+        scale_m=3,
+    )
     graph = nx.Graph()
     graph.add_nodes_from(catalog['topology']['nodes'])
     graph.add_edges_from(catalog['topology']['edges'])
@@ -238,6 +249,15 @@ def get_physics_params(physics_model: str, current_frames: int, base_seed: int, 
         'external_topology': graph,
         'external_contexts': contexts,
         'external_rewards': rewards,
+        '_campaign_catalog_identity': {
+            'block': int(block_id),
+            'topology_hash': catalog['topology_hash'],
+            'route_set_hash': catalog['route_set_hash'],
+            'action_catalog_hash': catalog['action_catalog_hash'],
+            'observation_catalog_hash': catalog['observation_catalog_hash'],
+            'physics_hash': catalog['physics_hash'],
+        },
+        '_campaign_trace_catalog': catalog,
     }
 
 
@@ -256,6 +276,10 @@ def configure_external_persistence(custom_config, output_root):
     )
     custom_config.backup_mgr.in_share_drive = False
     custom_config.backup_mgr.mode = 'local'
+    custom_config.scientific_evidence_root = root / 'q04-evidence'
+    custom_config.scientific_seed_namespace = 'f08-tier1-default-fixed-v1'
+    custom_config.scientific_campaign_base_seed = BASE_SEED
+    custom_config.disable_outcome_retries = True
     return custom_config
 """)
     replace_source(cells[7], """## Run (Real AllocatorRunner)

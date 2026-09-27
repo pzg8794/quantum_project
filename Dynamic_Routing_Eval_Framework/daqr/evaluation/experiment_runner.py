@@ -26,6 +26,8 @@ except Exception:
     np = None
 import  multiprocessing as mp
 
+from daqr.evaluation.campaign_evidence import stable_environment_seed
+
 
 
 
@@ -407,7 +409,9 @@ class QuantumExperimentRunner:
         """
         if frames_count: self.frames_count =frames_count
         # Seed independent of model to keep environment identical across algorithms
-        self.experiment_seed = self.configs.base_seed + (hash(f"{self.configs.attack_type}_{self.frames_count}") % 10000)
+        self.experiment_seed = stable_environment_seed(self.configs, self.frames_count)
+        if self.experiment_seed is None:
+            self.experiment_seed = self.configs.base_seed + (hash(f"{self.configs.attack_type}_{self.frames_count}") % 10000)
 
         # Configure attack scenario if not already configured by MultiRun
         self.configs.set_attack_strategy(
@@ -514,8 +518,11 @@ class QuantumExperimentRunner:
         else:
             try:
                 retry_count = 0
-                max_retries = 3  # Prevent infinite loops
-                while total_reward <= 0.0 and retry_count < max_retries:
+                max_retries = 3  # Existing technical-attempt ceiling.
+                disable_outcome_retries = bool(getattr(self.configs, 'disable_outcome_retries', False))
+                last_error = None
+                completed = False
+                while retry_count < max_retries:
                     # model_kwargs['verbose'] = enable_progress
                     self.configs.verbose = enable_progress
                     
@@ -553,11 +560,6 @@ class QuantumExperimentRunner:
                             if mr and 'final_reward' in mr: total_reward = float(mr['final_reward'])
                         
                         retry_count += 1
-                        if retry_count >= max_retries and total_reward <= 0.0:
-                            # Break out to avoid infinite loop - allow zero rewards for context-aware modes
-                            print(f"\t⚠️ Max retries ({max_retries}) reached. Proceeding with total_reward={total_reward}")
-                            break
-
                         enable_progress = False
                         avg_reward = total_reward / self.frames_count if (self.frames_count > 0 and total_reward > 0) else 0.0
 
@@ -571,16 +573,26 @@ class QuantumExperimentRunner:
                             'model_results': model.get_results(),
                             'retries': attempts
                         }
-                        if model.resumed: break
+                        completed = True
+                        if model.resumed or disable_outcome_retries or total_reward > 0.0:
+                            break
                     except Exception as e: 
                         model = None
                         attempts += 1
+                        retry_count += 1
+                        last_error = e
                         print(f"\t❌ Runtime error in {alg_name}: {e}")
                     finally:
                         # model.state = 1
                         pass
                         # del model
                         # gc.collect()
+                if not completed:
+                    results = {
+                        'final_reward': 0.0,
+                        'error': f"technical execution failed after {attempts} attempts: {last_error}",
+                        'retries': attempts,
+                    }
                 # Do not disable resume globally; config is shared across the pipeline.
             except Exception as e:
                 print(f"\t❌ Failed to create {alg_name}: {e}")
@@ -807,6 +819,24 @@ class QuantumExperimentRunner:
                     pass
             return alg_name
 
+        if bool(getattr(self.configs, 'disable_outcome_retries', False)):
+            print(f"\n\t🔄 {str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Starting {alg_name:<20} once (no outcome-triggered reruns)...")
+            alg_result, model = self.run_algorithm(alg_name)
+            final_reward = float(alg_result.get('final_reward', 0.0) or 0.0)
+            threshold = final_reward / oracle_reward if oracle_reward > 0 else 0.0
+            efficiency = threshold * 100 if oracle_reward > 0 else 0.0
+            failed_attempts['failed'] = int(bool(alg_result.get('error')))
+            failed_attempts['total'] = int(alg_result.get('retries', 0) or 0)
+            failed_attempts['under_threshold'] = int(0 < threshold < failed_attempts['threshold'])
+            self.results[alg_name] = alg_result
+            self.results[alg_name].update({
+                'failed_attempts': failed_attempts,
+                'final_reward': final_reward,
+                'efficiency': efficiency,
+                'gap': 100 - efficiency,
+            })
+            return alg_name
+
         print(f"\n\t🔄 {str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Starting {alg_name:<20} in {'parallel' if is_parallel else 'sequence'}...")
         if alg_name not in self.results or self.results[alg_name]["final_reward"] <= 0:
             # self.configs.overwrite = True
@@ -880,6 +910,8 @@ class QuantumExperimentRunner:
             self.configs.overwrite = False
             self.results[base_model], model = self.run_algorithm(base_model)
             oracle_reward = self.results[base_model].get('final_reward', 0.0)
+            if bool(getattr(self.configs, 'disable_outcome_retries', False)):
+                break
         
         if model is not None:
             self.configs.overwrite = True

@@ -434,6 +434,10 @@ class AllocatorRunner:
 
             print("⚙ Running evaluation...")
             comparison_results = self.evaluator.test_stochastic_environment(cal_winner=True, parellel=False)
+            if getattr(self.custom_config, 'scientific_evidence_root', None):
+                from daqr.evaluation.campaign_evidence import finalize_campaign_evidence
+                completion_path = finalize_campaign_evidence(self.custom_config)
+                print(f"✅ Campaign evidence complete: {completion_path}")
             try:
                 if self.evaluator.ensure_summary_contract(save_if_changed=True):
                     print("ℹ️ Evaluator summary contract repaired and saved")
@@ -540,13 +544,37 @@ class AllocatorRunner:
                 )
                 print(f"   Initial allocation: {qubit_cap}")
                 
-                # Get physics parameters
-                physics_params = get_physics_params_func(
-                    physics_model=physics_model,
-                    current_frames=current_frames,
-                    base_seed=base_seed,
-                    qubit_cap=qubit_cap
-                )
+                # Get physics parameters. Scientific campaigns may opt into
+                # block-specific catalogs while preserving this real runner.
+                block_ids = self.framework_config.get('scientific_block_ids')
+                if block_ids is not None:
+                    block_physics = {}
+                    catalog_identities = {}
+                    trace_catalogs = {}
+                    for block_id in block_ids:
+                        block_payload = get_physics_params_func(
+                            physics_model=physics_model,
+                            current_frames=current_frames,
+                            base_seed=base_seed,
+                            qubit_cap=qubit_cap,
+                            block_id=int(block_id),
+                        )
+                        block_payload = dict(block_payload)
+                        catalog_identities[int(block_id)] = block_payload.pop('_campaign_catalog_identity')
+                        trace_catalogs[int(block_id)] = block_payload.pop('_campaign_trace_catalog')
+                        block_physics[int(block_id)] = block_payload
+                    self.custom_config.scientific_block_physics = block_physics
+                    self.custom_config.scientific_catalog_identities = catalog_identities
+                    self.custom_config.scientific_trace_catalogs = trace_catalogs
+                    self.custom_config.scientific_block_id = int(block_ids[0])
+                    physics_params = block_physics[int(block_ids[0])]
+                else:
+                    physics_params = get_physics_params_func(
+                        physics_model=physics_model,
+                        current_frames=current_frames,
+                        base_seed=base_seed,
+                        qubit_cap=qubit_cap
+                    )
 
                 # Run experiments for all scales and runs
                 # Run larger horizons first so smaller horizons can resume as a strict subset

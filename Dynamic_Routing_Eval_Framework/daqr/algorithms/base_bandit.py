@@ -59,6 +59,19 @@ class QuantumModel(ABC):
     Enhanced minimal interface that every model (policy/algorithm) in the quantum environment obeys.
     Keep methods generic so both 'step-wise' (Oracle) and 'batch' (EXPNeuralUCB) fit.
     """
+    @classmethod
+    def validate_execution_config(cls, kwargs):
+        # This model family, not generic configuration resolution, owns mode.
+        if "mode" not in kwargs:
+            raise ValueError("QuantumModel registry requires explicit mode")
+
+    def validate_execution_instance(self, kwargs, capacity):
+        if self.mode != kwargs["mode"] or self.capacity != capacity:
+            raise ValueError("Constructed policy contradicts resolved mode/capacity")
+
+    def diagnostic_snapshot(self):
+        return {"current_frame": getattr(self, "current_frame", None)}
+
     def __init__(self, configs, X_n, reward_list, frame_number, attack_list=[], capacity=10000, mode='base', beta=0.2, gamma_factor=0.01, eta_factor=0.05, lamb=1, n_experts=4):
         super().__init__()
 
@@ -399,6 +412,20 @@ class Oracle(QuantumModel):
     Always selects the optimal path and allocation given current attack state.
     """
     trace_privileged = True
+    supports_causal_scenarios = True
+
+    def prepare_scenario_frame(self, frame, availability):
+        """Same framewise argmax as static precomputation, without future masks."""
+        if frame != len(self.optimal_actions):
+            raise ValueError("Oracle causal frame order mismatch")
+        best = (0, 0, -float("inf"))
+        for path, values in enumerate(self.reward_list):
+            if availability[path] > 0:
+                action = int(np.argmax(values))
+                payoff = float(values[action]) * availability[path]
+                if payoff > best[2]:
+                    best = (path, action, payoff)
+        self.optimal_actions.append(best)
 
     
     @property
@@ -431,7 +458,7 @@ class Oracle(QuantumModel):
         except TypeError:
             reward_list_len = 0
             
-        if not self.use_context_rewards and reward_list_len > 0:
+        if not getattr(configs, "causal_scenario_execution", False) and not self.use_context_rewards and reward_list_len > 0:
             self.optimal_actions = self._compute_optimal_actions()
         else:
             self.optimal_actions = []  # Will compute dynamically if needed

@@ -3,6 +3,7 @@ from itertools import combinations_with_replacement
 from daqr.config.experiment_config import ExperimentConfiguration
 from daqr.config.execution_contract import ExecutionSettings
 from daqr.core.qubit_allocator import QubitAllocator
+from daqr.core.catalog_components import LayeredPrimaryCatalog, PrimaryPayoff
 from daqr.campaigns import medium_spec, medium_runner
 
 
@@ -18,7 +19,8 @@ def fixture_config(frames=8, scale_m=3, budget=9, rates=(1e-4, 1.5e-4, 2e-4)):
                         "profile_pool":list(combinations_with_replacement(rates,3))},
         allocator=QubitAllocator(total_qubits=budget*routes,num_routes=routes,
                                  baseline_allocation=(budget,)*routes),
-        persistence=False, resume=False, use_last_backup=False)
+        persistence=False, resume=False, use_last_backup=False,
+        catalog_component=LayeredPrimaryCatalog(), reward_component=PrimaryPayoff())
     cfg.execution=ExecutionSettings("technical-regression-v2",frames,6000,(scale_m,),"technical_preflight")
     return cfg
 

@@ -9,6 +9,7 @@ import time
 import numpy as np
 
 from daqr.campaigns.medium_spec import canonical_json, digest
+from daqr.core.scenario_execution import ScenarioSession
 
 PHASES = ("PRESELECTION", "DECISION", "OUTCOME", "UPDATE")
 
@@ -73,10 +74,11 @@ class EventRecorder:
             raise ValueError("Unexpected dynamic context count")
         if any(not np.array_equal(x, r["actions"]) for x,r in zip(contexts,observation["routes"])):
             raise ValueError("Context changed without a versioned snapshot")
-        self._emit("PRESELECTION", frame, observation_kind="allocation_context",
+        self._emit("PRESELECTION", frame, observation_kind=observation["observation_kind"],
                    observation_catalog_hash=self.catalog["observation_catalog_hash"],
-                   observation_version=observation["version"], producer="primary_allocation_catalog",
-                   link_measurements_present=False, history_cutoff_frame=frame-1,
+                   observation_version=observation["version"],
+                   producer=self.manifest["configuration"]["resolved"]["components"]["catalog"]["component_id"],
+                   link_measurements_present=observation["link_measurements_present"], history_cutoff_frame=frame-1,
                    policy_state_version=f"after-{frame}-updates",
                    information_regime="privileged_reference" if self.manifest["identity"]["trace_contract"]["privileged"] else "past-feedback-and-allocation-context")
 
@@ -185,10 +187,13 @@ class AttemptBundle:
                         "restart_reason":restart_reason, "restart_from_frame":0}
         write_json_exclusive(self.directory/"manifest.json", manifest)
         write_json_exclusive(self.directory/"attempt.json", self.lineage)
+        self.scenario_session = mask if isinstance(mask, ScenarioSession) else None
         for filename, value in (("topology.json",catalog["topology"]),("routes.json",catalog["routes"]),
                                 ("observations.json",catalog["observations"]),("physics.json",catalog["physics"]),
-                                ("availability.json",np.asarray(mask).tolist()),("catalog_diagnostics.json",catalog["diagnostics"])):
+                                ("catalog_diagnostics.json",catalog["diagnostics"])):
             write_json_exclusive(self.directory/filename, value)
+        if self.scenario_session is None:
+            write_json_exclusive(self.directory/"availability.json", np.asarray(mask).tolist())
         self.recorder = EventRecorder(manifest,catalog,attempt_no,self.directory)
 
     def finish(self, state="COMPLETE", failure_kind=None, reason=None):
@@ -201,7 +206,15 @@ class AttemptBundle:
             raise ValueError("Incomplete event counts cannot be completed")
         if state not in {"COMPLETE","FAILED","INTERRUPTED"} or (state != "COMPLETE" and not reason):
             raise ValueError("Invalid terminal state/reason")
+        if self.scenario_session is not None and not (self.directory/"availability.json").exists():
+            # Write once after execution; -1 in a failed/interrupted bundle means
+            # unrealized, never an availability observation.
+            realized = (self.scenario_session.completed_mask() if state == "COMPLETE"
+                        else self.scenario_session.realized)
+            write_json_exclusive(self.directory/"availability.json", realized.tolist())
+        trajectory = json.loads((self.directory/"availability.json").read_text())
         completion = {"phase":"COMPLETION", "state":state, "run_id":self.manifest["run_id"],
+            "realized_trajectory_hash":digest(trajectory),
             "attempt_no":self.attempt_no, "manifest_hash":digest(self.manifest),
             "expected_record_counts":expected, "actual_record_counts":actual,
             "file_hashes":{p.name:file_hash(p) for p in sorted(self.directory.iterdir()) if p.is_file()},
@@ -235,8 +248,14 @@ def _validate_payload(directory, manifest, completion):
         raise ValueError("Topology mismatch")
     if digest(sorted(read("routes.json"),key=lambda r:r["route_id"])) != identity["route_set_hash"]:
         raise ValueError("Route-set mismatch")
-    if digest(read("physics.json")) != identity["physics_hash"] or digest(read("availability.json")) != identity["threat_trajectory_hash"]:
+    trajectory = read("availability.json")
+    trajectory_hash = digest(trajectory)
+    if digest(read("physics.json")) != identity["physics_hash"] or (identity["threat_trajectory_hash"] is not None and trajectory_hash != identity["threat_trajectory_hash"]):
         raise ValueError("Physics/mask mismatch")
+    if trajectory_hash != completion["realized_trajectory_hash"]:
+        raise ValueError("Realized trajectory mismatch")
+    if np.asarray(trajectory).shape != (manifest["execution_frames"], len(read("routes.json"))) or not np.isin(trajectory,[0,1]).all():
+        raise ValueError("Incomplete or invalid realized trajectory")
     observations = read("observations.json")
     if digest(observations) != identity["observation_catalog_hash"]:
         raise ValueError("Observation mismatch")

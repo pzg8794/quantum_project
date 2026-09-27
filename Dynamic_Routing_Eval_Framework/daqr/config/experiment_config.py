@@ -24,7 +24,7 @@ class ExperimentConfiguration:
     """
     Configuration holder for quantum experiments.
     """
-    def __init__(self, runs=1, physics_params={}, seed_offset=100, env_type="stochastic", attack_type="n/a", suffix=None, attack_intensity=1.0, attack_rate=0.25, models=None, scenarios=None, allocator=None, base_seed=12345, scale=2, base_capacity=True, overwrite=False, resume=True, use_last_backup=True, verbose=False, testbed_id=None, testbed_config={}, persistence=True):
+    def __init__(self, runs=1, physics_params={}, seed_offset=100, env_type="stochastic", attack_type="n/a", suffix=None, attack_intensity=1.0, attack_rate=0.25, models=None, scenarios=None, allocator=None, base_seed=12345, scale=2, base_capacity=True, overwrite=False, resume=True, use_last_backup=True, verbose=False, testbed_id=None, testbed_config={}, persistence=True, catalog_component=None, reward_component=None):
         if not persistence and (not models or not scenarios or allocator is None):
             raise ValueError("Persistence-disabled execution requires explicit nonempty axes and allocator")
         
@@ -44,6 +44,10 @@ class ExperimentConfiguration:
         self.seed_offset = seed_offset
         self.testbed_config = testbed_config
         self.physics_params = physics_params
+        # Explicit component selection for the strict execution path. None does
+        # not select a scientific default and leaves legacy execution unchanged.
+        self.catalog_component = catalog_component
+        self.reward_component = reward_component
         if not self.suffix and self.testbed_id: self.suffix = ""
         if self.testbed_id: self.suffix+="_"+f"{self.testbed_id}"
         self.dir = Path(os.path.dirname(os.path.abspath(__file__)))

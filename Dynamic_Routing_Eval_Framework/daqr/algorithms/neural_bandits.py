@@ -75,6 +75,22 @@ class EXPNeuralUCB(QuantumModel):
         return {"feedback": "bernoulli-route-continuous-allocation-v2",
                 "privileged": False, "probability_floor": EXP3_PROBABILITY_FLOOR}
 
+    supports_causal_scenarios = True
+
+    @classmethod
+    def execution_trace_contract(cls, kwargs):
+        return cls.trace_contract(kwargs["mode"])
+
+    def diagnostic_snapshot(self):
+        return {"group_estimates": copy.deepcopy(self.estimate_group_reward),
+                "neural": [{
+                    "parameters": {k:v.detach().cpu().clone() for k,v in n.net.state_dict().items()},
+                    "gradients": [None if p.grad is None else p.grad.detach().cpu().clone() for p in n.net.parameters()],
+                    "optimizer": copy.deepcopy(n.optimizer.state_dict()),
+                    "sigma_inv": n.sigma_inv.copy(),
+                    "replay": copy.deepcopy(n.replay_buffer.__dict__), "T": n.T,
+                } for n in self.neuralucb_list]}
+
     @property
     def model_type(self):
         return 'batch'
@@ -384,7 +400,7 @@ class EXPNeuralUCB(QuantumModel):
             self.group_rewards[selected_path] += observed_reward
             self.group_counts[selected_path] += 1
 
-    def run(self, attack_list, verbose=None, event_sink=None):
+    def run(self, attack_list, verbose=None, event_sink=None, scenario_session=None):
         """Enhanced batch/episode runner with clean progress output"""
         if verbose is None: verbose = self.verbose
         
@@ -403,6 +419,8 @@ class EXPNeuralUCB(QuantumModel):
 
         # FIX: Add disable parameter
         for frame in tqdm(range(self.frame_number), desc=f"- {self.mode.upper()} Progress", disable=not verbose):  # Now respects verbose parameter
+            if scenario_session is not None:
+                scenario_session.begin(frame)
         
             if self.transition_trigger and frame > 0 and frame % self.transition_interval == 0:
                 new_contexts, new_rewards = self.transition_trigger()
@@ -447,6 +465,8 @@ class EXPNeuralUCB(QuantumModel):
             
             self.regret_list.append(self.regret)
             self.reward_list_total.append(self.total_reward)
+            if scenario_session is not None:
+                scenario_session.observe(frame, selected_path)
         
         end_time = time.time()
         elapsed_time = end_time - start_time

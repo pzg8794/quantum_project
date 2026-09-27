@@ -20,13 +20,9 @@ import numpy as np
 import torch
 from threadpoolctl import threadpool_limits
 
-from daqr.algorithms.base_bandit import Oracle
-from daqr.algorithms.neural_bandits import EXPNeuralUCB
-from daqr.algorithms.predictive_bandits import CEpsilonGreedy
-from daqr.core.recorded_environment import RecordedQuantumEnvironment
-from daqr.core.primary_routes import PrimaryRoute
+from daqr.core.scenario_execution import ScenarioSession
 from daqr.campaigns.medium_spec import (
-    build_catalog, build_mask, protocol,
+    build_catalog, build_scenario, protocol,
     seed_manifest, digest, canonical_json, validate_catalog,
 )
 from daqr.campaigns.medium_trace import AttemptBundle, run_identity, validate_completion, write_json_exclusive
@@ -68,7 +64,8 @@ def prepare_manifest(configs, policy, threat, block, *, scale_m):
         raise ValueError("Preflight frame limit exceeded")
     catalog = build_catalog(configs, block, scale_m)
     seeds = seed_manifest(configs, block, policy, threat, scale_m)
-    mask = build_mask(configs, threat, frames, block, scale_m)
+    session = build_scenario(configs, threat, frames, block, scale_m, len(catalog["routes"]))
+    mask = session.precomputed if session.precomputed is not None else session
     policy_config = resolved["policies"][policy]
     config = {"protocol": protocol(configs), "resolved": resolved, "policy": policy,
               "policy_kwargs": policy_config["kwargs"], "threat": threat,
@@ -79,7 +76,9 @@ def prepare_manifest(configs, policy, threat, block, *, scale_m):
         "policy_kwargs":policy_config["kwargs"], "policy_class":policy_config["class"],
         "trace_contract":policy_config["trace"], "threat":threat,
         "scenario":resolved["scenarios"][threat],
-        "threat_trajectory_hash":digest(mask.tolist()), "allocator":resolved["allocator"],
+        "threat_trajectory_hash":digest(session.precomputed.tolist()) if session.precomputed is not None else None,
+        "scenario_chronology":"availability-before-selection; history-through-t-minus-1; observe-after-update",
+        "trajectory_kind":"exogenous-precomputed" if session.precomputed is not None else "policy-reactive-causal", "allocator":resolved["allocator"],
         "replay":resolved["replay"], "horizon":frames,
         "execution_frames":frames,"execution_kind":execution_kind,"code":code_identity()}
     manifest = {"schema_version":"medium-run-v2","run_id":run_identity(identity),"identity":identity,
@@ -128,20 +127,9 @@ def policy_rng(seed):
 def model_state(model):
     """Read-only state snapshot for exact equivalence tests; not a resume format."""
     result = {"results":deepcopy(model.get_results())}
-    if isinstance(model,EXPNeuralUCB):
-        result["group_estimates"]=deepcopy(model.estimate_group_reward)
-        result["neural"]=[{
-            "parameters":{k:v.detach().cpu().clone() for k,v in n.net.state_dict().items()},
-            "gradients":[None if p.grad is None else p.grad.detach().cpu().clone() for p in n.net.parameters()],
-            "optimizer":deepcopy(n.optimizer.state_dict()), "sigma_inv":n.sigma_inv.copy(),
-            "replay":deepcopy(n.replay_buffer.__dict__),"T":n.T,
-        } for n in model.neuralucb_list]
-    elif isinstance(model,CEpsilonGreedy):
-        result["path_rewards"]=deepcopy(model.path_rewards)
-        result["path_counts"]=deepcopy(model.path_counts)
-        result["bandits"]=[deepcopy(b.bandit.__dict__) for b in model.path_bandits]
-    else:
-        result["current_frame"]=model.current_frame
+    snapshot = getattr(model, "diagnostic_snapshot", None)
+    if snapshot is not None:
+        result.update(deepcopy(snapshot()))
     result["rng"]={"numpy":np.random.get_state(),"python":random.getstate(),"torch":torch.get_rng_state().clone()}
     return result
 
@@ -153,16 +141,29 @@ def run_policy(configs, policy, contexts, rewards, mask, seed, recorder=None, ca
         raise ValueError("Unconfigured policy")
     entry = configs.algorithm_configs[policy]
     view = model_config_view(configs)
+    session = mask if isinstance(mask, ScenarioSession) else None
+    availability = session.policy_mask if session is not None else mask
+    causal = session is not None and session.precomputed is None
+    view.causal_scenario_execution = causal
+    if causal and not getattr(entry["model_class"], "supports_causal_scenarios", False):
+        raise ValueError("HOLD: policy does not declare causal scenario support")
     with policy_rng(seed):
         model=entry["model_class"](configs=view,X_n=contexts,reward_list=rewards,
-                                  frame_number=len(mask),attack_list=mask,
+                                  frame_number=len(mask),attack_list=availability,
                                   capacity=resolved["replay"]["capacity"],**deepcopy(entry["kwargs"]))
-        if model.mode != entry["kwargs"]["mode"] or model.capacity != resolved["replay"]["capacity"]:
-            raise ValueError("Constructed policy contradicts resolved mode/capacity")
+        validator = getattr(model, "validate_execution_instance", None)
+        if validator is not None:
+            validator(entry["kwargs"], resolved["replay"]["capacity"])
         if entry["runner_type"] == "batch":
-            model.run(mask,verbose=False,event_sink=recorder)
+            extra = {"scenario_session": session} if session is not None else {}
+            model.run(availability,verbose=False,event_sink=recorder,**extra)
         else:
             for frame in range(len(mask)):
+                if session is not None:
+                    row = session.begin(frame)
+                    frame_hook = getattr(model, "prepare_scenario_frame", None)
+                    if causal and frame_hook is not None:
+                        frame_hook(frame,row)
                 if recorder is not None:
                     recorder.preselection(frame,contexts)
                 selected=model.take_action()
@@ -172,13 +173,15 @@ def run_policy(configs, policy, contexts, rewards, mask, seed, recorder=None, ca
                 if recorder is not None:
                     recorder.decision(frame,route,action)
                 q=rewards[route][action]
-                availability=mask[frame][route]
-                continuous=q*availability
+                selected_availability=availability[frame][route]
+                continuous=q*selected_availability
                 if recorder is not None:
-                    recorder.outcome(frame,q,availability,continuous)
+                    recorder.outcome(frame,q,selected_availability,continuous)
                 model.update(route,action,continuous)
                 if recorder is not None:
                     recorder.update(frame,None,False,policy_target=continuous)
+                if session is not None:
+                    session.observe(frame,route)
         return model.get_results(), model_state(model) if capture_state else None
 
 
@@ -189,21 +192,12 @@ def execute_preflight(output_root, configs, policy, threat, block, scale_m):
     frames=configs.execution.horizon
     manifest,catalog,mask=prepare_manifest(configs,policy,threat,block,scale_m=scale_m)
     validate_catalog(catalog)
-    routes=tuple(PrimaryRoute(r["route_id"],tuple(r["link_rates"]),tuple(r["nodes"])) for r in catalog["routes"])
-    env=RecordedQuantumEnvironment(attack=configs.resolve_attack_strategy(threat),availability=mask,
-                           qubit_capacities=tuple(r["budget"] for r in catalog["observations"]["routes"]),
-                           route_metadata=routes,num_paths=len(routes),frame_length=frames,
-                           horizon_length=frames, external_topology=catalog["topology"],
-                           num_total_qubits=configs.allocator.total_qubits,
-                           seed=manifest["identity"]["seeds"]["environment"]["actual_seed"],
-                           **configs.physics_params)
-    for x,obs,q,expected in zip(env.contexts,catalog["observations"]["routes"],env.reward_list,catalog["physics"]["base_expected_payoffs"]):
-        if not np.array_equal(x,obs["actions"]) or not np.array_equal(q,expected):
-            raise ValueError("Environment/catalog mismatch")
+    contexts = [np.asarray(r["actions"]) for r in catalog["observations"]["routes"]]
+    rewards = catalog["physics"]["base_expected_payoffs"]
     bundle=AttemptBundle(output_root,manifest,catalog,mask)
     try:
         start=time.perf_counter()
-        results,_=run_policy(configs,policy,env.contexts,env.reward_list,mask,
+        results,_=run_policy(configs,policy,contexts,rewards,mask,
                             manifest["identity"]["seeds"]["policy"]["actual_seed"],bundle.recorder)
         elapsed=time.perf_counter()-start
         # These legacy keys are confined to the test observation, never the raw event schema.

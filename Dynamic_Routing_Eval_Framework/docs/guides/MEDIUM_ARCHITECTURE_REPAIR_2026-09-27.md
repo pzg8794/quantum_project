@@ -1,5 +1,32 @@
 # PR #2 bounded architecture repair
 
+## Pass 2 — design checkpoint (2026-09-27)
+
+Starting revision: `b447ee6f54bfcb721ab0691996ef6a9591ad360c`, clean detached
+retained review worktree, matching fetched PR #2; base `47757380`. Original
+checkout remains protected at `854c4ab3` with its six mode edits and run_scripts.
+The remainder of the original report below is the **Pass 1 historical receipt**.
+
+Smallest extension: explicitly configured catalog/reward component objects own
+their schemas, construction and validation; generic resolution checks interfaces
+and records component identities. A common scenario session owns a private RNG,
+immutable past selections and per-frame availability. Static strategies retain
+their original complete realization. Causal strategies receive only selections
+through t-1, produce frame t availability before selection, and receive the
+selected route only after feedback/update. No current-action lookahead.
+Concrete policies own configuration checks and optional snapshots. The generic
+runner asks for capabilities, never concrete class names or mode conventions.
+
+For causal runs the input identity cannot contain a future trajectory hash.
+It records the scenario/code/seeds and a null pre-run trajectory hash; the
+immutable completion binds the realized trajectory. A policy-reactive trajectory
+is not an exogenous common mask shared across policies.
+
+Static behavior, four-route rewards, EXP3 importance weighting, passive logging,
+attempt protections and complete configured-cell checks must remain unchanged.
+No scientific execution is authorized. Technical causality verification is not
+historical scientific-definition validation.
+
 ## A–C: requirements, system understanding, design (before implementation)
 
 Reviewer scale varies topology/catalog breadth. Scenario, policy, allocator,

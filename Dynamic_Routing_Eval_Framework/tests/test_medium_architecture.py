@@ -20,6 +20,14 @@ class InjectedScenario(NoAttack):
     """New valid scenario ID and class, without campaign edits."""
 
 
+class MissingHistoryInterface(NoAttack):
+    mask_capability = "selection_history"
+
+
+class MissingOnlineInterface(NoAttack):
+    mask_capability = "online_selection_history"
+
+
 class InjectedPolicy(Oracle):
     def __str__(self):
         return "InjectedPolicy"
@@ -102,8 +110,13 @@ def test_configuration_mutation_propagates_to_manifest_and_execution(tmp_path):
 def test_fail_closed_entire_configuration(fault,tmp_path):
     cfg=fixture_config(frames=1)
     if fault=="unknown_scenario": cfg.test_scenarios["bad"]={"strategy":"missing","parameters":{}}
-    if fault=="history": cfg.test_scenarios["history"]={"strategy":"adaptive","parameters":{}}
-    if fault=="online": cfg.test_scenarios["online"]={"strategy":"onlineadaptive","parameters":{}}
+    if fault in {"history", "online"}:
+        from daqr.core.attack_strategy import STRATEGY_REGISTRY
+        # Still require fail-closed for missing history support. The real causal
+        # components are now supported and are tested in the Pass-2 suite.
+        cls = MissingHistoryInterface if fault == "history" else MissingOnlineInterface
+        cfg.strategy_registry = {**STRATEGY_REGISTRY, "unsupported": cls}
+        cfg.test_scenarios[fault] = {"strategy":"unsupported", "parameters":{}}
     if fault=="empty_models": cfg.models=[]
     if fault=="unknown_policy": cfg.models.append("missing")
     if fault=="empty_scenarios": cfg.test_scenarios={}

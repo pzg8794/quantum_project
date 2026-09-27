@@ -55,19 +55,8 @@ def resolve_configuration(configs):
         raise ValueError("Nonempty unique configured policies and scenarios required")
     if not math.isfinite(configs.scale) or configs.scale <= 0 or type(configs.base_capacity) is not bool:
         raise ValueError("Invalid replay scale/anchor")
-    if set(configs.physics_params) != {"entanglement_success_factor"}:
-        raise ValueError("Explicit primary physics parameters required; other physics needs a different component")
-    factor = configs.physics_params["entanglement_success_factor"]
-    if not math.isfinite(factor) or factor <= 0:
-        raise ValueError("Invalid success factor")
+    catalog_component, reward_component = resolve_components(configs)
     tb = configs.testbed_config
-    if set(tb) != {"topology_family", "profile_pool"} or tb["topology_family"] != "layered-primary-form-v1":
-        raise ValueError("Unsupported or incomplete primary testbed configuration")
-    profiles = tb["profile_pool"]
-    if not profiles or len(set(map(tuple, profiles))) != len(profiles):
-        raise ValueError("Nonempty distinct explicit profile pool required")
-    if any(len(p) != 3 or any(not math.isfinite(x) or not 0 <= x <= 1 for x in p) for p in profiles):
-        raise ValueError("Layered three-hop profiles require three finite probabilities")
     allocator = configs.allocator
     if getattr(allocator, "allocation_capability", None) != "static":
         raise ValueError("HOLD: allocator requires an unimplemented dynamic catalog interface")
@@ -77,8 +66,9 @@ def resolve_configuration(configs):
     for name in configs.test_scenarios.keys():
         strategy = configs.resolve_attack_strategy(name)
         capability = getattr(strategy, "mask_capability", "undeclared")
-        if capability != "static":
-            raise ValueError(f"HOLD scenario {name}: requires {capability}; immutable-mask execution has no selection history")
+        strategy.validate_execution()
+        if not callable(getattr(strategy, "open_session", None)):
+            raise ValueError(f"HOLD scenario {name}: no scenario execution interface")
         scenarios[name] = {**source_identity(type(strategy)),
                            "parameters": deepcopy(strategy.__dict__), "capability": capability,
                            "configured": deepcopy(configs.test_scenarios[name])}
@@ -90,15 +80,23 @@ def resolve_configuration(configs):
         if not {"model_class","kwargs","runner_type","seed_offset"}.issubset(entry):
             raise ValueError(f"Incomplete registry entry {name}")
         cls, kwargs, runner = entry["model_class"], entry["kwargs"], entry["runner_type"]
-        if "mode" not in kwargs or type(entry["seed_offset"]) is not int:
-            raise ValueError(f"Missing mode/integer seed offset for {name}")
+        if not isinstance(kwargs, dict) or type(entry["seed_offset"]) is not int:
+            raise ValueError(f"Invalid kwargs/integer seed offset for {name}")
+        validator = getattr(cls, "validate_execution_config", None)
+        if validator is not None:
+            validator(kwargs)
         if runner == "step-wise":
             trace = {"feedback": "continuous-step-v1",
                      "privileged": bool(getattr(cls, "trace_privileged", False))}
-        elif runner == "batch" and hasattr(cls, "trace_contract"):
-            trace = cls.trace_contract(kwargs["mode"])
+        elif runner == "batch" and hasattr(cls, "execution_trace_contract"):
+            trace = cls.execution_trace_contract(kwargs)
         else:
             raise ValueError(f"HOLD policy {name}: no supported passive trace contract")
+        if any(s["capability"] != "static" for s in scenarios.values()):
+            if not getattr(cls, "supports_causal_scenarios", False):
+                raise ValueError(f"HOLD policy {name}: no causal scenario capability")
+            if trace["privileged"] and not callable(getattr(cls, "prepare_scenario_frame", None)):
+                raise ValueError(f"HOLD policy {name}: no causal privileged-frame interface")
         # Record inherited constructor defaults too, not a campaign's duplicate table.
         defaults = {}
         for base in reversed(cls.__mro__):
@@ -116,6 +114,8 @@ def resolve_configuration(configs):
     return {"execution": asdict(settings), "blocks": configs.runs,
             "base_seed": configs.base_seed, "policies": policies, "scenarios": scenarios,
             "allocator": {**source_identity(type(allocator)), "parameters": deepcopy(allocator.__dict__)},
+            "components": {"catalog": component_identity(catalog_component),
+                           "reward": component_identity(reward_component)},
             "physics": deepcopy(configs.physics_params), "testbed": deepcopy(tb),
             "replay": {"anchor": "T_b" if configs.base_capacity else "T",
                        "scale": configs.scale, "base": replay_base, "capacity": int(capacity)},
@@ -123,3 +123,28 @@ def resolve_configuration(configs):
                 {"scale": scale, "block": block, "scenario": scenario, "policy": policy}
                 for scale in settings.scale_points for block in range(configs.runs)
                 for scenario in configs.test_scenarios.keys() for policy in configs.models]}
+
+
+def component_identity(component):
+    return {**source_identity(type(component)), "component_id": component.component_id,
+            "parameters": deepcopy(component.__dict__)}
+
+
+def resolve_components(configs):
+    """Configured objects are the extension seam; no concrete family/schema here."""
+    components = []
+    for field, params, methods in (
+        ("catalog_component", "testbed_config", ("validate_config", "build", "validate")),
+        ("reward_component", "physics_params", ("validate_config", "build", "values")),
+    ):
+        component = getattr(configs, field, None)
+        if not isinstance(getattr(component, "component_id", None), str) or not component.component_id:
+            raise ValueError(f"Explicit {field} with component_id required")
+        if any(not callable(getattr(component, method, None)) for method in methods):
+            raise ValueError(f"Incomplete {field} interface")
+        parameters = getattr(configs, params, None)
+        if not isinstance(parameters, dict):
+            raise ValueError(f"{params} must be a configuration mapping")
+        component.validate_config(parameters)
+        components.append(component)
+    return tuple(components)

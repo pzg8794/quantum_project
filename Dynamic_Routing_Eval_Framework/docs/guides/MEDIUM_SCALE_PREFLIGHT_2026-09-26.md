@@ -1,5 +1,14 @@
 # Medium-scale engineering preflight — September 26, 2026
 
+> **Historical receipt, superseded for current architecture on September 27.**
+> [Architecture repair](MEDIUM_ARCHITECTURE_REPAIR_2026-09-27.md) is the current
+> implementation/audit source. The original tests, measurements, hashes and
+> 64-frame entry point below describe commit 265b9a75 only. They do not define
+> the scientific scenario axis or current readiness. The repaired API requires
+> explicit canonical configuration, has no default policy/threat CLI preset,
+> and permits bounded technical cost fixtures up to a 512-frame safety ceiling.
+> All scientific execution remains held.
+
 **TECHNICAL PREFLIGHT — NOT SCIENTIFIC EVIDENCE**
 
 Status: implementation prepared for independent pre-run audit. No substantive
@@ -148,7 +157,8 @@ or migration code was changed to address them.
 Three separate eight-frame technical executions at implementation commit
 `265b9a75` completed with eight records per phase plus one completion marker.
 Every bundle was read back and its completion validated. These are instrumentation
-fixtures, not the six-unit scientific block or any learning-performance estimate.
+fixtures, not a scientific block or any learning-performance estimate. A scientific
+block's unit count is derived from the complete approved configuration.
 
 | Technical fixture | Bundle wall seconds | Raw bundle bytes | Process high-water RSS |
 |---|---:|---:|---:|

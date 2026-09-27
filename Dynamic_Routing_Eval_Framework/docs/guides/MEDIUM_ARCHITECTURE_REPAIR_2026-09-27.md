@@ -157,6 +157,7 @@ regression and logging/RNG/model-state noninterference.
 | `docs/guides/MEDIUM_SCALE_EXECUTION_PREPARATION.md` | reconcile fixed-scenario/unit wording |
 | `docs/guides/MEDIUM_SCALE_PREFLIGHT_2026-09-26.md` | mark old receipt historical and superseded |
 | `docs/guides/MEDIUM_ARCHITECTURE_REPAIR_2026-09-27.md` | requirements/design/audit/evidence handoff |
+| `docs/guides/MEDIUM_ARCHITECTURE_K55_TECHNICAL_RECEIPT.json` | deliberately retained config/source/runtime/optimizer cost receipt; not model state or scientific outcomes |
 
 The reviewed September 27 public correction is at QuantumFaultTolerant
 `0bcc913` in `updates/MEDIUM_SCALE_PREPARATION_2026-09-26.md`,

@@ -1,6 +1,8 @@
-# M-Q Q-05 — Default/Fixed Medium-Scale Result Checkpoint
+# M-Q Q-05 — Default/Fixed Medium-Scale Reduced-Diagnostic Checkpoint
 
-**Status:** RUN COMPLETE / MANAGER VALIDATED / INDEPENDENT RESULT REVIEW ACCEPTED
+> **SUPERSEDED AS Q-05 COMPLETION EVIDENCE:** These immutable results remain valid only for the executed `Oracle` / `CEpsilonGreedy` / `EXPNeuralUCB` subset. The pinned proven workflow requires `Oracle`, `GNeuralUCB`, `EXPNeuralUCB`, `CPursuitNeuralUCB`, and `iCPursuitNeuralUCB`; therefore this 45-cell package is preserved as an additional reduced diagnostic and must not be presented as the completed full-model Tier-1 experiment. No cell from this package may be pooled into or substituted for the corrected, fresh 75-cell campaign.
+
+**Status:** REDUCED DIAGNOSTIC PRESERVED / FULL-MODEL Q-05 ACCEPTANCE REVOKED
 **Execution commit:** `fdcefee58adc8df8d802d33f8c079666d115d68d`  
 **Execution mode:** Serial, proven `AllocatorRunner -> MultiRunEvaluator -> QuantumExperimentRunner` workflow  
 **Started:** `2026-09-27T21:08:29Z`  

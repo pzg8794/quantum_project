@@ -1,6 +1,8 @@
-# M-Q Q-05 — Independent Default/Fixed Result Review
+# M-Q Q-05 — Independent Default/Fixed Reduced-Diagnostic Review
 
-**Verdict: ACCEPT — the immutable result package and numeric manager summary are supported.**  
+> **HISTORICAL REVIEW SCOPE CORRECTION:** This review remains valid for the exact 45-cell `Oracle` / `CEpsilonGreedy` / `EXPNeuralUCB` package it examined, but that package does not satisfy the pinned full-model workflow. Its former overall Q-05 acceptance is revoked. The artifacts are preserved as reduced-diagnostic evidence and may not be pooled with the corrected campaign; the fresh five-model, 75-cell campaign requires its own readiness and result reviews.
+
+**Verdict: ACCEPT FOR THE REDUCED DIAGNOSTIC ONLY — NOT ACCEPTED AS THE FULL-MODEL Q-05 DELIVERABLE.**
 **Required report-only correction:** reject the current unqualified `clear hierarchy reversal` wording; use the narrower wording specified below before downstream scientific reuse. This is not a code, configuration, or rerun finding.
 
 ## Reviewed scope

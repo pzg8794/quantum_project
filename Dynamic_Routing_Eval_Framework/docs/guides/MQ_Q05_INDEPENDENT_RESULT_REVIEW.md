@@ -67,9 +67,9 @@ Percentages are `policy final payoff / paired Oracle final payoff × 100`, compu
 
 ## Scientific interpretation
 
-The supported result is narrow: in this one fixed-allocator, 15-node/10-route/550-action anchor, `CEpsilonGreedy` exceeds the tested `EXPNeuralUCB` representative in every threat and block. The run does not isolate node count, does not estimate allocator sensitivity, and does not directly test the pursuit/context-aware-neural family because that family is absent from the frozen matrix. It must not be treated as a controlled scaling curve or pooled with heterogeneous testbeds as one.
+The supported result is narrow: in this one fixed-allocator, 15-node/10-route/550-action anchor, `CEpsilonGreedy` exceeds `EXPNeuralUCB` in every threat and block. The run does not isolate node count, does not estimate allocator sensitivity, and cannot support an inference about the established five-model roster because three required learning policies are absent. It must not be treated as a controlled scaling curve or pooled with the corrected 75-cell campaign or heterogeneous testbeds.
 
-The manager report's phrase `clear hierarchy reversal relative to any expectation` is not defensible as a result claim. The Q-03 contract permits the label *reversal* when a paired ordering changes, but this report pins no prior paired comparator or preregistered ordering. A generic expectation is not evidence of a prior hierarchy.
+The manager report's phrase `clear hierarchy reversal relative to any expectation` is not defensible as a result claim. The superseded Q-03 contract permitted the label *reversal* when a paired ordering changes, but this report pins no prior paired comparator or preregistered ordering. A generic expectation is not evidence of a prior hierarchy.
 
 Required replacement wording:
 

@@ -10,9 +10,9 @@ The experiment continues to reuse the proven Colab execution pattern: one alloca
 
 ## Scientific question
 
-How does the performance hierarchy exposed by the primary matched evaluation behave on the reviewer-required 15-node, 10-route primary-form anchor?
+What performance ordering and threat-conditioned robustness does the established five-model roster exhibit on the reviewer-required 15-node, 10-route primary-form anchor?
 
-The experiment may show persistence, compression, reversal, threat-conditional ranking, or an inconclusive result. It is not designed to prove that a preferred policy wins.
+The experiment reports only the ordering, uncertainty, and threat-conditioned behavior measured within this fresh campaign. It is not designed to prove that a preferred policy wins or to infer persistence, compression, or reversal against an unpinned prior comparator.
 
 ## Frozen Tier-1 anchor
 
@@ -37,7 +37,7 @@ The policy roster is the pinned notebook's complete `ExperimentConfiguration.NEU
 4. `CPursuitNeuralUCB` — Pursuit/CMAB route selection with NeuralUCB within-route action selection.
 5. `iCPursuitNeuralUCB` — informed Pursuit/iCMAB route selection with NeuralUCB within-route action selection and the registered predictive machinery.
 
-`CEpsilonGreedy` is a contextual CMAB policy, not a NeuralUCB policy and not a member of this pinned five-model roster. Its previously completed cells remain preserved as additional reduced-diagnostic evidence only.
+`CEpsilonGreedy` is a non-neural, two-level epsilon-greedy policy: it uses epsilon-greedy route selection and a separate plain epsilon-greedy within-route action selector. It is not a member of this pinned five-model roster. Its previously completed cells remain preserved as additional reduced-diagnostic evidence only.
 
 ### Threat spectrum
 
@@ -105,9 +105,7 @@ Allocator sensitivity is not claimable from the fixed-allocator run alone.
 - The corrected campaign is distinct from the preserved 45-cell diagnostic and writes to a separate output namespace/root.
 - A notebook passes only when all 75 required core cells validate; partial notebooks remain incomplete evidence.
 - Any missing core scenario, policy, or block is a failed/incomplete run, not a reduced matrix.
-- A hierarchy **persists** only when its direction is consistent across paired blocks with uncertainty reported.
-- **Compression** means effect separation narrows relative to the established primary result; it is not failure by itself.
-- **Reversal** is reported only against an explicitly pinned prior comparator or preregistered ordering.
+- Report within-campaign rankings with paired-block uncertainty; do not label them persistence, compression, or reversal without a separately pinned and compatible prior comparator.
 - Mixed or unstable evidence is reported as threat-conditional or inconclusive.
 - No causal claim about node count, topology, or allocator interaction follows from this single anchor.
 

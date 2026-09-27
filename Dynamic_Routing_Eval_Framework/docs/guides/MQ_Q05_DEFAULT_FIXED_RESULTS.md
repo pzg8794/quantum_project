@@ -56,7 +56,7 @@ The across-threat efficiency floor in this matrix is 25.68% for `CEpsilonGreedy`
 
 Within this exact fixed-allocator medium anchor, `CEpsilonGreedy` ranks above `EXPNeuralUCB` in all five threat regimes and all 15 block/threat comparisons. This establishes the observed non-Oracle ordering for the frozen matrix. Describing it as a reversal requires an explicitly pinned prior comparator or preregistered ordering and is not established by this run alone.
 
-This result does **not** establish that node count alone caused the observed ordering, does not test allocator sensitivity, and does not directly adjudicate the pursuit/context-aware-neural family because those policies are not part of the frozen Tier-1 matrix. It is one controlled medium-anchor result that motivates the already-separated scale-spectrum and 100-node diagnostic work; it must not be pooled with heterogeneous external testbeds as though they were one controlled scaling curve.
+This result does **not** establish that node count alone caused the observed ordering, does not test allocator sensitivity, and cannot support an inference about the established five-model roster because three required learning policies are absent. It is one reduced medium-anchor diagnostic; it must not be pooled with the corrected 75-cell campaign or with heterogeneous external testbeds as though they were one controlled scaling curve.
 
 ## Immutable evidence
 

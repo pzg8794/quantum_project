@@ -121,3 +121,60 @@ The inherited model-execution loop can retry an execution when total reward is n
 Commit `3704e7d55188f987669b034bae1dae0fad64b968` faithfully restores the required existing runner and correct nominal matrix settings, but the four blockers above prevent acceptance for scientific launch. Do not start the Default/fixed Q-05 run until the existing workflow produces deterministic block-specific identities, removes outcome-conditioned reruns for this campaign, persists the complete per-result evidence package, and validates one full 45-result preflight.
 
 This corrective re-review changes documentation only. It does not modify implementation, notebooks, tests, scientific configuration, or experiment results.
+
+---
+
+## Final review of the causal-session TEST checkpoint
+
+**Decision:** REJECT
+**Reviewed TEST commit:** `696a3a8f93181c93ad77cecdc23420f841586f85`
+**Reviewed DEV commit:** `477f6eb4`
+**Intermediate valid-zero fix:** `6b5d66f6e98709cf053cfa1f5960999d46188159`
+**Review scope:** Readiness to launch the authorized Default/fixed 45-cell, 6,000-frame Q-05 run under the frozen Q-03 and PR #2 evidence contracts
+
+### Execution requirements verified
+
+- The copied notebook continues to use `ExperimentConfiguration` and the real `daqr.evaluation.allocator_runner.AllocatorRunner`; no shadow runner is present.
+- The frozen configuration remains 15 nodes, 10 routes, 550 route--action pairs, three policies, five threats in the required order, blocks `0/1/2`, 6,000 frames, replay scale 2/capacity 12,000, and base seed 12,345.
+- Catalog construction is block-specific, and all three block topology identities are distinct.
+- Stochastic, Markov, and Baseline use one shared static availability trajectory per block/threat across policies.
+- Adaptive and OnlineAdaptive create a fresh `ScenarioSession` for each policy while preserving the same block/threat seed; realized trajectories are correctly policy-conditioned by prior route selections.
+- Outcome-triggered retries are disabled for this campaign. The valid-zero correction now retains a completed zero-reward Oracle result, continues downstream policies, and records it as completed rather than raising or rerunning.
+- The causal-session changes are campaign-gated execution integration. No policy algorithm, allocator, topology/reward model, or threat-strategy definition was changed.
+
+### Independent test results
+
+- Q-04 notebook, real tiny-horizon 45-cell evidence, and valid-zero tests: `8 passed in 58.99s`.
+- Current expanded PR #2 regression command, containing the required historical 72-test gate: `121 passed in 74.99s`.
+- The 6,000-frame Q-05 run was not launched.
+
+These passing tests establish the execution matrix, causal availability behavior, valid-zero rule, and current bundle consistency. They do not cure the evidence-contract defects below because the tests currently assert the reduced two-phase evidence schema itself.
+
+### Current launch blockers
+
+#### P0 — Saved events do not implement the frozen PR #2 phase contract
+
+`daqr.evaluation.campaign_evidence` reconstructs events after model execution from `path_action_list` and emits only `DECISION` and `OUTCOME`. The frozen `daqr.campaigns.medium_trace` contract is ordered `PRESELECTION` → `DECISION` → `OUTCOME` → `UPDATE` for every frame. The current Q-04 stream therefore omits the decision-time observation reference/history boundary and the learner-update record.
+
+This is scientifically material for `EXPNeuralUCB`: the current stream records expected continuous payoff, but not its sampled Bernoulli draw, masked route feedback, route probability/importance-weighted update, within-route update target, or whether that update was applied. Consequently, the saved evidence cannot reconstruct or validate the feedback actually used to learn. A post-hoc two-phase summary is not the Q-03 phase-ordered event stream and cannot substitute for the frozen passive trace architecture.
+
+#### P0 — Required catalog and provenance artifacts are not retained
+
+Each new cell bundle contains `manifest.json`, `availability.json`, `events.jsonl`, `result.json`, and `completion.json`, but the evidence writer does not persist the required topology, routes, action/observation catalog, or physics artifacts either per cell or once per block under immutable hashes. The manifest carries catalog hashes without retaining the corresponding payloads. It also lacks the complete frozen code/configuration provenance required to bind policy settings, resolved replay semantics, and source commit to the result.
+
+#### P0 — Stable seeds are not the frozen PR #2 seed identity
+
+The new `stable_environment_seed` is process-stable, so the prior Python-`hash()` defect is fixed for the opted-in campaign. However, the scientific result identity still derives the environment/policy seed through the new campaign hash plus legacy registry offsets, while the frozen Q-03 contract requires PR #2's domain-separated `seed_manifest` identity. Static threat trajectories likewise use the legacy environment path rather than being bound to the PR #2 threat-seed manifest. Stability alone does not establish identity with the frozen seed contract.
+
+### Minimum correction before launch
+
+1. Thread the existing PR #2 passive `EventRecorder` semantics through the real `AllocatorRunner` execution path so every completed frame records all four phases and actual learner feedback/update fields without adding selector or RNG calls.
+2. Persist the block-level topology, route, observation/action, and physics catalogs immutably, reference them from every cell, and include their hashes in completion validation.
+3. Bind result identities to the frozen PR #2 domain-separated seed manifest and complete code/configuration/replay provenance; test exact identity, not only cross-process stability.
+4. Repeat the real tiny 45-cell preflight and require four ordered events per frame, complete catalog/provenance artifacts, immutable hashes, and valid-zero retention before authorizing 6,000 frames.
+
+### Final decision
+
+The runner, matrix, causal-session behavior, valid-zero rule, and bounded tests are now materially improved, but TEST commit `696a3a8f93181c93ad77cecdc23420f841586f85` does not satisfy the frozen Q-03/PR #2 per-result evidence contract. **Do not launch the Default/fixed Q-05 run from this commit.**
+
+This final review changes documentation only. It does not modify implementation, notebooks, tests, scientific configuration, or experiment results.

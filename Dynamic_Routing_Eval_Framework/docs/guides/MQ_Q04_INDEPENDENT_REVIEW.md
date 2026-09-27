@@ -75,3 +75,49 @@ These properties are useful, but they do not establish equivalence with the requ
 7. Do not begin scientific execution from commit `2cadcc76ed40726cec6f177a7823d1dddd6aab0d`.
 
 No code, notebook, test, scientific configuration, or experiment result was modified by this independent review.
+
+---
+
+## Corrective re-review
+
+**Decision:** REJECT
+**Reviewed commit:** `3704e7d55188f987669b034bae1dae0fad64b968`
+**Review scope:** Proven-workflow fidelity, frozen Q-03 settings, per-result evidence integrity, and readiness to launch the Default/fixed Q-05 run
+
+### Corrections verified
+
+The corrective commit resolves the original workflow-architecture rejection:
+
+- the shadow `daqr.campaigns.medium_scientific.AllocatorRunner` is removed;
+- the notebook imports and invokes the established `daqr.evaluation.allocator_runner.AllocatorRunner` with `ExperimentConfiguration`;
+- the frozen matrix is represented as three policies across all five threats and three 6,000-frame repetitions;
+- replay scale 2 yields a 12,000-entry replay capacity under the existing runner semantics;
+- the external catalog validates the 15-node, 10-route, 550-action anchor;
+- persistence is directed to an external root; and
+- the two-line `baseline_allocation` propagation in the existing allocator runner is bounded to the Default allocator configuration.
+
+The targeted notebook suite passed (`5 passed`), and the expanded regression set containing the required Q-04 regression coverage passed (`96 passed`). These results establish configuration wiring and regression safety, but they do not establish scientific-launch readiness.
+
+### Current launch blockers
+
+#### P0 — Per-result evidence is incomplete
+
+The restored legacy runner does not yet emit and validate the frozen Q-03 evidence package for every one of the 45 policy--threat--block results: immutable run identity and manifest, availability record, event stream, completion receipt, and hashes. The targeted dispatch test substitutes the underlying evaluator call, so it does not prove that a complete real run persists all required artifacts or that all 45 saved results can be independently validated.
+
+#### P0 — The three repetitions do not have the frozen block identities
+
+The catalog callback constructs the external scientific catalog with `block=0` for every repetition. Although `runs=3` produces three equal 6,000-frame executions, it does not realize the frozen Q-03 block identities `0`, `1`, and `2` or their required pairing across policies and threats.
+
+#### P0 — Seed identity is not process-stable
+
+The execution path derives part of its environment/policy seed from Python's process-randomized `hash()` result. The notebook does not establish a stable hash seed or replace that derivation with the frozen deterministic seed contract. A rerun in a different Colab process therefore cannot be guaranteed to reproduce the same per-result seed identity.
+
+#### P0 — Outcome-triggered retry remains active
+
+The inherited model-execution loop can retry an execution when total reward is non-positive. That is an outcome-conditioned rerun and conflicts with the frozen Q-03 rule against performance-triggered retries. It also prevents each saved result from representing one unambiguous predeclared attempt.
+
+### Re-review conclusion
+
+Commit `3704e7d55188f987669b034bae1dae0fad64b968` faithfully restores the required existing runner and correct nominal matrix settings, but the four blockers above prevent acceptance for scientific launch. Do not start the Default/fixed Q-05 run until the existing workflow produces deterministic block-specific identities, removes outcome-conditioned reruns for this campaign, persists the complete per-result evidence package, and validates one full 45-result preflight.
+
+This corrective re-review changes documentation only. It does not modify implementation, notebooks, tests, scientific configuration, or experiment results.

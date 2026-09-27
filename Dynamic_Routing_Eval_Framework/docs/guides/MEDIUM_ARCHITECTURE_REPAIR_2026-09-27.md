@@ -27,7 +27,202 @@ attempt protections and complete configured-cell checks must remain unchanged.
 No scientific execution is authorized. Technical causality verification is not
 historical scientific-definition validation.
 
-## A–C: requirements, system understanding, design (before implementation)
+
+## Pass 2 — implementation and ownership audit
+
+Implementation revision: `ae411fda35a21230747004158e7a1cf0716dbac8`.
+The receipt/documentation commit that follows it does not change implementation.
+
+```text
+ExperimentConfiguration (explicit catalog_component / reward_component objects)
+  → generic interface resolution + configured model / strategy registry
+  → selected catalog, reward, scenario and policy components
+  → capability-driven execution with passive events
+  → resolved manifest
+  → immutable attempt + completion (including realized trajectory hash)
+```
+
+| Sol finding | Ownership repair | Technical proof |
+|---|---|---|
+| Generic topology identity/schema | `LayeredPrimaryCatalog` owns family, profile schema, formulas and catalog validation; explicit config selects the object | `test_component_schemas_are_owned_by_selected_components[topology/both]`: independent two-hop component and width schema executes without generic edits |
+| Generic physics schema | `PrimaryPayoff` owns factor validation and calculation; alternate reward objects own their own parameters | same test [physics/both]: constant-reward component with level schema executes |
+| Static-only threat execution | `AttackStrategy.open_session` supplies common lifecycle; static realization remains immutable; causal callbacks receive past selections | static realization tests, injected causal/online probes, actual adaptive/online × three-policy fixtures |
+| Adaptive random fallback | absent/short history raises; unsupported causal interface fails entire configuration before creating a bundle | missing-history, missing-interface and unsupported-policy tests; no stochastic substitution |
+| Generic mode requirement | `QuantumModel` family validates its mode; generic resolver validates registry/interface only | independent `ModeFreePolicy`, with action kwarg and no mode, resolves and executes |
+| Campaign concrete-policy diagnostics | optional `diagnostic_snapshot` on component; no policy class imports/branches in runner | injected snapshot and no-snapshot policies; exact existing policy-state comparisons |
+
+The strict path consumes validated catalog contexts/payoffs directly rather than
+reconstructing every injected component through the primary-only environment.
+The legacy `QuantumEnvironment` and `RecordedQuantumEnvironment` remain intact,
+with their exact four-route/metadata/mask regression tests. Environment RNG is
+not consumed by this direct catalog path, so its derived domain seed remains in
+provenance but its actual seed is null. Topology/profile seeds are supplied to
+the selected catalog component; constructor/state/code identities and parameters
+are recorded. Queue expansion still cannot change the protocol root.
+
+### Exact chronology and threat scope
+
+1. At frame t, the scenario session holds precisely t completed route selections.
+2. It passes an immutable tuple of those selections, private strategy state and
+   private RNG to the strategy. No reward, policy state, current selection or
+   future selection is supplied.
+3. The strategy fixes availability for t. Policy-side availability is read-only;
+   future causal rows are unrealized sentinels, never reported as observations.
+4. Nonprivileged selectors use their existing contexts/past feedback. Oracle is
+   explicitly privileged and computes its existing per-frame argmax from the
+   current row, without precomputing nonexistent future masks.
+5. Feedback and the existing policy update occur. Only then does the session
+   append the selected route for t+1.
+
+The initial empty history at t=0 is legitimate. Empty history at t>0 is rejected.
+The configured adaptive component uses its trailing selection-frequency window.
+The configured online component retains the existing response-delay gating,
+most-recent-selection behavior, ten-frame burst writes and subsequent targeted
+path overwrite behavior. Its name does not grant same-frame action access.
+Both causal implementations match an independent transcription of their
+pre-Pass-2 supplied-history arithmetic under a deterministic technical fixture.
+The actual three policies also match exact frozen replay of their own realized
+mask, including RNG/model state. This is not a counterfactual result.
+
+**Implementation/scientific-definition reconciliation still required:** this
+pass does not establish that Markov, Adaptive or OnlineAdaptive matches a
+historical manuscript/study definition. Markov's attack rate initializes state;
+its transition rule remains unchanged. Online burst carry-over/overwrite and
+response-delay meanings need scientific interpretation before a scientific
+configuration is approved. No historical audit or scientific redesign was done.
+
+Reactive trajectories depend on the policy. Shared strategy seed does not imply
+a common exogenous availability trajectory across policies. The manifest binds
+scenario parameters, seed, policy, code and chronology, with a null pre-run
+trajectory hash for causal scenarios. Completion binds the actual trajectory
+hash and file hash; event joins retain run/attempt identity. Static trajectories
+retain their pre-run hash. Partial failed trajectories remain failed, with -1
+only denoting unrealized rows; they cannot validate as complete. No mid-frame
+resume, favorable retry or best-attempt selection was introduced.
+
+### Final hardcoding audit — complete PR relative to 47757380
+
+Reviewed the full PR diff plus new component files; searched added source lines
+and current generic/campaign files for concrete names, schema keys, scientific
+numeric values, mode/type dispatch, fallback, policy/scenario lists and CLI choices.
+
+| Classification | Matches and disposition |
+|---|---|
+| A — configurable choice removed from implementation ownership | topology identity/schema and ordered profile pool moved out of resolver/spec to selected catalog; physics schema/calculation to selected reward component; policy mode validation to model family; concrete snapshots to models; scenario support to lifecycle/capability contracts |
+| A — canonical configuration ownership retained | models/scenarios/parameters, allocator, replay, horizon, resources, scale points and repeats resolve only from configuration; registry concrete class entries are valid component lookup, not campaign axis selection; existing constructor defaults remain in their canonical owner and are recorded |
+| B — catalog component invariants | layered formulas nodes=4m+3/routes=3m+1; three-hop enumeration; middle-degree bound 3; stable ordered-route hashing/profile rank; all-node coverage; allocation conservation/weak-composition ordering; primary payoff's existing two-stage arithmetic |
+| B — numerical/algorithm invariants | SHA-256, first-four-byte seed mapping, PCG64, finite/binary checks; EXP3 1e-12 floor; adaptive 0.9 rate ceiling and online ten-frame burst behavior preserved from existing algorithms, not new experimental knobs |
+| B — execution/schema invariants | four event phases, two-part action contract, restart attempt limit, immutable file/hash checks, technical frame ceiling 512, unit thread qualification; static/history/online are lifecycle capabilities, not concrete strategy names |
+| B — compatibility/schema identifiers | `primary-catalog-v2` retained as protocol schema token so this repair does not silently re-seed prior fixtures; it selects no component. Legacy four-route rates/order preserve compatibility only, never select medium experiment values |
+| B — remaining type checks | generic mappings/tuples/integer checks, `ScenarioSession` lifecycle envelope and interruption exception handling; no scientific policy/strategy type dispatch in campaign |
+| B — trace schema semantics | hybrid feedback-v2 labels and within-route NeuralUCB recipient describe an existing declared producer contract, not selection of a policy or scenario |
+| C — technical fixture inputs | concrete policy/scenario IDs, .0625, 6000 replay anchor, 12000 resolved capacity, 9-qubit budget, selected scales, 55 actions and 256 cost frames appear in test inputs/receipts; no scientific CLI defaults exist |
+| D — legacy outside bounded path | legacy concrete paper/testbed dispatch, constructor defaults, backup/cache/retry orchestration and legacy unknown-name fallback remain outside strict execution; strict scenario resolver rejects unknown names; directly used adaptive missing-history fallback was removed |
+
+No campaign-owned policy/scenario tuple, numeric scenario count, fixed run total,
+scale whitelist, concrete physics schema or topology-family selection remains.
+Unsupported dynamic allocators/context transitions and undeclared batch trace
+contracts continue to fail closed rather than silently redefine a configuration.
+Those existing limits are not scientific validation or a new axis choice.
+
+### Pass-2 files and purposes
+
+All paths below are relative to `Dynamic_Routing_Eval_Framework/`.
+
+| File | Purpose |
+|---|---|
+| `daqr/config/experiment_config.py` | explicit optional component selection; no implicit scientific component |
+| `daqr/config/execution_contract.py` | generic component/policy/scenario validation and resolved component provenance |
+| `daqr/core/catalog_components.py` | selected layered topology/catalog and primary reward implementations |
+| `daqr/core/identity.py` | shared canonical JSON/hash primitive; components do not import campaign orchestration |
+| `daqr/core/scenario_execution.py` | causal lifecycle, immutable history cutoff, read-only policy mask |
+| `daqr/core/attack_strategy.py` | component-owned session behavior; preserve supplied-history algorithms; reject missing history |
+| `daqr/algorithms/base_bandit.py` | family-owned validation/snapshot; causal Oracle frame preparation |
+| `daqr/algorithms/neural_bandits.py` | trace-contract adapter, owned snapshot and session begin/observe hooks; learning arithmetic unchanged |
+| `daqr/algorithms/predictive_bandits.py` | causal capability and owned diagnostic snapshot |
+| `daqr/campaigns/medium_spec.py` | delegate catalog/reward work; derive scenario cardinality from actual catalog |
+| `daqr/campaigns/medium_runner.py` | no concrete policy imports/dispatch; consume components and causal session |
+| `daqr/campaigns/medium_trace.py` | component observation metadata; immutable causal trajectory completion binding |
+| `tests/medium_fixtures.py` | explicitly select components in technical configuration |
+| `tests/test_medium_architecture.py` | preserve fail-closed test with genuinely missing causal interface, not now-supported components |
+| `tests/test_medium_architecture_pass2.py` | injected components/policies/scenarios; chronology; no fallback; equivalence and completeness |
+| `docs/guides/MEDIUM_ARCHITECTURE_REPAIR_2026-09-27.md` | separate current Pass 2 from historical Pass 1; evidence and audit |
+| `docs/guides/MEDIUM_SCALE_EXECUTION_PREPARATION.md` | current Pass-2 pointer without changing study choices |
+| `docs/guides/MEDIUM_ARCHITECTURE_PASS2_K55_TECHNICAL_RECEIPT.json` | new cost receipt pinned to ae411fda; old receipt preserved |
+| `docs/guides/MEDIUM_ARCHITECTURE_PASS2_TEST_RECEIPT.json` | exact commands, revision, test counts and known failure identities |
+
+### K=55 technical qualification
+
+Execution/config resolution changed materially, so the cost fixture was rerun
+on clean implementation revision `ae411fda35a21230747004158e7a1cf0716dbac8`.
+The old Pass-1 receipt is unchanged and remains historical.
+
+- Explicit technical fixture only: 256 frames, four routes, 55 actions/route.
+- Configuration hash: `049e07746f7894850d8cb4048febf6b3ed355bc181b4424731c7919e4c8cdf28`.
+- T/replay sizes: 53, 65, 75, 63; capacity 12000 from fixture configuration.
+- Optimizer steps: none, 20, 40, 16; four parameter states in each trained route.
+- Wall time 5.897495625 seconds; peak RSS 480690176 bytes on this macOS runtime.
+- Python/package/import hashes are in the new JSON receipt. This is cost and
+  code-path evidence only, not a performance result or extrapolated campaign ETA.
+
+### Pass-2 verification receipts and handoff
+
+Final implementation tests on `ae411fda`:
+
+| Suite | Result |
+|---|---|
+| Pass-2 architecture/extensibility | 23 passed (also independently rerun: 29.55 s) |
+| Pass-1 architecture/extensibility | 26 passed, unchanged test count |
+| Required combined medium/primary/regression | **121 passed**, 84.09 s |
+| Broader tests + state-naming suite | **138 passed, exactly 4 known failures**, 87.17 s |
+| Skips / xfails / new failures | **0 / 0 / 0** |
+| Diff whitespace validation | passed |
+
+The two former tests expecting *all* adaptive/online scenarios to HOLD initially
+failed because those components are now supported (77 passed / 2 failed on the
+first development run). They now inject components genuinely missing the causal
+interface and retain the same fail-closed/no-output assertions. No test was
+skipped, xfailed, deleted or changed to conceal a regression. Real adaptive/
+online success, causality and equivalence have additional positive tests.
+
+The four unchanged broader failures are:
+
+1. `test_standalone_migrate_files_by_pattern_deletes_verified_files_across_dates`
+2. `test_standalone_migrate_files_by_pattern_reports_summary_status`
+3. `test_standalone_migrate_files_by_pattern_runs_in_parallel_and_deletes_verified_local`
+4. `test_expected_keys_no_qubit_suffix_for_random_runtime`
+
+The first three legacy fake managers reject the existing `workers` kwarg.
+The fourth legacy `__new__` fixture lacks `backup_registry`. None was modified.
+
+Exact final commands (framework root; task temp paths recorded for reproduction):
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 OMP_NUM_THREADS=1 MPLCONFIGDIR=/tmp/quantum-pass2-G4NRob/mpl /Users/pitergarcia/DataScience/Semester4/GA-Work/.quantum/bin/python -B -m pytest -p no:cacheprovider tests/test_medium_architecture_pass2.py tests/test_medium_architecture.py tests/test_primary_routes.py tests/test_medium_catalog.py tests/test_medium_preflight.py tests/test_environment_contexts.py tests/test_resume_behavior.py tests/test_runner_resume_compare.py tests/test_allocator_runner_cleanup.py tests/test_registry_update_on_save.py tests/test_drive_state_offload.py -q --tb=short --basetemp=/tmp/quantum-pass2-G4NRob/required-final --junitxml=/tmp/quantum-pass2-G4NRob/required-final.xml
+PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 OMP_NUM_THREADS=1 MPLCONFIGDIR=/tmp/quantum-pass2-G4NRob/mpl /Users/pitergarcia/DataScience/Semester4/GA-Work/.quantum/bin/python -B -m pytest -p no:cacheprovider tests tools/tests/test_state_naming_and_resume.py -q --tb=short --basetemp=/tmp/quantum-pass2-G4NRob/broad-final --junitxml=/tmp/quantum-pass2-G4NRob/broad-final.xml
+PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 OMP_NUM_THREADS=1 MPLCONFIGDIR=/tmp/quantum-pass2-G4NRob/mpl /Users/pitergarcia/DataScience/Semester4/GA-Work/.quantum/bin/python -B tests/runtime_primary_k55.py
+git diff --check
+```
+
+See the retained [test receipt](MEDIUM_ARCHITECTURE_PASS2_TEST_RECEIPT.json)
+and [new K=55 receipt](MEDIUM_ARCHITECTURE_PASS2_K55_TECHNICAL_RECEIPT.json).
+The earlier [Pass-1 K=55 receipt](MEDIUM_ARCHITECTURE_K55_TECHNICAL_RECEIPT.json)
+was not overwritten. Temporary test bundles/caches/XML are task-scoped and
+removed after these receipts are retained; no scientific raw evidence exists.
+
+No manuscript, Overleaf, course scope, scientific result or scientific contract
+was changed. No merge. The original protected checkout remains at `854c4ab3`
+with its pre-existing work; the detached review worktree is intentionally retained.
+The remote PR branch is updated only by non-forced fast-forward push.
+
+**NO SCIENTIFIC RUN EXECUTED**
+
+**ARCHITECTURE REPAIR PASS 2 — READY FOR INDEPENDENT SOL RE-AUDIT**
+
+Next action is Sol's independent architecture/source re-audit of PR #2, not
+F-09 execution. Scientific threat-definition reconciliation and Piter's
+substantial-execution approval remain separate gates.
+## Pass 1 historical record — requirements, system understanding, design
 
 Reviewer scale varies topology/catalog breadth. Scenario, policy, allocator,
 replay, horizon, blocks, resources and physics remain independent configured

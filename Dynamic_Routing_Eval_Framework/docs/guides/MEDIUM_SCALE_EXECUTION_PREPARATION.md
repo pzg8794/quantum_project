@@ -1,5 +1,7 @@
 # Medium-scale execution preparation
 
+> **September 27 Pass 2:** the [repair record](MEDIUM_ARCHITECTURE_REPAIR_2026-09-27.md#pass-2--implementation-and-ownership-audit) now separates concrete catalog/reward validation from generic resolution, supports causal scenario sessions, and uses policy-owned diagnostics. Technical execution capability is not historical threat-definition validation. Scientific execution remains held; next is independent Sol source re-audit.
+
 > **September 27 architecture correction:** [Current repair and audit handoff](MEDIUM_ARCHITECTURE_REPAIR_2026-09-27.md) supersedes the campaign-owned presets and earlier launch-readiness language. The medium layer consumes canonical configuration; it owns no threat/policy subset or unit count. All scenarios must resolve faithfully or the configured execution is held. No scientific launch is authorized.
 
 Date: 2026-09-26

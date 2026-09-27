@@ -178,3 +178,50 @@ The new `stable_environment_seed` is process-stable, so the prior Python-`hash()
 The runner, matrix, causal-session behavior, valid-zero rule, and bounded tests are now materially improved, but TEST commit `696a3a8f93181c93ad77cecdc23420f841586f85` does not satisfy the frozen Q-03/PR #2 per-result evidence contract. **Do not launch the Default/fixed Q-05 run from this commit.**
 
 This final review changes documentation only. It does not modify implementation, notebooks, tests, scientific configuration, or experiment results.
+
+---
+
+## Final independent review of the frozen PR2 evidence integration
+
+**Decision:** ACCEPT
+**Reviewed TEST commit:** `bd415be03e781e495d6967271530424700658ffd`
+**Reviewed DEV commits:** `f6fc73cac68b1c2691c1feda64cbe799f2940187`, `be75b611c89f054c14f582f43fd6b5b60449cacb`
+**Scientific contract:** Q-03 `7036f0d0044bac576c61093c6361fb6739dfc292`
+**Frozen PR2 baseline:** `d97dbde30241cd04b561cdd187a3b622a35b7592`
+**Review scope:** Default/fixed Q-05 launch readiness only; no scientific run was launched
+
+### Acceptance findings
+
+- The copied notebook retains the proven `ExperimentConfiguration` → `daqr.evaluation.allocator_runner.AllocatorRunner` → `MultiRunEvaluator` → `QuantumExperimentRunner` path. No shadow runner remains.
+- Generic orchestration consumes typed scenario/evidence capabilities. It contains no `daqr.campaigns` import and no `Adaptive`/`OnlineAdaptive` name-based dispatch.
+- The campaign adapter reuses the frozen PR2 `prepare_manifest`/`seed_manifest`, `AttemptBundle`, `EventRecorder`, `validate_completion`, and `validate_scale_completion` implementations rather than defining a replacement evidence schema.
+- The frozen scientific matrix remains unchanged: 15 nodes, 10 routes, 550 route--action pairs; `Oracle`, `CEpsilonGreedy`, and `EXPNeuralUCB`; threats ordered `stochastic`, `markov`, `adaptive`, `onlineadaptive`, `none`; blocks `0/1/2`; 6,000 frames; replay scale 2/capacity 12,000; base seed 12,345; Default/fixed allocation `(9,) * 10`.
+- Static threats use the same immutable trajectory across policies within each block/threat. Causal threats open a fresh `ScenarioSession` per policy with the same block/threat seed and record the policy-conditioned realized trajectory.
+- The campaign path retains completed zero/poor outcomes and disables outcome-triggered reruns. Technical faults remain failures/restarts under PR2 attempt lineage, not favorable reruns.
+- The branch was clean, pushed, and exactly synchronized with `origin/codex/mq-q04-notebook-execution` at the reviewed TEST commit before this review-only checkpoint.
+
+### Independent validation
+
+The reviewer reran the required checks using the project environment and a separate task-scoped temporary root:
+
+```text
+Focused Q-04 tests excluding the full matrix: 12 passed, 1 deselected in 35.88s
+Real AllocatorRunner tiny 45-cell preflight: 1 passed in 60.42s
+Expanded PR2 regression: 121 passed in 76.19s
+```
+
+Independent readback of the tiny preflight found:
+
+- one COMPLETE campaign receipt with 45 required and 45 completed cells;
+- the exact 3 × 5 × 3 policy/threat/block matrix;
+- 45 independently validated `AttemptBundle` directories at code commit `bd415be03e781e495d6967271530424700658ffd`;
+- topology, routes, observations/actions, physics, catalog diagnostics, realized availability, result, event stream, attempt lineage, manifest, and completion hashes in every cell;
+- 180 records for each phase (`PRESELECTION`, `DECISION`, `OUTCOME`, `UPDATE`), four of each per four-frame cell;
+- exact frozen seed manifests, one shared static trajectory per block/static-threat across policies, and separate causal per-policy evidence under the common block/threat seed;
+- 28 valid zero-payoff outcomes retained as completed, with `performance_reruns = 0` and one technical attempt each.
+
+### Final decision
+
+No concrete Q-03/PR2 contract defect remains in the reviewed Default/fixed execution path. Q-04 is **ACCEPTED** for the exact reviewed implementation, and the Default/fixed Q-05 run is safe to launch under the already-authorized contract. This review does not admit Random, DynamicUCB, or ThompsonSampling, and it does not authorize any scientific-matrix change.
+
+No implementation, notebook, test, scientific configuration, manuscript, or experiment result was modified by this review. The 6,000-frame Q-05 run was not launched.

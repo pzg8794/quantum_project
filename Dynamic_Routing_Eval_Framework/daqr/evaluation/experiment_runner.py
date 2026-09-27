@@ -402,52 +402,41 @@ class QuantumExperimentRunner:
         if self.environment:
             print(f"\n{str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Env:{str(self.environment)}, Attack:{str(self.environment.attack)}, Rate:{self.environment.attack_rate}, Frames:{self.environment.frame_length}, QubitAlloc={str(self.configs.allocator)}, SC:{scaled_capacity} (Scale={self.configs.scale} x Cap={self.capacity}), Seed: {self.experiment_seed}")
 
-    def _campaign_causal_strategy(self):
-        scenario_configs = getattr(self.configs, 'scientific_scenario_configs', None)
-        if not scenario_configs:
-            return None
-        block = int(getattr(self.configs, 'scientific_block_id', 0))
-        scenario_config = scenario_configs.get(block)
-        if scenario_config is None:
-            raise ValueError(f"Missing scientific scenario configuration for block {block}")
-        threat = str(self.configs.attack_type).lower()
-        strategy = scenario_config.resolve_attack_strategy(threat)
-        if getattr(strategy, 'mask_capability', 'static') == 'static':
-            return None
-        if threat not in {'adaptive', 'onlineadaptive'}:
-            raise ValueError(f"Unsupported causal campaign threat: {threat}")
-        return strategy
-
-    def _new_campaign_scenario_session(self):
-        if not getattr(self, 'scientific_causal_threat', False):
-            return None
-        from daqr.campaigns.medium_spec import build_scenario
+    def _resolve_scenario_execution(self):
+        from daqr.core.scenario_execution import ScenarioExecutionComponent
 
         block = int(getattr(self.configs, 'scientific_block_id', 0))
-        scenario_config = self.configs.scientific_scenario_configs[block]
-        return build_scenario(
-            scenario_config,
-            threat=str(self.configs.attack_type).lower(),
-            frames=int(self.frames_count),
-            block=block,
-            scale_m=3,
-            num_routes=len(self.environment.contexts),
-        )
+        scenario = str(self.configs.attack_type)
+        components = getattr(self.configs, 'scenario_execution_components', None)
+        if components is not None:
+            block_components = components.get(block)
+            if block_components is None:
+                raise ValueError(f"Missing scenario execution components for block {block}")
+            component = block_components.get(scenario)
+            if component is None:
+                raise ValueError(
+                    f"Missing scenario execution component for block {block}, scenario {scenario}"
+                )
+            if not isinstance(component, ScenarioExecutionComponent):
+                raise TypeError("Injected scenario execution must be a ScenarioExecutionComponent")
+        else:
+            resolver = getattr(self.configs, 'resolve_attack_strategy', None)
+            if callable(resolver):
+                strategy = resolver(scenario)
+            else:
+                self.configs.set_attack_strategy(
+                    attack_type=scenario,
+                    attack_rate=self.configs.attack_rate,
+                    attack_intensity=self.configs.attack_intensity,
+                )
+                strategy = self.configs.attack_strategy
+            component = ScenarioExecutionComponent(strategy, self.experiment_seed)
+        return component
 
-    def _campaign_threat_seed(self, policy):
-        if not getattr(self, 'scientific_causal_threat', False):
+    def _new_scenario_session(self):
+        if not getattr(self, 'causal_scenario_execution', False):
             return None
-        from daqr.campaigns.medium_spec import seed_manifest
-
-        block = int(getattr(self.configs, 'scientific_block_id', 0))
-        scenario_config = self.configs.scientific_scenario_configs[block]
-        return seed_manifest(
-            scenario_config,
-            block=block,
-            policy=policy,
-            threat=str(self.configs.attack_type).lower(),
-            scale_m=3,
-        )['threat']['actual_seed']
+        return self.environment.open_scenario_session(self.scenario_execution.seed)
 
     def _build_environment_once(self, frames_count: float, qubit_cap: tuple):
         """
@@ -460,20 +449,13 @@ class QuantumExperimentRunner:
         if self.experiment_seed is None:
             self.experiment_seed = self.configs.base_seed + (hash(f"{self.configs.attack_type}_{self.frames_count}") % 10000)
 
-        # Configure attack scenario if not already configured by MultiRun
-        self.configs.set_attack_strategy(
-            attack_type=self.configs.attack_type,
-            attack_rate=self.configs.attack_rate,
-            attack_intensity=self.configs.attack_intensity
+        self.scenario_execution = self._resolve_scenario_execution()
+        self.configs.attack_strategy = self.scenario_execution.strategy
+        self.causal_scenario_execution = (
+            getattr(self.scenario_execution.strategy, 'mask_capability', 'undeclared')
+            != 'static'
         )
-
-        causal_strategy = self._campaign_causal_strategy()
-        original_strategy = self.configs.attack_strategy
-        self.scientific_causal_threat = causal_strategy is not None
-        self.configs.causal_scenario_execution = self.scientific_causal_threat
-        if self.scientific_causal_threat:
-            from daqr.core.attack_strategy import NoAttack
-            self.configs.attack_strategy = NoAttack()
+        self.configs.causal_scenario_execution = self.causal_scenario_execution
 
         # Configure environment core parameters
         self.configs.set_environment(
@@ -485,13 +467,8 @@ class QuantumExperimentRunner:
             **self.physics_params              # ✅ Injects Paper #2 physics!
         )
 
-        if self.scientific_causal_threat:
-            self.configs.attack_strategy = original_strategy
-
         # Build and store the environment
         self.environment = self.configs.get_environment()
-        if self.scientific_causal_threat:
-            self.environment.attack = causal_strategy
         self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
 
         print("="*150)
@@ -597,7 +574,7 @@ class QuantumExperimentRunner:
                 last_error = None
                 completed = False
                 while retry_count < max_retries:
-                    scenario_session = self._new_campaign_scenario_session()
+                    scenario_session = self._new_scenario_session()
                     attack_list = (
                         scenario_session.policy_mask
                         if scenario_session is not None
@@ -675,9 +652,7 @@ class QuantumExperimentRunner:
                             results['scientific_availability'] = (
                                 scenario_session.completed_mask().tolist()
                             )
-                            results['scientific_threat_seed'] = self._campaign_threat_seed(
-                                alg_name
-                            )
+                            results['scientific_threat_seed'] = self.scenario_execution.seed
                             results['availability_semantics'] = (
                                 'policy-conditioned-causal-trajectory'
                             )
@@ -777,9 +752,35 @@ class QuantumExperimentRunner:
             print(f"❌ Error during QuantumExperimentRunner cleanup: {e}")
 
     # ONLY ADDITION: Simple stochastic vs adversarial comparison
-    def compare_stochastic_vs_adversarial(self, frames_count=4000):
+    def compare_stochastic_vs_adversarial(
+        self, frames_count=4000, stochastic_scenario=None, adversarial_scenario=None
+    ):
         """Compare performance in stochastic vs adversarial settings"""
         if frames_count: self.frames_count =frames_count
+
+        resolved = [
+            (name, self.configs.resolve_attack_strategy(name))
+            for name in self.configs.test_scenarios
+        ]
+        if stochastic_scenario is None:
+            stochastic_scenario = next(
+                (
+                    name for name, strategy in resolved
+                    if getattr(strategy, 'mask_capability', 'undeclared') == 'static'
+                    and float(getattr(strategy, 'attack_rate', 0.0)) > 0.0
+                ),
+                None,
+            )
+        if adversarial_scenario is None:
+            adversarial_scenario = next(
+                (
+                    name for name, strategy in resolved
+                    if getattr(strategy, 'mask_capability', 'undeclared') != 'static'
+                ),
+                None,
+            )
+        if stochastic_scenario is None or adversarial_scenario is None:
+            raise ValueError("Configured static and causal comparison scenarios are required")
 
         print("=" * 70)
         print("STOCHASTIC vs ADVERSARIAL COMPARISON")
@@ -788,11 +789,11 @@ class QuantumExperimentRunner:
         original_attack_type = self.configs.attack_type
         try:
             print("\n\t🔬 TESTING: \tStochastic (Natural Random Failures)")
-            self.configs.attack_type = 'stochastic'
+            self.configs.attack_type = stochastic_scenario
             stochastic_results = self.run_experiment(self.frames_count)
             
             print("\n\t🔬 TESTING: \tAdversarial (Strategic Attacks)")  
-            self.configs.attack_type = 'adaptive'
+            self.configs.attack_type = adversarial_scenario
             adversarial_results = self.run_experiment(self.frames_count)
             
             print("\n\t📊 COMPARISON SUMMARY:")

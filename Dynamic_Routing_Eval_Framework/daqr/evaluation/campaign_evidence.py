@@ -83,8 +83,11 @@ def _availability_and_rewards(environment, frames, routes):
         env_info = environment.get_environment_info()
     except Exception:
         return [], []
-    availability = np.asarray(env_info["attack_pattern"], dtype=int)
+    attack_pattern = env_info["attack_pattern"]
     rewards = [np.asarray(values, dtype=float) for values in env_info["reward_functions"]]
+    if attack_pattern is None:
+        return None, [values.tolist() for values in rewards]
+    availability = np.asarray(attack_pattern, dtype=int)
     if availability.shape != (int(frames), int(routes)):
         raise ValueError(
             f"Availability shape {availability.shape} != {(int(frames), int(routes))}"
@@ -234,6 +237,8 @@ def record_experiment_evidence(
             if isinstance(result, dict) and result.get("scientific_availability") is not None
             else availability
         )
+        if policy_availability is None:
+            raise ValueError(f"Missing realized availability for {policy}")
         if policy_availability:
             policy_mask = np.asarray(policy_availability, dtype=int)
             expected_shape = (int(frames), len(catalog["routes"]))

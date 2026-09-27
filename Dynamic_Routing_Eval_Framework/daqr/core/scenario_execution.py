@@ -6,7 +6,27 @@ after feedback/update. No rewards, current action, policy internals or future
 selections are passed to a strategy. Initial history is legitimately empty only
 at t=0, not a substitute for absent history during a run.
 """
+from dataclasses import dataclass
+
 import numpy as np
+
+
+@dataclass(frozen=True)
+class ScenarioExecutionComponent:
+    strategy: object
+    seed: int | None
+
+    def __post_init__(self):
+        strategy = self.strategy
+        if not callable(getattr(strategy, "validate_execution", None)):
+            raise TypeError("Scenario strategy must implement validate_execution")
+        if not callable(getattr(strategy, "open_session", None)):
+            raise TypeError("Scenario strategy must implement open_session")
+        strategy.validate_execution()
+        capability = getattr(strategy, "mask_capability", "undeclared")
+        if capability != "static" and getattr(strategy, "uses_rng", True):
+            if type(self.seed) is not int or self.seed < 0:
+                raise ValueError("Causal scenario execution requires a nonnegative seed")
 
 
 class ScenarioSession:

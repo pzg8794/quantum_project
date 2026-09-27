@@ -466,10 +466,27 @@ class QuantumEnvironment:
         """Default behavior for the base environment is no attacks."""
         return np.ones((self.frame_length, self.num_paths), dtype=np.int8)
 
+    @property
+    def scenario_mask_capability(self):
+        return getattr(self.attack, "mask_capability", "undeclared")
+
+    def open_scenario_session(self, seed):
+        if self.scenario_mask_capability == "static":
+            return None
+        if getattr(self.attack, "uses_rng", True) and seed is None:
+            raise ValueError("Causal scenario requires an execution seed")
+        rng = np.random.Generator(np.random.PCG64(0 if seed is None else int(seed)))
+        return self.attack.open_session(rng, self.frame_length, self.num_paths)
+
     def get_environment_info(self) -> dict:
         """Provides environment info INCLUDING transition trigger function."""
-        attack_pattern = self.generate_attack_pattern()
-        attack_pattern.setflags(write=False)
+        attack_pattern = (
+            self.generate_attack_pattern()
+            if self.scenario_mask_capability == "static"
+            else None
+        )
+        if attack_pattern is not None:
+            attack_pattern.setflags(write=False)
         
         # 🆕 NEW: Trigger that returns updated contexts/rewards
         def trigger_transition():
@@ -717,14 +734,18 @@ class AdversarialQuantumEnvironment(QuantumEnvironment):
                 seed=seed, allocator=allocator, **kwargs)
         self.attack: AttackStrategy = self.attack or NoAttack()
 
-        # Generate the attack pattern once using the provided strategy
-        self.attack_pattern = self.attack.generate(
-            self.rng, self.frame_length, self.num_paths
-        ).astype(np.int8, copy=False)
-        self.attack_pattern.setflags(write=False)
+        self.attack.validate_execution()
+        self.attack_pattern = None
+        if self.scenario_mask_capability == "static":
+            self.attack_pattern = self.attack.generate(
+                self.rng, self.frame_length, self.num_paths
+            ).astype(np.int8, copy=False)
+            self.attack_pattern.setflags(write=False)
 
     def generate_attack_pattern(self) -> np.ndarray:
         """Overrides the base method to return the pattern from the attack strategy."""
+        if self.attack_pattern is None:
+            raise ValueError("Causal availability is realized through a scenario session")
         return self.attack_pattern
 
     def reset_environment(self, *, frame_length: int | None = None, seed: int | None = None,
@@ -743,11 +764,14 @@ class AdversarialQuantumEnvironment(QuantumEnvironment):
         if attack is not None:
             self.attack = attack
 
-        # Regenerate the attack pattern if anything has changed
-        self.attack_pattern = self.attack.generate(
-            self.rng, self.frame_length, self.num_paths, selection_trace=selection_trace
-        ).astype(np.int8, copy=False)
-        self.attack_pattern.setflags(write=False)
+        self.attack.validate_execution()
+        if self.scenario_mask_capability == "static" or selection_trace is not None:
+            self.attack_pattern = self.attack.generate(
+                self.rng, self.frame_length, self.num_paths, selection_trace=selection_trace
+            ).astype(np.int8, copy=False)
+            self.attack_pattern.setflags(write=False)
+        else:
+            self.attack_pattern = None
 
         return self.get_environment_info()
 

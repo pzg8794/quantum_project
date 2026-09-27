@@ -225,8 +225,9 @@ def get_physics_params(
     if int(current_frames) != BASE_FRAMES:
         raise ValueError(f'Frozen horizon is {BASE_FRAMES}, got {current_frames}')
 
+    scenario_config = _catalog_configuration(base_seed, qubit_cap)
     catalog = build_catalog(
-        _catalog_configuration(base_seed, qubit_cap),
+        scenario_config,
         block=int(block_id),
         scale_m=3,
     )
@@ -258,6 +259,7 @@ def get_physics_params(
             'physics_hash': catalog['physics_hash'],
         },
         '_campaign_trace_catalog': catalog,
+        '_campaign_scenario_config': scenario_config,
     }
 
 

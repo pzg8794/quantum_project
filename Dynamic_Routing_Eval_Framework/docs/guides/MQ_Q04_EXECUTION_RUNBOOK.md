@@ -71,17 +71,15 @@ Independent review decision:
 - Process acceleration is OPTIONAL and remains deferred; it must not replace or shadow the proven runner.
 - No manuscript, historical corpus, Tier-2, or F-10 change is authorized by this runbook.
 
-## Current technical blocker
+## Causal availability boundary
 
-The real `AllocatorRunner` path completes the bounded Stochastic and Markov
-cells and can write their availability/event/completion bundles. It does not yet
-complete the full five-threat preflight: `AdaptiveAttack` and
-`OnlineAdaptiveAttack` now require causal selection history, while the legacy
-environment construction still attempts to generate their full availability
-matrices before policy execution. The failure occurs before a valid environment
-is available (`Adaptive strategy requires selection history; no random fallback`).
+The real `AllocatorRunner` path reuses the frozen PR #2 `ScenarioSession`
+lifecycle for Adaptive and OnlineAdaptive. Each policy receives a fresh session
+with the same block, threat configuration, and threat seed. Its route-selection
+history then causally determines its realized availability trajectory.
 
-Resolving this requires threading the already-frozen PR #2 `ScenarioSession`
-lifecycle through the existing `AllocatorRunner` evaluator path. No substitute
-runner, fabricated static adaptive mask, or 6,000-frame scientific run is
-authorized while this blocker remains.
+Consequently, Stochastic, Markov, and Baseline preserve a shared static
+trajectory across policies within each block/threat pairing, while Adaptive and
+OnlineAdaptive trajectories are policy-conditioned by definition. The evidence
+manifest records this boundary; it does not force equal adaptive masks or
+fabricate a static approximation.

@@ -226,10 +226,33 @@ def record_experiment_evidence(
         "disable_outcome_retries": bool(getattr(configs, "disable_outcome_retries", False)),
     })
     env_seed = stable_environment_seed(configs, frames, threat=threat, block=block)
-    threat_trajectory_identity = digest(availability)
     receipts = []
     for policy in configs.models:
         result = results.get(policy, {"error": "missing policy result", "final_reward": 0.0})
+        policy_availability = (
+            result.get("scientific_availability")
+            if isinstance(result, dict) and result.get("scientific_availability") is not None
+            else availability
+        )
+        if policy_availability:
+            policy_mask = np.asarray(policy_availability, dtype=int)
+            expected_shape = (int(frames), len(catalog["routes"]))
+            if policy_mask.shape != expected_shape or not np.isin(policy_mask, [0, 1]).all():
+                raise ValueError(
+                    f"Invalid policy availability for {policy}: {policy_mask.shape}"
+                )
+            policy_availability = policy_mask.tolist()
+        availability_semantics = (
+            result.get("availability_semantics", "shared-static-trajectory")
+            if isinstance(result, dict)
+            else "shared-static-trajectory"
+        )
+        threat_seed = (
+            int(result["scientific_threat_seed"])
+            if isinstance(result, dict) and result.get("scientific_threat_seed") is not None
+            else int(env_seed)
+        )
+        threat_trajectory_identity = digest(policy_availability)
         actual_seed = int(env_seed + int(configs.algorithm_configs[policy]["seed_offset"]))
         reported_seed = result.get("seed") if isinstance(result, dict) else None
         if reported_seed is not None and int(reported_seed) != actual_seed:
@@ -242,10 +265,17 @@ def record_experiment_evidence(
             "policy": str(policy),
             "frames": int(frames),
             "environment_seed": int(env_seed),
+            "threat_seed": threat_seed,
+            "threat_seed_semantics": (
+                "frozen-pr2-causal-scenario-seed"
+                if availability_semantics == "policy-conditioned-causal-trajectory"
+                else "proven-runner-static-environment-seed"
+            ),
             "actual_seed": actual_seed,
             "config_identity": config_identity,
             "catalog_identity": catalog_identity,
             "threat_trajectory_identity": threat_trajectory_identity,
+            "availability_semantics": availability_semantics,
         }
         result_identity = digest(identity)
         bundle = root / "cells" / result_identity
@@ -258,13 +288,25 @@ def record_experiment_evidence(
                 "availability": "full binary route-availability trajectory",
                 "events": "joined route/action decisions and selected continuous outcomes",
                 "source": "real daqr.evaluation.allocator_runner.AllocatorRunner workflow",
+                "matching_boundary": (
+                    "Adaptive trajectories share block, threat parameters, and threat seed, "
+                    "but are policy-conditioned by each policy's prior route selections."
+                    if availability_semantics == "policy-conditioned-causal-trajectory"
+                    else "Static threat trajectory is shared across policies within block/threat."
+                ),
             },
         }
         rows = []
         if summary["status"] == "completed":
             try:
                 rows = _event_rows(
-                    result_identity, identity, result, catalog, availability, rewards, frames
+                    result_identity,
+                    identity,
+                    result,
+                    catalog,
+                    policy_availability,
+                    rewards,
+                    frames,
                 )
             except Exception as error:
                 summary["status"] = "failed"
@@ -275,7 +317,7 @@ def record_experiment_evidence(
             "outcome": summary,
         }
         _write_immutable_json(bundle / "manifest.json", manifest)
-        _write_immutable_json(bundle / "availability.json", availability)
+        _write_immutable_json(bundle / "availability.json", policy_availability)
         _write_immutable_jsonl(bundle / "events.jsonl", rows)
         _write_immutable_json(bundle / "result.json", result_payload)
         completion = {
@@ -284,7 +326,7 @@ def record_experiment_evidence(
             "status": summary["status"],
             "manifest_hash": digest(manifest),
             "expected_frames": int(frames),
-            "availability_frames": len(availability),
+            "availability_frames": len(policy_availability),
             "decision_event_count": sum(row["phase"] == "DECISION" for row in rows),
             "outcome_event_count": sum(row["phase"] == "OUTCOME" for row in rows),
             "file_hashes": {

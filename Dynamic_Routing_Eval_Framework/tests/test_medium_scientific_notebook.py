@@ -289,11 +289,33 @@ def test_real_runner_tiny_full_matrix_writes_complete_event_evidence(tmp_path, m
         item["identity"]["catalog_identity"]["topology_hash"] for item in receipts
     }) == 3
 
+    for block, threat in itertools.product(range(3), SCENARIOS):
+        matched = [
+            item for item in receipts
+            if item["identity"]["block"] == block and item["identity"]["threat"] == threat
+        ]
+        if threat in {"adaptive", "onlineadaptive"}:
+            assert {
+                item["identity"]["availability_semantics"] for item in matched
+            } == {"policy-conditioned-causal-trajectory"}
+            assert {
+                item["identity"]["threat_seed_semantics"] for item in matched
+            } == {"frozen-pr2-causal-scenario-seed"}
+            assert len({item["identity"]["threat_seed"] for item in matched}) == 1
+        else:
+            assert {
+                item["identity"]["availability_semantics"] for item in matched
+            } == {"shared-static-trajectory"}
+            assert len({
+                item["identity"]["threat_trajectory_identity"] for item in matched
+            }) == 1
+
     for receipt in receipts:
         completion_path = Path(receipt["completion_path"])
         assert file_hash(completion_path) == receipt["completion_sha256"]
         completion = json.loads(completion_path.read_text())
         bundle = Path(receipt["bundle_path"])
+        manifest = json.loads((bundle / "manifest.json").read_text())
         availability = json.loads((bundle / "availability.json").read_text())
         events = [
             json.loads(line)
@@ -306,6 +328,8 @@ def test_real_runner_tiny_full_matrix_writes_complete_event_evidence(tmp_path, m
         assert len(availability) == 4
         assert all(len(row) == 10 for row in availability)
         assert len(events) == 8
+        if receipt["identity"]["availability_semantics"] == "policy-conditioned-causal-trajectory":
+            assert "policy-conditioned" in manifest["evidence_contract"]["matching_boundary"]
         for frame in range(4):
             decision, outcome = events[2 * frame : 2 * frame + 2]
             assert decision["phase"] == "DECISION"

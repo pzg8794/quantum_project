@@ -551,6 +551,7 @@ class AllocatorRunner:
                     block_physics = {}
                     catalog_identities = {}
                     trace_catalogs = {}
+                    scenario_configs = {}
                     for block_id in block_ids:
                         block_payload = get_physics_params_func(
                             physics_model=physics_model,
@@ -562,10 +563,12 @@ class AllocatorRunner:
                         block_payload = dict(block_payload)
                         catalog_identities[int(block_id)] = block_payload.pop('_campaign_catalog_identity')
                         trace_catalogs[int(block_id)] = block_payload.pop('_campaign_trace_catalog')
+                        scenario_configs[int(block_id)] = block_payload.pop('_campaign_scenario_config')
                         block_physics[int(block_id)] = block_payload
                     self.custom_config.scientific_block_physics = block_physics
                     self.custom_config.scientific_catalog_identities = catalog_identities
                     self.custom_config.scientific_trace_catalogs = trace_catalogs
+                    self.custom_config.scientific_scenario_configs = scenario_configs
                     self.custom_config.scientific_block_id = int(block_ids[0])
                     physics_params = block_physics[int(block_ids[0])]
                 else:

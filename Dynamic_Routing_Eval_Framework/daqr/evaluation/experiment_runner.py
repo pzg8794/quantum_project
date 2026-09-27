@@ -402,6 +402,53 @@ class QuantumExperimentRunner:
         if self.environment:
             print(f"\n{str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Env:{str(self.environment)}, Attack:{str(self.environment.attack)}, Rate:{self.environment.attack_rate}, Frames:{self.environment.frame_length}, QubitAlloc={str(self.configs.allocator)}, SC:{scaled_capacity} (Scale={self.configs.scale} x Cap={self.capacity}), Seed: {self.experiment_seed}")
 
+    def _campaign_causal_strategy(self):
+        scenario_configs = getattr(self.configs, 'scientific_scenario_configs', None)
+        if not scenario_configs:
+            return None
+        block = int(getattr(self.configs, 'scientific_block_id', 0))
+        scenario_config = scenario_configs.get(block)
+        if scenario_config is None:
+            raise ValueError(f"Missing scientific scenario configuration for block {block}")
+        threat = str(self.configs.attack_type).lower()
+        strategy = scenario_config.resolve_attack_strategy(threat)
+        if getattr(strategy, 'mask_capability', 'static') == 'static':
+            return None
+        if threat not in {'adaptive', 'onlineadaptive'}:
+            raise ValueError(f"Unsupported causal campaign threat: {threat}")
+        return strategy
+
+    def _new_campaign_scenario_session(self):
+        if not getattr(self, 'scientific_causal_threat', False):
+            return None
+        from daqr.campaigns.medium_spec import build_scenario
+
+        block = int(getattr(self.configs, 'scientific_block_id', 0))
+        scenario_config = self.configs.scientific_scenario_configs[block]
+        return build_scenario(
+            scenario_config,
+            threat=str(self.configs.attack_type).lower(),
+            frames=int(self.frames_count),
+            block=block,
+            scale_m=3,
+            num_routes=len(self.environment.contexts),
+        )
+
+    def _campaign_threat_seed(self, policy):
+        if not getattr(self, 'scientific_causal_threat', False):
+            return None
+        from daqr.campaigns.medium_spec import seed_manifest
+
+        block = int(getattr(self.configs, 'scientific_block_id', 0))
+        scenario_config = self.configs.scientific_scenario_configs[block]
+        return seed_manifest(
+            scenario_config,
+            block=block,
+            policy=policy,
+            threat=str(self.configs.attack_type).lower(),
+            scale_m=3,
+        )['threat']['actual_seed']
+
     def _build_environment_once(self, frames_count: float, qubit_cap: tuple):
         """
         Build ONE shared environment for the whole experiment (all models),
@@ -420,6 +467,14 @@ class QuantumExperimentRunner:
             attack_intensity=self.configs.attack_intensity
         )
 
+        causal_strategy = self._campaign_causal_strategy()
+        original_strategy = self.configs.attack_strategy
+        self.scientific_causal_threat = causal_strategy is not None
+        self.configs.causal_scenario_execution = self.scientific_causal_threat
+        if self.scientific_causal_threat:
+            from daqr.core.attack_strategy import NoAttack
+            self.configs.attack_strategy = NoAttack()
+
         # Configure environment core parameters
         self.configs.set_environment(
             qubit_cap=qubit_cap,
@@ -430,8 +485,13 @@ class QuantumExperimentRunner:
             **self.physics_params              # ✅ Injects Paper #2 physics!
         )
 
+        if self.scientific_causal_threat:
+            self.configs.attack_strategy = original_strategy
+
         # Build and store the environment
         self.environment = self.configs.get_environment()
+        if self.scientific_causal_threat:
+            self.environment.attack = causal_strategy
         self.key_attrs = getattr(self.configs, "get_key_attrs", lambda: {})()
 
         print("="*150)
@@ -439,13 +499,25 @@ class QuantumExperimentRunner:
         print("="*150)
 
 
-    def run_step_wise_oracle(self, env_info, model, frames_count=4000, alg_name='Oracle'):
+    def run_step_wise_oracle(
+        self, env_info, model, frames_count=4000, alg_name='Oracle', scenario_session=None
+    ):
         if frames_count: self.frames_count = frames_count
         total_reward = 0.0
         for t in tqdm(range(self.frames_count), desc=f"{alg_name}", disable=not self.enable_progress):
-            if t >= env_info['attack_pattern'].shape[0]:
+            attack_pattern = (
+                scenario_session.policy_mask
+                if scenario_session is not None
+                else env_info['attack_pattern']
+            )
+            if t >= attack_pattern.shape[0]:
                 print(f"\t⚠️ Frame {t} exceeds attack pattern size {env_info['attack_pattern'].shape[0]}")
                 break
+            if scenario_session is not None:
+                availability = scenario_session.begin(t)
+                frame_hook = getattr(model, 'prepare_scenario_frame', None)
+                if frame_hook is not None:
+                    frame_hook(t, availability)
             
             # ✅ FIX: Handle both return types (tuple or int)
             action_result = model.take_action()
@@ -457,9 +529,11 @@ class QuantumExperimentRunner:
                 action = 0
             
             base_reward = env_info['reward_functions'][path][action]
-            attack_modifier = env_info['attack_pattern'][t][path]
+            attack_modifier = attack_pattern[t][path]
             observed_reward = base_reward * attack_modifier
             model.update(path, action, observed_reward)
+            if scenario_session is not None:
+                scenario_session.observe(t, int(path))
             total_reward += observed_reward
         
         oracle_results = model.get_results()
@@ -523,6 +597,18 @@ class QuantumExperimentRunner:
                 last_error = None
                 completed = False
                 while retry_count < max_retries:
+                    scenario_session = self._new_campaign_scenario_session()
+                    attack_list = (
+                        scenario_session.policy_mask
+                        if scenario_session is not None
+                        else env_info['attack_pattern']
+                    )
+                    if scenario_session is not None and not getattr(
+                        model_class, 'supports_causal_scenarios', False
+                    ):
+                        raise ValueError(
+                            f"HOLD: {alg_name} does not declare causal scenario support"
+                        )
                     # model_kwargs['verbose'] = enable_progress
                     self.configs.verbose = enable_progress
                     
@@ -545,7 +631,7 @@ class QuantumExperimentRunner:
                         X_n=env_info['contexts'],
                         reward_list=env_info['reward_functions'],
                         frame_number=self.frames_count,
-                        attack_list=env_info['attack_pattern'],
+                        attack_list=attack_list,
                         capacity=self.capacity, 
                         **model_kwargs
                     )
@@ -553,8 +639,20 @@ class QuantumExperimentRunner:
                     try:
                         result = None
                         if enable_progress: self.validate_quantum_model(model)
-                        if runner_type == 'step-wise': total_reward = float(self.run_step_wise_oracle(env_info, model, self.frames_count, alg_name))
-                        else: result = model.run(attack_list=env_info['attack_pattern'], verbose=enable_progress)
+                        if runner_type == 'step-wise':
+                            total_reward = float(self.run_step_wise_oracle(
+                                env_info,
+                                model,
+                                self.frames_count,
+                                alg_name,
+                                scenario_session=scenario_session,
+                            ))
+                        else:
+                            result = model.run(
+                                attack_list=attack_list,
+                                verbose=enable_progress,
+                                scenario_session=scenario_session,
+                            )
                         if result is None:
                             mr = model.get_results() if hasattr(model, 'get_results') else {}
                             if mr and 'final_reward' in mr: total_reward = float(mr['final_reward'])
@@ -573,6 +671,16 @@ class QuantumExperimentRunner:
                             'model_results': model.get_results(),
                             'retries': attempts
                         }
+                        if scenario_session is not None:
+                            results['scientific_availability'] = (
+                                scenario_session.completed_mask().tolist()
+                            )
+                            results['scientific_threat_seed'] = self._campaign_threat_seed(
+                                alg_name
+                            )
+                            results['availability_semantics'] = (
+                                'policy-conditioned-causal-trajectory'
+                            )
                         completed = True
                         if model.resumed or disable_outcome_retries or total_reward > 0.0:
                             break

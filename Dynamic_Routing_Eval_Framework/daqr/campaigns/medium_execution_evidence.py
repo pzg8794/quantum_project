@@ -50,6 +50,9 @@ class MediumExecutionEvidencePlugin(ExecutionEvidencePlugin):
     @staticmethod
     def _result_summary(manifest, result, state="completed", error=None):
         final_reward = float(result.get("final_reward", 0.0) or 0.0)
+        avg_reward = result.get("avg_reward")
+        if avg_reward is None:
+            avg_reward = final_reward / int(manifest["execution_frames"])
         return {
             "schema_version": "medium-result-v1",
             "run_id": manifest["run_id"],
@@ -63,7 +66,7 @@ class MediumExecutionEvidencePlugin(ExecutionEvidencePlugin):
             "outcome": {
                 "status": state,
                 "final_reward": final_reward,
-                "avg_reward": float(result.get("avg_reward", 0.0) or 0.0),
+                "avg_reward": float(avg_reward),
                 "frames_count": int(result.get("frames_count", manifest["execution_frames"])),
                 "technical_attempts": int(result.get("retries", 0) or 0) + 1,
                 "performance_reruns": 0,

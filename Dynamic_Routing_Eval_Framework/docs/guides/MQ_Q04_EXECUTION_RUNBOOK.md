@@ -83,3 +83,14 @@ trajectory across policies within each block/threat pairing, while Adaptive and
 OnlineAdaptive trajectories are policy-conditioned by definition. The evidence
 manifest records this boundary; it does not force equal adaptive masks or
 fabricate a static approximation.
+
+## Q-04 bounded validation receipt — 2026-09-27
+
+- DEV commit: `477f6eb4`.
+- Real tiny-horizon matrix: 45/45 block--threat--policy cells completed through
+  the existing `AllocatorRunner` path with availability, joined decision/outcome
+  events, completion records, and hashes (`7 passed in 111.03s`).
+- Required PR #2 regression: `72 passed in 52.34s`.
+- Scientific 6,000-frame execution: not launched.
+- Scope: execution-layer causal-session integration only; no substitute runner,
+  threat/model semantics, allocator architecture, or manuscript change.

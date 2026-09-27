@@ -1,10 +1,7 @@
-import json
-from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 
-from daqr.evaluation.campaign_evidence import record_experiment_evidence
 from daqr.evaluation.experiment_runner import QuantumExperimentRunner
 
 
@@ -31,8 +28,7 @@ class ZeroRewardEnvironment:
         }
 
 
-def test_campaign_retains_zero_oracle_and_runs_downstream_policy(tmp_path):
-    evidence_root = tmp_path / "evidence"
+def test_campaign_retains_zero_oracle_and_runs_downstream_policy():
     catalog_identity = {
         "block": 0,
         "topology_hash": "topology-zero",
@@ -53,7 +49,6 @@ def test_campaign_retains_zero_oracle_and_runs_downstream_policy(tmp_path):
         overwrite=False,
         scale=2,
         thresholds={},
-        scientific_evidence_root=evidence_root,
         scientific_seed_namespace="q04-zero-oracle-regression",
         scientific_campaign_base_seed=12345,
         scientific_block_id=0,
@@ -117,34 +112,3 @@ def test_campaign_retains_zero_oracle_and_runs_downstream_policy(tmp_path):
         "error" not in result
         for result in experiment_results["results"].values()
     )
-
-    receipts = record_experiment_evidence(
-        configs,
-        experiment_results,
-        block=0,
-        threat="none",
-        frames=1,
-        environment=runner.environment,
-    )
-
-    assert len(receipts) == 2
-    for receipt_path in receipts:
-        receipt = json.loads(Path(receipt_path).read_text(encoding="utf-8"))
-        bundle = Path(receipt["bundle_path"])
-        result = json.loads((bundle / "result.json").read_text(encoding="utf-8"))
-        completion = json.loads((bundle / "completion.json").read_text(encoding="utf-8"))
-        assert receipt["status"] == "completed"
-        assert result["outcome"] == {
-            "status": "completed",
-            "final_reward": 0.0,
-            "avg_reward": 0.0,
-            "efficiency": 0.0,
-            "gap": 0.0 if receipt["identity"]["policy"] == "Oracle" else 100.0,
-            "error": None,
-            "technical_attempts": 1,
-            "performance_reruns": 0,
-        }
-        assert completion["status"] == "completed"
-        assert completion["availability_frames"] == 1
-        assert completion["decision_event_count"] == 1
-        assert completion["outcome_event_count"] == 1

@@ -25,13 +25,13 @@
 - `BASE_FRAMES=6000`, `FRAME_STEP=0`, `RUNS=[3]`, `SCALES=[2]`, `base_capacity=True`, and seed 12345 must remain unchanged.
 - The external catalog must report 15 nodes, 10 routes, and 550 route-action pairs with a fixed 90-qubit budget.
 - State, logs, and outputs must remain under `QUANTUM_MEDIUM_OUTPUT_ROOT`, outside the source repository.
-- Each of the 45 cells must have an immutable bundle under
-  `q04-evidence/cells/<result_identity>/` containing:
+- Each of the 45 cells must have an immutable PR2 `AttemptBundle` under
+  `q04-evidence/<run_id>/attempt-<n>/` containing:
   - `manifest.json` with block, threat, policy, actual seed, config identity, catalog identity, and trajectory identity;
   - `availability.json` with the full route-availability trajectory;
-  - `events.jsonl` with joinable route/action `DECISION` and selected-payoff `OUTCOME` events;
+  - `events.jsonl` with ordered, joinable `PRESELECTION`, `DECISION`, `OUTCOME`, and `UPDATE` events for every frame;
   - `result.json` with the bounded outcome summary;
-  - `completion.json` with status, event counts, and file hashes.
+  - `completion.json` with status, four-phase event counts, and hashes covering every artifact, including `result.json`.
 - `q04-evidence/campaign-receipt.json` must account for exactly 45 unique
   block/threat/policy cells. A cell or campaign with recorded failures is not
   scientific completion.
@@ -54,7 +54,7 @@ Completed/failed cells:
 Availability frame count per cell:
 Decision/outcome event count per cell:
 Catalog identities for blocks 0/1/2:
-Stable environment/policy seed identities:
+Exact PR2 threat/policy seed identities:
 Targeted test result:
 PR #2 regression result:
 BLOCKER:
@@ -114,3 +114,29 @@ fabricate a static approximation.
   until that contract and its catalog/provenance artifacts are integrated through
   the proven workflow and independently reviewed.
 - Scientific 6,000-frame Q-05 execution: not launched.
+
+## Q-04 PR2 evidence-adapter checkpoint — 2026-09-27
+
+- DEV commits: `f6fc73ca` (typed injected PR2 evidence adapter) and `be75b611`
+  (mean continuous payoff fallback correction).
+- The actual notebook injects `MediumExecutionEvidencePlugin` while retaining
+  `AllocatorRunner -> MultiRunEvaluator -> QuantumExperimentRunner`.
+- Each policy cell is opened through `medium_runner.prepare_manifest`; policy
+  and threat seeds therefore use the frozen PR2 domain-separated seed manifest.
+- Static masks are identical across policies within a block/threat. Causal
+  policies receive fresh `ScenarioSession` instances with the same threat seed
+  and policy-conditioned histories.
+- Live model execution writes all four frozen PR2 phases. Batch policies use
+  their existing `event_sink`; step-wise policies emit the same contract from
+  actual selections, payoffs, and updates.
+- The existing `AttemptBundle` persists the full catalogs, availability,
+  events, result summary, and completion hashes. The reduced post-hoc campaign
+  writer is bypassed whenever the typed plugin is present.
+- Focused non-matrix tests: `12 passed in 20.24s`.
+- Real notebook-helper tiny 45-cell matrix: `1 passed in 62.78s`; all 45 bundles
+  validated with four phases per frame, exact PR2 seeds, retained catalogs,
+  immutable result hashes, and completed zero outcomes.
+- Current PR2 regression suite (a superset of the historical 72-test gate):
+  `96 passed in 72.74s`.
+- Scientific 6,000-frame Q-05 execution: not launched.
+- Remaining gate: independent review of these pushed DEV/TEST checkpoints.

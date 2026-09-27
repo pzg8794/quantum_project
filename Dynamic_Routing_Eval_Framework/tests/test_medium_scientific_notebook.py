@@ -11,7 +11,9 @@ import networkx as nx
 import numpy as np
 import pytest
 
-from daqr.campaigns.medium_spec import build_catalog
+from daqr.campaigns.medium_spec import build_catalog, seed_manifest
+from daqr.campaigns.medium_execution_evidence import MediumExecutionEvidencePlugin
+from daqr.campaigns.medium_trace import PHASES, file_hash, validate_completion
 from daqr.config.execution_contract import ExecutionSettings
 from daqr.config.experiment_config import ExperimentConfiguration
 from daqr.config.local_backup_manager import LocalBackupManager
@@ -19,7 +21,6 @@ from daqr.core.catalog_components import LayeredPrimaryCatalog, PrimaryPayoff
 from daqr.core.qubit_allocator import QubitAllocator
 from daqr.core.scenario_execution import ScenarioExecutionComponent
 from daqr.evaluation.allocator_runner import AllocatorRunner
-from daqr.evaluation.campaign_evidence import file_hash
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,6 +53,7 @@ def notebook_namespace():
         "PrimaryPayoff": PrimaryPayoff,
         "QubitAllocator": QubitAllocator,
         "build_catalog": build_catalog,
+        "MediumExecutionEvidencePlugin": MediumExecutionEvidencePlugin,
     }
     exec("".join(notebook["cells"][4]["source"]), namespace)
     exec("".join(notebook["cells"][6]["source"]), namespace)
@@ -89,6 +91,7 @@ def test_notebook_uses_only_real_allocator_runner():
     notebook = load_notebook(NOTEBOOK)
     source = "\n".join("".join(cell.get("source", [])) for cell in notebook["cells"])
     assert "from daqr.evaluation.allocator_runner import AllocatorRunner" in source
+    assert "MediumExecutionEvidencePlugin" in source
     assert "daqr.campaigns.medium_scientific" not in source
     assert inspect.getmodule(AllocatorRunner).__name__ == "daqr.evaluation.allocator_runner"
     assert not (ROOT / "daqr" / "campaigns" / "medium_scientific.py").exists()
@@ -127,6 +130,9 @@ def test_frozen_notebook_config_and_external_catalog():
             isinstance(component, ScenarioExecutionComponent)
             for component in components.values()
         )
+        evidence_config = params["_execution_evidence_configuration"]
+        assert evidence_config.execution.horizon == 6000
+        assert evidence_config.execution.protocol_namespace == "f08-tier1-default-fixed-v1"
         identities.append(params["_campaign_catalog_identity"])
     assert len({item["topology_hash"] for item in identities}) == 3
 
@@ -143,18 +149,32 @@ def test_external_output_root_rejects_source_repository():
         namespace["configure_external_persistence"](config, ROOT)
 
 
+def test_result_summary_derives_mean_continuous_payoff():
+    manifest = {
+        "run_id": "run",
+        "execution_frames": 4,
+        "identity": {
+            "block_id": 0,
+            "threat": "none",
+            "policy": "Oracle",
+            "seeds": {
+                "policy": {"actual_seed": 11},
+                "threat": {"actual_seed": None},
+            },
+        },
+    }
+    summary = MediumExecutionEvidencePlugin._result_summary(
+        manifest,
+        {"final_reward": 2.0, "frames_count": 4, "retries": 0},
+    )
+    assert summary["outcome"]["avg_reward"] == 0.5
+
+
 def test_campaign_seed_is_process_stable():
     code = """
-from types import SimpleNamespace
-from daqr.evaluation.campaign_evidence import stable_environment_seed
-config = SimpleNamespace(
-    scientific_seed_namespace='f08-tier1-default-fixed-v1',
-    scientific_campaign_base_seed=12345,
-    base_seed=99999,
-    scientific_block_id=2,
-    attack_type='adaptive',
-)
-print(stable_environment_seed(config, 6000))
+from tests.medium_fixtures import fixture_config
+from daqr.campaigns.medium_spec import seed_manifest
+print(seed_manifest(fixture_config(), 2, 'EXPNeuralUCB', 'RandomAttack', 3)['policy']['actual_seed'])
 """
     values = []
     for hash_seed in ("1", "987654"):
@@ -279,72 +299,95 @@ def test_real_runner_tiny_full_matrix_writes_complete_event_evidence(tmp_path, m
 
     evidence_root = tmp_path / "q04-evidence"
     campaign = json.loads((evidence_root / "campaign-receipt.json").read_text())
-    assert campaign["required_cells"] == campaign["accounted_cells"] == 45
+    assert campaign["required_cells"] == campaign["completed_cells"] == 45
     assert campaign["state"] == "COMPLETE"
-    assert campaign["status_counts"] == {"completed": 45, "failed": 0}
+    assert len(campaign["bundle_completion_hashes"]) == 45
+    assert not (evidence_root / "receipts").exists()
 
-    receipts = [
-        json.loads(path.read_text())
-        for path in sorted((evidence_root / "receipts").glob("*.json"))
-    ]
-    assert len(receipts) == 45
+    bundles = sorted(evidence_root.glob("*/attempt-*"))
+    assert len(bundles) == 45
+    manifests = [json.loads((bundle / "manifest.json").read_text()) for bundle in bundles]
     assert {
-        (item["identity"]["block"], item["identity"]["threat"], item["identity"]["policy"])
-        for item in receipts
+        (item["identity"]["block_id"], item["identity"]["threat"], item["identity"]["policy"])
+        for item in manifests
     } == set(itertools.product(range(3), SCENARIOS, namespace["models"]))
     assert len({
-        item["identity"]["catalog_identity"]["topology_hash"] for item in receipts
+        item["identity"]["topology_hash"] for item in manifests
     }) == 3
 
     for block, threat in itertools.product(range(3), SCENARIOS):
         matched = [
-            item for item in receipts
-            if item["identity"]["block"] == block and item["identity"]["threat"] == threat
+            item for item in manifests
+            if item["identity"]["block_id"] == block and item["identity"]["threat"] == threat
         ]
+        expected_config = runner.custom_config.execution_evidence_plugin._block_configs[block]
+        for item in matched:
+            expected = seed_manifest(
+                expected_config,
+                block,
+                item["identity"]["policy"],
+                threat,
+                3,
+            )
+            assert item["identity"]["seeds"] == expected
         if threat in {"adaptive", "onlineadaptive"}:
             assert {
-                item["identity"]["availability_semantics"] for item in matched
-            } == {"policy-conditioned-causal-trajectory"}
-            assert {
-                item["identity"]["threat_seed_semantics"] for item in matched
-            } == {"frozen-pr2-causal-scenario-seed"}
-            assert len({item["identity"]["threat_seed"] for item in matched}) == 1
+                item["identity"]["trajectory_kind"] for item in matched
+            } == {"policy-reactive-causal"}
+            assert len({
+                item["identity"]["seeds"]["threat"]["actual_seed"] for item in matched
+            }) == 1
         else:
             assert {
-                item["identity"]["availability_semantics"] for item in matched
-            } == {"shared-static-trajectory"}
+                item["identity"]["trajectory_kind"] for item in matched
+            } == {"exogenous-precomputed"}
             assert len({
-                item["identity"]["threat_trajectory_identity"] for item in matched
+                item["identity"]["threat_trajectory_hash"] for item in matched
             }) == 1
 
-    for receipt in receipts:
-        completion_path = Path(receipt["completion_path"])
-        assert file_hash(completion_path) == receipt["completion_sha256"]
-        completion = json.loads(completion_path.read_text())
-        bundle = Path(receipt["bundle_path"])
+    zero_outcomes = 0
+    for bundle in bundles:
         manifest = json.loads((bundle / "manifest.json").read_text())
+        completion = validate_completion(bundle, manifest)
         availability = json.loads((bundle / "availability.json").read_text())
         events = [
             json.loads(line)
             for line in (bundle / "events.jsonl").read_text().splitlines()
         ]
-        assert completion["status"] == "completed"
-        assert completion["availability_frames"] == 4
-        assert completion["decision_event_count"] == 4
-        assert completion["outcome_event_count"] == 4
+        assert completion["state"] == "COMPLETE"
+        assert completion["actual_record_counts"] == {phase: 4 for phase in PHASES}
+        assert "result.json" in completion["file_hashes"]
+        assert file_hash(bundle / "result.json") == completion["file_hashes"]["result.json"]
+        result = json.loads((bundle / "result.json").read_text())
+        assert result["outcome"]["status"] == "completed"
+        assert result["outcome"]["performance_reruns"] == 0
+        assert result["outcome"]["avg_reward"] == pytest.approx(
+            result["outcome"]["final_reward"] / 4
+        )
+        assert result["identity"]["policy_seed"] == manifest["identity"]["seeds"]["policy"]["actual_seed"]
+        zero_outcomes += int(result["outcome"]["final_reward"] == 0.0)
+        for artifact in (
+            "topology.json", "routes.json", "observations.json", "physics.json",
+            "catalog_diagnostics.json", "availability.json", "events.jsonl",
+        ):
+            assert artifact in completion["file_hashes"]
         assert len(availability) == 4
         assert all(len(row) == 10 for row in availability)
-        assert len(events) == 8
-        if receipt["identity"]["availability_semantics"] == "policy-conditioned-causal-trajectory":
-            assert "policy-conditioned" in manifest["evidence_contract"]["matching_boundary"]
+        assert len(events) == 16
         for frame in range(4):
-            decision, outcome = events[2 * frame : 2 * frame + 2]
+            preselection, decision, outcome, update = events[4 * frame : 4 * frame + 4]
+            assert [preselection["phase"], decision["phase"], outcome["phase"], update["phase"]] == list(PHASES)
             assert decision["phase"] == "DECISION"
             assert outcome["phase"] == "OUTCOME"
-            assert decision["decision_id"] == outcome["decision_id"]
-            assert decision["selected_route_index"] == outcome["selected_route_index"]
-            route = outcome["selected_route_index"]
+            assert len({row["decision_id"] for row in (preselection, decision, outcome, update)}) == 1
+            route = decision["selected_route_index"]
             assert outcome["availability"] == availability[frame][route]
             assert outcome["selected_continuous_payoff"] == pytest.approx(
                 outcome["base_expected_payoff"] * outcome["availability"]
             )
+            if manifest["identity"]["policy"] == "EXPNeuralUCB":
+                assert outcome["sampled_bernoulli_draw"] in (0, 1)
+                assert update["importance_weighted_route_update"] is not None
+            else:
+                assert update["policy_update_target"] == outcome["selected_continuous_payoff"]
+    assert zero_outcomes > 0

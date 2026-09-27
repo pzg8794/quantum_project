@@ -44,7 +44,7 @@ class EventRecorder:
         if phase != PHASES[self.sequence % 4] or frame != self.sequence // 4 or frame >= self.frames:
             raise ValueError("Event phase/frame order violation")
         identity = self.manifest["identity"]
-        row = {"schema_version": "medium-events-v1", "phase": phase, "frame": int(frame),
+        row = {"schema_version": "medium-events-v2", "phase": phase, "frame": int(frame),
                "event_id": f"{self.manifest['run_id']}:{self.attempt_no}:{frame}:{phase}",
                "decision_id": f"{self.manifest['run_id']}:{self.attempt_no}:{frame}",
                "protocol_root_id": identity["protocol_root_id"], "run_id": self.manifest["run_id"],
@@ -78,7 +78,7 @@ class EventRecorder:
                    observation_version=observation["version"], producer="primary_allocation_catalog",
                    link_measurements_present=False, history_cutoff_frame=frame-1,
                    policy_state_version=f"after-{frame}-updates",
-                   information_regime="privileged_reference" if self.manifest["identity"]["policy"]=="Oracle" else "past-feedback-and-allocation-context")
+                   information_regime="privileged_reference" if self.manifest["identity"]["trace_contract"]["privileged"] else "past-feedback-and-allocation-context")
 
     def decision(self, frame, route, action, probabilities=None):
         route, action = int(route), int(action)
@@ -96,6 +96,7 @@ class EventRecorder:
         self._emit("DECISION", frame, selected_route_index=route, selected_route_id=obs["route_id"],
                    selected_action_index=action, selected_allocation=obs["actions"][action],
                    route_probability_vector=probs,
+                   selected_route_probability=None if probs is None else float(probs[route]),
                    route_probability_support=[r["route_id"] for r in self.catalog["routes"]] if probs is not None else None,
                    route_probability_semantics="pre-sampling marginal over routes; not joint allocation propensity" if probs is not None else None,
                    probability_unavailable_reason=None if probs is not None else "not_exposed_by_policy",
@@ -114,12 +115,12 @@ class EventRecorder:
 
     def update(self, frame, allocation_target, allocation_applied, group_target=None, policy_target=None):
         self.allocation_update_count += int(allocation_applied)
-        hybrid = self.manifest["identity"]["policy"] == "EXPNeuralUCB"
+        hybrid = self.manifest["identity"]["trace_contract"]["feedback"] == "bernoulli-route-continuous-allocation-v2"
         self._emit("UPDATE", frame, allocation_update_target=None if allocation_target is None else float(allocation_target),
                    allocation_update_applied=bool(allocation_applied),
                    allocation_update_recipient="within-route NeuralUCB" if hybrid else None,
                    allocation_update_unavailable_reason=None if allocation_applied else ("selected_route_unavailable" if hybrid else "no_within_route_NeuralUCB"),
-                   route_update_target=None if group_target is None else float(group_target),
+                   importance_weighted_route_update=None if group_target is None else float(group_target),
                    route_update_semantics="masked Bernoulli / selected route probability" if hybrid else None,
                    policy_update_target=None if policy_target is None else float(policy_target),
                    policy_update_semantics=None if policy_target is None else "continuous selected payoff")
@@ -205,9 +206,9 @@ class AttemptBundle:
             "expected_record_counts":expected, "actual_record_counts":actual,
             "file_hashes":{p.name:file_hash(p) for p in sorted(self.directory.iterdir()) if p.is_file()},
             "wall_seconds":time.perf_counter()-self.started,
-            "positive_route_feedback_count":self.recorder.positive_route_feedback_count if self.manifest["identity"]["policy"]=="EXPNeuralUCB" else None,
-            "allocation_update_count":self.recorder.allocation_update_count if self.manifest["identity"]["policy"]=="EXPNeuralUCB" else None,
-            "hybrid_diagnostics_unavailable_reason":None if self.manifest["identity"]["policy"]=="EXPNeuralUCB" else "policy_has_no_hybrid_feedback_producer",
+            "positive_route_feedback_count":self.recorder.positive_route_feedback_count if self.manifest["identity"]["trace_contract"]["feedback"]=="bernoulli-route-continuous-allocation-v2" else None,
+            "allocation_update_count":self.recorder.allocation_update_count if self.manifest["identity"]["trace_contract"]["feedback"]=="bernoulli-route-continuous-allocation-v2" else None,
+            "hybrid_diagnostics_unavailable_reason":None if self.manifest["identity"]["trace_contract"]["feedback"]=="bernoulli-route-continuous-allocation-v2" else "policy_has_no_hybrid_feedback_producer",
             "completion_record_count":1,
             "failure_kind":failure_kind, "reason":reason,
             "scientific_evidence":self.manifest["identity"]["execution_kind"]=="scientific",
@@ -249,7 +250,7 @@ def _validate_payload(directory, manifest, completion):
             raise ValueError("Raw file checksum mismatch")
     counts, positives, updates = Counter(), 0, 0
     physics, mask = read("physics.json"), read("availability.json")
-    selected = outcome = None
+    selected = outcome = decision = None
     with (directory/"events.jsonl").open() as stream:
         for seq,line in enumerate(stream):
             row = json.loads(line)
@@ -272,11 +273,16 @@ def _validate_payload(directory, manifest, completion):
                 if any(k in row for k in ("availability","base_expected_payoff","sampled_bernoulli_draw","selected_continuous_payoff")):
                     raise ValueError("Privileged values in preselection record")
             elif row["phase"]=="DECISION":
+                decision=row
                 selected=(row["selected_route_index"],row["selected_action_index"])
                 route,action=selected
                 if route<0 or route>=len(observations["routes"]) or action<0 or action>=len(observations["routes"][route]["actions"]):
                     raise ValueError("Invalid decision index")
                 obs=observations["routes"][route]
+                probs=row["route_probability_vector"]
+                if identity["trace_contract"]["feedback"]=="bernoulli-route-continuous-allocation-v2":
+                    if probs is None or len(probs)!=len(observations["routes"]) or not np.isfinite(probs).all() or min(probs)<0 or not np.isclose(sum(probs),1.0) or row["selected_route_probability"]!=probs[route]:
+                        raise ValueError("Invalid selected-route probability")
                 if row["selected_route_id"]!=obs["route_id"] or row["selected_allocation"]!=obs["actions"][action]:
                     raise ValueError("Decision/catalog mismatch")
             elif row["phase"]=="OUTCOME":
@@ -285,7 +291,7 @@ def _validate_payload(directory, manifest, completion):
                 available=mask[row["frame"]][route]
                 if row["base_expected_payoff"]!=q or row["availability"]!=available or row["selected_continuous_payoff"]!=q*available:
                     raise ValueError("Selected outcome/physics mismatch")
-                if identity["policy"]=="EXPNeuralUCB":
+                if identity["trace_contract"]["feedback"]=="bernoulli-route-continuous-allocation-v2":
                     if row["sampled_bernoulli_draw"] not in (0,1) or row["masked_route_feedback"]!=row["sampled_bernoulli_draw"]*available:
                         raise ValueError("Sampled/masked feedback mismatch")
                     if row["positive_route_feedback"]!=bool(row["masked_route_feedback"]>0):
@@ -294,10 +300,10 @@ def _validate_payload(directory, manifest, completion):
                     raise ValueError("Fabricated sampled feedback")
                 outcome=row
             elif row["phase"]=="UPDATE":
-                if identity["policy"]=="EXPNeuralUCB":
+                if identity["trace_contract"]["feedback"]=="bernoulli-route-continuous-allocation-v2":
                     applied=bool(outcome["availability"])
                     target=outcome["base_expected_payoff"] if applied else None
-                    if row["allocation_update_applied"]!=applied or row["allocation_update_target"]!=target or row["route_update_target"]!=outcome["masked_route_feedback"]:
+                    if row["allocation_update_applied"]!=applied or row["allocation_update_target"]!=target or row["importance_weighted_route_update"]!=outcome["masked_route_feedback"]/max(decision["selected_route_probability"],identity["trace_contract"]["probability_floor"]):
                         raise ValueError("Hybrid update-channel mismatch")
                 elif row["allocation_update_applied"] or row["policy_update_target"]!=outcome["selected_continuous_payoff"]:
                     raise ValueError("Policy update-channel mismatch")
@@ -307,7 +313,7 @@ def _validate_payload(directory, manifest, completion):
     expected = {p:manifest["execution_frames"] for p in PHASES}
     if dict(counts) != expected or completion["actual_record_counts"] != expected or completion["expected_record_counts"] != expected:
         raise ValueError("Record-count mismatch")
-    hybrid=identity["policy"]=="EXPNeuralUCB"
+    hybrid=identity["trace_contract"]["feedback"]=="bernoulli-route-continuous-allocation-v2"
     if (positives if hybrid else None) != completion["positive_route_feedback_count"] or (updates if hybrid else None) != completion["allocation_update_count"]:
         raise ValueError("Feedback diagnostic mismatch")
 
@@ -320,3 +326,26 @@ def validate_completion(directory, expected_manifest):
         raise ValueError("Only exact completed identities can be reused")
     _validate_payload(directory,manifest,completion)
     return completion
+
+
+def validate_scale_completion(configs, scale_m, bundles):
+    """A scale is complete only for every configured block/scenario/policy cell."""
+    from daqr.config.execution_contract import resolve_configuration
+    resolved=resolve_configuration(configs)
+    expected={(c["block"],c["scenario"],c["policy"]) for c in resolved["required_cells"] if c["scale"]==scale_m}
+    if not expected:
+        raise ValueError("Unconfigured scale")
+    actual=set()
+    for path in bundles:
+        manifest=json.loads((Path(path)/"manifest.json").read_text())
+        validate_completion(path,manifest)
+        if canonical_json(manifest["configuration"]["resolved"])!=canonical_json(resolved):
+            raise ValueError("Completion configuration differs from requested matrix")
+        identity=manifest["identity"]
+        cell=(identity["block_id"],identity["threat"],identity["policy"])
+        if identity["scale_m"]!=scale_m or cell in actual:
+            raise ValueError("Wrong scale or duplicate completed cell")
+        actual.add(cell)
+    if actual!=expected:
+        raise ValueError(f"Incomplete scale: missing {sorted(expected-actual)}, extra {sorted(actual-expected)}")
+    return {"complete":True,"required_cells":len(expected),"completed_cells":len(actual)}

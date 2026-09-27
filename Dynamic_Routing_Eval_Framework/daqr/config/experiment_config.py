@@ -24,7 +24,9 @@ class ExperimentConfiguration:
     """
     Configuration holder for quantum experiments.
     """
-    def __init__(self, runs=1, physics_params={}, seed_offset=100, env_type="stochastic", attack_type="n/a", suffix=None, attack_intensity=1.0, attack_rate=0.25, models=None, scenarios=None, allocator=None, base_seed=12345, scale=2, base_capacity=True, overwrite=False, resume=True, use_last_backup=True, verbose=False, testbed_id=None, testbed_config={}):
+    def __init__(self, runs=1, physics_params={}, seed_offset=100, env_type="stochastic", attack_type="n/a", suffix=None, attack_intensity=1.0, attack_rate=0.25, models=None, scenarios=None, allocator=None, base_seed=12345, scale=2, base_capacity=True, overwrite=False, resume=True, use_last_backup=True, verbose=False, testbed_id=None, testbed_config={}, persistence=True):
+        if not persistence and (not models or not scenarios or allocator is None):
+            raise ValueError("Persistence-disabled execution requires explicit nonempty axes and allocator")
         
         self.allocator = allocator if allocator else QubitAllocator()  # Default to fixed
 
@@ -69,7 +71,13 @@ class ExperimentConfiguration:
         self.eval_file_name = ""
 
         # Single unified manager - handles everything
-        self.backup_mgr = LocalBackupManager(date_str=self.day_str, config_dir=self.dir, verbose=self.verbose)
+        self.persistence = persistence
+        if persistence:
+            self.backup_mgr = LocalBackupManager(date_str=self.day_str, config_dir=self.dir, verbose=self.verbose)
+        else:
+            from types import SimpleNamespace
+            self.backup_mgr = SimpleNamespace(mode="disabled", quantum_data_paths={
+                "obj": {"model_state": {"disabled": Path("persistence-disabled")}}})
 
         self.category_map = {
             'none': 'Baseline (No Attacks)',
@@ -344,7 +352,8 @@ class ExperimentConfiguration:
         self.backup_registry = {}
         self.expected_keys = {}
         
-        self._build_backup_registry(force=self.overwrite)
+        if self.persistence:
+            self._build_backup_registry(force=self.overwrite)
         # print( self.backup_registry.keys())
 
     def get_testbed_config(self):
@@ -1083,6 +1092,29 @@ class ExperimentConfiguration:
         else:
             return {name: self.algorithm_configs[name] for name in model_names if name in self.algorithm_configs}
 
+    def resolve_attack_strategy(self, scenario):
+        """Strict immutable-execution resolution; legacy fallback methods unchanged."""
+        from daqr.core.attack_strategy import STRATEGY_REGISTRY
+        if scenario not in self.test_scenarios:
+            raise ValueError(f"Unconfigured scenario: {scenario}")
+        spec = self.test_scenarios[scenario]
+        if isinstance(spec, str):
+            # Existing framework scenario descriptions use scalar rate/intensity
+            # settings. Reuse that canonical construction, but forbid its fallback.
+            configured = copy.copy(self)
+            configured.attack_mapping = {}
+            configured.attack_strategy = None
+            configured.set_attack_strategy(scenario)
+            if scenario.lower() not in configured.attack_mapping or configured.attack_strategy is None:
+                raise ValueError(f"Unresolved configured scenario: {scenario}")
+            return configured.attack_strategy
+        if not isinstance(spec, dict) or set(spec) != {"strategy", "parameters"}:
+            raise ValueError("Strict scenarios require explicit strategy and parameters")
+        registry = getattr(self, "strategy_registry", STRATEGY_REGISTRY)
+        if spec["strategy"] not in registry:
+            raise ValueError(f"Unknown strategy: {spec['strategy']}")
+        return registry[spec["strategy"]](**copy.deepcopy(spec["parameters"]))
+
 
     def set_attack_strategy(self, attack_type: str, **kwargs):
         """
@@ -1319,6 +1351,8 @@ class ExperimentConfiguration:
         - Never overwrite a larger existing file.
         - Prefer overwriting when new version is larger.
         """
+        if not getattr(self, "persistence", True):
+            raise RuntimeError("Persistence disabled: use the immutable attempt store")
         save_dict = self._build_save_dict(obj)
         comp = obj.component
         mode = self.backup_mgr.mode
@@ -1501,6 +1535,8 @@ class ExperimentConfiguration:
         return True
 
     def can_resume(self, obj):
+        if not getattr(self, "persistence", True):
+            return True  # prevents nested-model legacy fallback; resume_obj returns False
         # Get path from registry
         if not self.use_last_backup: return None
         if not self._resume_allows_object(obj):
@@ -1529,6 +1565,8 @@ class ExperimentConfiguration:
         Returns:
             bool: True if successfully resumed, False otherwise
         """
+        if not getattr(self, "persistence", True):
+            return False
         if not self.use_last_backup: return None
         if obj.resumed: return obj.resumed
         if not self._resume_allows_object(obj):

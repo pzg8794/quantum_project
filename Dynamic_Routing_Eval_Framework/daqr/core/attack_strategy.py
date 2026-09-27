@@ -22,6 +22,9 @@ class AttackStrategy:
     
     All subclasses generate attack masks for arbitrary num_paths values.
     """
+    mask_capability = "undeclared"
+    uses_rng = True
+
     def __init__(self, attack_rate: float = 0.25):
         if not (0.0 <= attack_rate <= 1.0):
             raise ValueError(f"attack_rate must be in [0, 1], got {attack_rate}")
@@ -66,6 +69,9 @@ class AttackStrategy:
 
 class NoAttack(AttackStrategy):
     """✅ No attack - all paths always succeed (capacity-agnostic)."""
+    mask_capability = "static"
+    uses_rng = False
+
     def __init__(self):
         super().__init__(attack_rate=0.0)
     
@@ -87,6 +93,8 @@ class RandomAttack(AttackStrategy):
         per_path_rates: Optional array of per-path attack rates [p1, p2, ...]
                        Must match num_paths in generate()
     """
+    mask_capability = "static"
+
     def __init__(self, attack_rate: float = 0.25, 
                  per_path_rates: Optional[np.ndarray] = None):
         super().__init__(attack_rate)
@@ -125,6 +133,8 @@ class MarkovAttack(AttackStrategy):
     
     Works independently on each path, scales to any num_paths.
     """
+    mask_capability = "static"
+
     def __init__(self, attack_rate: float = 0.25, p_stay: float = 0.7):
         super().__init__(attack_rate)
         if not (0.0 <= p_stay <= 1.0):
@@ -160,6 +170,8 @@ class AdaptiveAttack(AttackStrategy):
     
     Tracks path selection frequency and increases attack rates accordingly.
     """
+    mask_capability = "selection_history"
+
     def __init__(self, attack_rate: float = 0.25, 
                  adaptation_window: int = 100,
                  adaptation_strength: float = 0.5):
@@ -223,6 +235,8 @@ class OnlineAdaptiveAttack(AttackStrategy):
     
     Responds immediately to path selections with burst attacks.
     """
+    mask_capability = "online_selection_history"
+
     def __init__(self, attack_rate: float = 0.25, 
                  response_delay: int = 5,
                  burst_probability: float = 0.3):
@@ -275,6 +289,12 @@ class OnlineAdaptiveAttack(AttackStrategy):
 # HELPER: Create attack from string
 # ============================================================================
 
+STRATEGY_REGISTRY = {
+    "none": NoAttack, "random": RandomAttack, "stochastic": RandomAttack,
+    "markov": MarkovAttack, "adaptive": AdaptiveAttack, "onlineadaptive": OnlineAdaptiveAttack,
+}
+
+
 def create_attack_strategy(scenario_name: str, 
                           attack_rate: float = 0.25, 
                           **kwargs) -> AttackStrategy:
@@ -292,16 +312,9 @@ def create_attack_strategy(scenario_name: str,
         AttackStrategy instance that works with any num_paths
     """
     scenario_lower = scenario_name.lower()
-    
-    if scenario_lower == 'none':
-        return NoAttack()
-    elif scenario_lower == 'stochastic':
-        return RandomAttack(attack_rate=attack_rate, **kwargs)
-    elif scenario_lower == 'markov':
-        return MarkovAttack(attack_rate=attack_rate, **kwargs)
-    elif scenario_lower == 'adaptive':
-        return AdaptiveAttack(attack_rate=attack_rate, **kwargs)
-    elif scenario_lower == 'onlineadaptive':
-        return OnlineAdaptiveAttack(attack_rate=attack_rate, **kwargs)
-    else:
+    if scenario_lower not in STRATEGY_REGISTRY:
         raise ValueError(f"Unknown scenario: {scenario_name}")
+    cls = STRATEGY_REGISTRY[scenario_lower]
+    # The existing factory's no-attack call takes no rate argument.
+    parameters = {} if cls is NoAttack else {"attack_rate": attack_rate, **kwargs}
+    return cls(**parameters)

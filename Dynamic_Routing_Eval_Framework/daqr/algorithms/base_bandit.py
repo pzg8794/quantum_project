@@ -398,6 +398,8 @@ class Oracle(QuantumModel):
     Oracle algorithm with perfect knowledge of reward functions and attack patterns.
     Always selects the optimal path and allocation given current attack state.
     """
+    trace_privileged = True
+
     
     @property
     def model_type(self):

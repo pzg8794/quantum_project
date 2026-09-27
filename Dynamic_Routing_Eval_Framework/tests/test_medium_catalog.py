@@ -7,9 +7,8 @@ import sys
 import numpy as np
 import pytest
 
-from daqr.campaigns.medium_spec import (
-    PROTOCOL,PROTOCOL_ROOT_ID,build_catalog,build_mask,seed_for,seed_manifest,digest,validate_catalog,
-)
+from medium_fixtures import PROTOCOL,PROTOCOL_ROOT_ID,build_catalog,build_mask,seed_for,seed_manifest
+from daqr.campaigns.medium_spec import digest,validate_catalog
 
 
 def test_three_blocks_catalog_invariants_and_determinism():
@@ -73,7 +72,7 @@ def test_domain_seeds_queue_invariance_and_pairing():
 
 
 def test_seeds_are_process_independent():
-    command=[sys.executable,"-B","-c","from daqr.campaigns.medium_spec import seed_for; print(seed_for('policy',0,3,'EXPNeuralUCB'))"]
+    command=[sys.executable,"-B","-c","from daqr.campaigns.medium_spec import seed_for; print(seed_for('policy',0,3,'EXPNeuralUCB','explicit-root'))"]
     results=[subprocess.check_output(command,env={**os.environ,"PYTHONHASHSEED":s}) for s in ("1","876")]
     assert results[0]==results[1]
 

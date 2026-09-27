@@ -55,6 +55,9 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 
+EXP3_PROBABILITY_FLOOR = 1e-12  # existing numerical safeguard, shared with trace validation
+
+
 class EXPNeuralUCB(QuantumModel):
     """
     Enhanced Unified Quantum Routing Algorithm Framework
@@ -65,6 +68,13 @@ class EXPNeuralUCB(QuantumModel):
     - 'exp3': EXP3 + Linear UCB (EXPUCB equivalent)
     """
     
+    @staticmethod
+    def trace_contract(mode):
+        if mode != "hybrid":
+            raise ValueError("HOLD: passive update contract currently qualified only for hybrid mode")
+        return {"feedback": "bernoulli-route-continuous-allocation-v2",
+                "privileged": False, "probability_floor": EXP3_PROBABILITY_FLOOR}
+
     @property
     def model_type(self):
         return 'batch'
@@ -366,7 +376,7 @@ class EXPNeuralUCB(QuantumModel):
         if self.mode in ['hybrid', 'exp3']:
             for group_index in range(self.num_groups):
                 if group_index == selected_path:
-                    safe_p = max(float(prob_array[selected_path]), 1e-12)
+                    safe_p = max(float(prob_array[selected_path]), EXP3_PROBABILITY_FLOOR)
                     self.estimate_group_reward[group_index].append(observed_reward / safe_p)
                 else:
                     self.estimate_group_reward[group_index].append(0)
@@ -423,7 +433,8 @@ class EXPNeuralUCB(QuantumModel):
             if event_sink is not None:
                 applied = bool(attack_list[frame][selected_path] > 0)
                 event_sink.update(frame, base_reward if applied else None, applied,
-                                  group_target=dt)
+                                  group_target=self.estimate_group_reward[selected_path][-1]
+                                  if self.mode in ["hybrid", "exp3"] else dt)
             
             oracle_reward = (self.reward_list[self.oracle_path][self.oracle_action] *
                             attack_list[frame][self.oracle_path])

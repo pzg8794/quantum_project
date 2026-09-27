@@ -73,7 +73,7 @@ def allocations(budget, hops, max_actions=1_000_000):
     return result
 
 
-def primary_rewards(route, contexts, success_factor=100):
+def primary_rewards(route, contexts, success_factor):
     contexts = np.asarray(contexts)
     if contexts.ndim != 2 or contexts.shape[1] != route.hops:
         raise ValueError("Action/context dimension does not match route hops")

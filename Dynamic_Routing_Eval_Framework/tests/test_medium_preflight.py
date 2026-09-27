@@ -7,9 +7,8 @@ import numpy as np
 import pytest
 import torch
 
-from daqr.campaigns.medium_runner import (
-    prepare_manifest,run_policy,execute_preflight,FRAME_LIMIT,CampaignModelConfig,
-)
+from medium_fixtures import prepare_manifest,run_policy,execute_preflight
+from daqr.campaigns.medium_runner import FRAME_LIMIT
 from daqr.campaigns.medium_trace import (
     EventRecorder,AttemptBundle,validate_completion,run_identity,
 )
@@ -188,7 +187,7 @@ def test_bounded_entry_point_refuses_scientific_horizon(tmp_path):
     with pytest.raises(ValueError,match="frame limit"):
         execute_preflight(tmp_path,frames=6000)
     assert not list(tmp_path.iterdir())
-    assert FRAME_LIMIT==64
+    assert FRAME_LIMIT < 6000
 
 
 def test_manifest_content_must_match_identity(tmp_path):

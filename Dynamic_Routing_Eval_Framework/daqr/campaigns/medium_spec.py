@@ -1,14 +1,14 @@
 """Versioned primary-form medium catalog. No routing execution at import."""
 from dataclasses import asdict
 from hashlib import sha256
-from itertools import combinations_with_replacement
 import json
 
 import networkx as nx
 import numpy as np
 
 from daqr.core.primary_routes import PrimaryRoute, allocations, primary_rewards
-from daqr.core.attack_strategy import NoAttack, RandomAttack
+from copy import deepcopy
+from daqr.config.execution_contract import resolve_configuration
 
 
 def canonical_json(value):
@@ -19,41 +19,12 @@ def digest(value):
     return sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
-# Queue/phase/block count/optional future treatments are intentionally absent.
-# Freeze the serialized root at launch approval; any semantic change is a new protocol.
-PROTOCOL = {
-    "schema_version": "medium-v1",
-    "topology_family": "layered-primary-form-v1",
-    "topology_rng": "numpy.Generator(PCG64)",
-    "route_rule": "all-simple-three-hop-lexicographic-v1",
-    "profile_rule": "physics-profile-v1",
-    "rate_values": [1e-4, 1.5e-4, 2e-4],
-    "action_rule": "all-weak-compositions-lexicographic-v1",
-    "qubits_per_route": 9,
-    "success_factor": 100,
-    "reward_rule": "primary-two-stage-power-left-product-v1",
-    "feedback_rule": "existing-policy-specific-channels-v1",
-    "seed_rule": "sha256-first-four-bytes-big-endian-v1",
-    "allocator": "fixed-equal",
-    "base_horizon": 6000,
-    "replay_anchor": "T_b",
-    "replay_scale": 2,
-    "replay_capacity": 12000,
-    "random_interruption": 0.0625,
-}
-PROTOCOL_ROOT_ID = digest(PROTOCOL)
-POLICIES = ("Oracle", "CEpsilonGreedy", "EXPNeuralUCB")
-THREATS = ("NoAttack", "RandomAttack")
-# Inherited from the selected registry entry/default constructor, recorded explicitly.
-POLICY_KWARGS = {
-    "Oracle": {"mode": "base"},
-    "CEpsilonGreedy": {"mode": "hybrid"},
-    "EXPNeuralUCB": {"mode": "hybrid", "beta": 1.0, "gamma_factor": 0.01, "eta_factor": 0.05},
-}
+# Algorithm/schema versions, not experimental choices.
+CATALOG_VERSION = "primary-catalog-v2"
 DOMAINS = {"topology", "physics", "environment", "threat", "policy", "allocator", "route_generation", "observation"}
 
 
-def seed_for(domain, block, scale_m=3, qualifier="", protocol_root_id=PROTOCOL_ROOT_ID):
+def seed_for(domain, block, scale_m, qualifier, protocol_root_id):
     if domain not in DOMAINS or type(block) is not int or block < 0 or type(scale_m) is not int or scale_m < 1:
         raise ValueError("Invalid seed domain/block/scale")
     if "|" in qualifier:
@@ -62,14 +33,21 @@ def seed_for(domain, block, scale_m=3, qualifier="", protocol_root_id=PROTOCOL_R
     return int.from_bytes(sha256(value.encode("utf-8")).digest()[:4], "big")
 
 
-def seed_manifest(block, policy, threat, scale_m=3):
-    if policy not in POLICIES or threat not in THREATS:
-        raise ValueError("Unsupported campaign policy/threat")
+def protocol(configs):
+    # Queue membership/count excluded. Resolved run config is separately hashed.
+    return {"namespace": configs.execution.protocol_namespace, "base_seed": configs.base_seed,
+            "catalog_version": CATALOG_VERSION, "seed_rule": "sha256-first-four-bytes-big-endian-v1"}
+
+
+def seed_manifest(configs, block, policy, threat, scale_m):
+    root = digest(protocol(configs))
+    strategy = configs.resolve_attack_strategy(threat)
     result = {}
     for domain in sorted(DOMAINS):
-        qualifier = policy if domain == "policy" else threat if domain == "threat" else ""
-        derived = seed_for(domain, block, scale_m, qualifier)
-        consumed = domain in {"topology", "physics", "policy"} or (domain == "threat" and threat == "RandomAttack")
+        qualifier = (f"{policy}:{configs.algorithm_configs[policy]['seed_offset']}"
+                     if domain == "policy" else threat if domain == "threat" else "")
+        derived = seed_for(domain, block, scale_m, qualifier, root)
+        consumed = domain in {"topology", "physics", "policy", "environment"} or (domain=="threat" and strategy.uses_rng)
         result[domain] = {
             "derived_seed": derived, "actual_seed": derived if consumed else None,
             "qualifier": qualifier, "consumed": consumed,
@@ -77,18 +55,21 @@ def seed_manifest(block, policy, threat, scale_m=3):
         }
     result["physics"]["rng"] = "SHA256 route-rank assignment; no random draw"
     result["topology"]["rng"] = "numpy.Generator(PCG64)"
-    result["threat"]["rng"] = "numpy.Generator(PCG64)" if threat == "RandomAttack" else None
+    result["threat"]["rng"] = "numpy.Generator(PCG64); supplied to configured strategy" if strategy.uses_rng else None
+    result["environment"]["rng"] = "numpy.default_rng initialization; static primary catalog needs no draws"
     result["policy"]["rng"] = "numpy.RandomState(MT19937), Python random, torch CPU"
     return result
 
 
-def build_catalog(block=0, scale_m=3):
-    if scale_m not in (1, 2, 3):
-        raise ValueError("Only prespecified 7/4, 11/7, 15/10 families are defined")
+def build_catalog(configs, block, scale_m):
+    resolved = resolve_configuration(configs)
+    if scale_m not in configs.execution.scale_points or block not in range(configs.runs):
+        raise ValueError("Scale/block is not configured")
+    root = digest(protocol(configs))
     m = scale_m
     source, destination = 0, 4*m+2
     left, right = list(range(1, 2*m+2)), list(range(2*m+2, 4*m+2))
-    rng = np.random.Generator(np.random.PCG64(seed_for("topology", block, m)))
+    rng = np.random.Generator(np.random.PCG64(seed_for("topology", block, m, "", root)))
     lperm, rperm = rng.permutation(left), rng.permutation(right)
     middle = {(int(u), int(rperm[i % len(right)])) for i, u in enumerate(lperm)}
     remaining = sorted(set((u,v) for u in left for v in right) - middle)
@@ -103,7 +84,7 @@ def build_catalog(block=0, scale_m=3):
     if added != m:
         raise ValueError("Insufficient middle edges; do not pad or reseed")
     edges = sorted([(source,u) for u in left] + list(middle) + [(v,destination) for v in right])
-    topology = {"family": PROTOCOL["topology_family"], "nodes": list(range(destination+1)),
+    topology = {"family": resolved["testbed"]["topology_family"], "nodes": list(range(destination+1)),
                 "edges": edges, "source": source, "destination": destination, "scale_m": m}
     topology_hash = digest(topology)
     graph = nx.Graph()
@@ -115,21 +96,30 @@ def build_catalog(block=0, scale_m=3):
     if set(n for path in paths for n in path) != set(topology["nodes"]):
         raise ValueError("Not all intended nodes are represented")
     ids = [digest({"topology_hash": topology_hash, "ordered_nodes": p}) for p in paths]
-    profiles = sorted(combinations_with_replacement(PROTOCOL["rate_values"], 3))
+    profiles = sorted(tuple(p) for p in resolved["testbed"]["profile_pool"])
     k = len(paths)
-    profiles = [profiles[j*9//(k-1)] for j in range(k)]
-    physics_seed = seed_for("physics", block, m)
+    if k > len(profiles):
+        raise ValueError("Configured profile pool cannot supply distinct route profiles")
+    profiles = [profiles[j*(len(profiles)-1)//(k-1)] for j in range(k)]
+    physics_seed = seed_for("physics", block, m, "", root)
     ranking = sorted(ids, key=lambda rid: sha256(f"physics-profile-v1|{hex(physics_seed)}|{rid}".encode()).hexdigest())
     by_id = dict(zip(ranking, profiles))
     route_objects = [PrimaryRoute(rid, tuple(by_id[rid]), path) for rid,path in zip(ids,paths)]
     routes = [asdict(route) for route in route_objects]
-    actions = [allocations(9, route.hops).tolist() for route in route_objects]
+    allocator = deepcopy(configs.allocator)
+    if allocator.num_routes != k:
+        raise ValueError("Allocator route cardinality contradicts configured scale")
+    budgets = tuple(allocator.allocate(timestep=0, route_stats={}, verbose=False))
+    if len(budgets) != k or sum(budgets) != allocator.total_qubits or any(b < allocator.min_qubits_per_route for b in budgets):
+        raise ValueError("Allocator budget/conservation violation")
+    actions = [allocations(b, route.hops).tolist() for b,route in zip(budgets,route_objects)]
+    factor = resolved["physics"]["entanglement_success_factor"]
     contexts = {"version": "allocation-context-v1", "observation_kind": "allocation_context",
                 "link_measurements_present": False,
                 "routes": [{"route_id": r.route_id, "nodes": r.nodes, "hops": r.hops,
-                            "budget": 9, "actions": a} for r,a in zip(route_objects, actions)]}
-    physics = {"success_factor": 100, "routes": routes,
-               "base_expected_payoffs": [list(map(float, primary_rewards(r, a))) for r,a in zip(route_objects, actions)]}
+                            "budget": b, "actions": a} for r,a,b in zip(route_objects, actions,budgets)]}
+    physics = {"success_factor": factor, "routes": routes,
+               "base_expected_payoffs": [list(map(float, primary_rewards(r, a, factor))) for r,a in zip(route_objects, actions)]}
     route_set_hash = digest(sorted(routes, key=lambda r:r["route_id"]))
     edge_sets = [set(tuple(sorted(e)) for e in zip(p[:-1],p[1:])) for p in paths]
     result = {"topology": topology, "topology_hash": topology_hash,
@@ -170,9 +160,9 @@ def validate_catalog(catalog):
             raise ValueError("Invalid simple route")
         if r["route_id"] != digest({"topology_hash":catalog["topology_hash"], "ordered_nodes":nodes}):
             raise ValueError("Route identity mismatch")
-        if obs["route_id"] != r["route_id"] or obs["actions"] != allocations(9,3).tolist() or len(values) != 55:
+        if obs["route_id"] != r["route_id"] or obs["actions"] != allocations(obs["budget"],len(nodes)-1).tolist() or len(values) != len(obs["actions"]):
             raise ValueError("Route/action/context alignment mismatch")
-        expected = primary_rewards(PrimaryRoute(r["route_id"],tuple(r["link_rates"]),tuple(nodes)),obs["actions"])
+        expected = primary_rewards(PrimaryRoute(r["route_id"],tuple(r["link_rates"]),tuple(nodes)),obs["actions"],catalog["physics"]["success_factor"])
         if not np.array_equal(values,expected):
             raise ValueError("Physics values do not match ordered route profile")
     if digest(sorted(routes,key=lambda r:r["route_id"])) != catalog["route_set_hash"]:
@@ -184,11 +174,11 @@ def validate_catalog(catalog):
         raise ValueError("Action hash mismatch")
 
 
-def build_mask(threat, frames, block=0, scale_m=3):
-    if threat not in THREATS:
-        raise ValueError("Unsupported threat")
-    attack = NoAttack() if threat == "NoAttack" else RandomAttack(attack_rate=0.0625)
-    rng = np.random.Generator(np.random.PCG64(seed_for("threat",block,scale_m,threat)))
+def build_mask(configs, threat, frames, block, scale_m):
+    resolve_configuration(configs)
+    attack = configs.resolve_attack_strategy(threat)
+    root = digest(protocol(configs))
+    rng = np.random.Generator(np.random.PCG64(seed_for("threat",block,scale_m,threat,root)))
     mask = attack.generate(rng, frames, 3*scale_m+1)
     if mask.shape != (frames,3*scale_m+1) or not np.isin(mask,[0,1]).all():
         raise ValueError("Availability mask must be binary and correctly shaped")

@@ -13,7 +13,8 @@ import random
 import subprocess
 import sys
 import time
-from types import SimpleNamespace
+from copy import copy
+from daqr.config.execution_contract import resolve_configuration
 
 import numpy as np
 import torch
@@ -22,16 +23,15 @@ from threadpoolctl import threadpool_limits
 from daqr.algorithms.base_bandit import Oracle
 from daqr.algorithms.neural_bandits import EXPNeuralUCB
 from daqr.algorithms.predictive_bandits import CEpsilonGreedy
-from daqr.core.attack_strategy import NoAttack
-from daqr.core.network_environment import QuantumEnvironment
+from daqr.core.recorded_environment import RecordedQuantumEnvironment
 from daqr.core.primary_routes import PrimaryRoute
 from daqr.campaigns.medium_spec import (
-    PROTOCOL, PROTOCOL_ROOT_ID, POLICY_KWARGS, build_catalog, build_mask,
+    build_catalog, build_mask, protocol,
     seed_manifest, digest, canonical_json, validate_catalog,
 )
 from daqr.campaigns.medium_trace import AttemptBundle, run_identity, validate_completion, write_json_exclusive
 
-FRAME_LIMIT = 64
+FRAME_LIMIT = 512  # technical safety ceiling, not a scientific horizon
 PREFLIGHT_LABEL = "TECHNICAL PREFLIGHT — NOT SCIENTIFIC EVIDENCE"
 
 
@@ -58,62 +58,47 @@ def code_identity():
                        "device":"cpu", "torch_threads":1, "blas_threads":1, "deterministic_algorithms":True}}
 
 
-def prepare_manifest(policy, threat, block=0, *, execution_kind="technical_preflight", frames=8, scale_m=3):
-    if execution_kind not in ("technical_preflight","scientific"):
-        raise ValueError("Unknown execution kind")
-    if execution_kind == "technical_preflight" and not 1 <= frames <= FRAME_LIMIT:
+def prepare_manifest(configs, policy, threat, block, *, scale_m):
+    resolved = resolve_configuration(configs)
+    if policy not in resolved["policies"] or threat not in resolved["scenarios"]:
+        raise ValueError("Requested cell is absent from configured axes")
+    frames = configs.execution.horizon
+    execution_kind = configs.execution.execution_kind
+    if execution_kind == "technical_preflight" and frames > FRAME_LIMIT:
         raise ValueError("Preflight frame limit exceeded")
-    if execution_kind == "scientific" and frames != 6000:
-        raise ValueError("Scientific horizon is frozen at 6000")
-    catalog = build_catalog(block,scale_m)
-    seeds = seed_manifest(block,policy,threat,scale_m)
-    mask = build_mask(threat,frames,block,scale_m)
-    config = {"protocol":deepcopy(PROTOCOL), "policy":policy, "policy_kwargs":deepcopy(POLICY_KWARGS[policy]),
-              "threat":threat, "effective_interruption":0.0625 if threat=="RandomAttack" else 0.0,
-              "scale_m":scale_m, "capacity_applies":policy=="EXPNeuralUCB",
-              "cepsilon_effective_defaults":{"epsilon":0.1,"learning_rate":0.1,"n_experts":1},
-              "neural_defaults":{"hidden_size":128,"learning_rate":1e-4,"regularization":0.000625,"lambda":1,
-                                 "train_after_within_route_pulls":55,"epochs_per_update":2,"batch_size":64},
-              "interpretation":"sparse-feedback stress condition" if policy=="EXPNeuralUCB" else "configured policy/reference"}
-    identity = {"protocol_root_id":PROTOCOL_ROOT_ID, "config_hash":digest(config),
+    catalog = build_catalog(configs, block, scale_m)
+    seeds = seed_manifest(configs, block, policy, threat, scale_m)
+    mask = build_mask(configs, threat, frames, block, scale_m)
+    policy_config = resolved["policies"][policy]
+    config = {"protocol": protocol(configs), "resolved": resolved, "policy": policy,
+              "policy_kwargs": policy_config["kwargs"], "threat": threat,
+              "required_run_count": len(resolved["required_cells"])}
+    identity = {"protocol_root_id":digest(protocol(configs)), "config_hash":digest(config),
         **{k:catalog[k] for k in ("topology_hash","route_set_hash","action_catalog_hash","physics_hash","observation_catalog_hash")},
         "block_id":block,"scale_m":scale_m,"seeds":seeds,"policy":policy,
-        "policy_kwargs":deepcopy(POLICY_KWARGS[policy]), "threat":threat,
-        "threat_trajectory_hash":digest(mask.tolist()), "allocator":{"name":"fixed-equal","per_route":9,"total":9*(3*scale_m+1)},
-        "replay":{"anchor":"T_b","scale":2,"capacity":12000,"applies":policy=="EXPNeuralUCB"},
-        "horizon":6000,"execution_frames":frames,"execution_kind":execution_kind,"code":code_identity()}
-    manifest = {"schema_version":"medium-run-v1","run_id":run_identity(identity),"identity":identity,
+        "policy_kwargs":policy_config["kwargs"], "policy_class":policy_config["class"],
+        "trace_contract":policy_config["trace"], "threat":threat,
+        "scenario":resolved["scenarios"][threat],
+        "threat_trajectory_hash":digest(mask.tolist()), "allocator":resolved["allocator"],
+        "replay":resolved["replay"], "horizon":frames,
+        "execution_frames":frames,"execution_kind":execution_kind,"code":code_identity()}
+    manifest = {"schema_version":"medium-run-v2","run_id":run_identity(identity),"identity":identity,
                 "execution_frames":frames,"configuration":config,
                 "label":PREFLIGHT_LABEL if execution_kind=="technical_preflight" else "SCIENCE — SEPARATE APPROVAL REQUIRED"}
     return manifest,catalog,mask
 
 
-class CampaignModelConfig:
-    """Minimal real-policy config with legacy persistence unavailable by design."""
-    def __init__(self):
-        self.overwrite=False
-        self.verbose=False
-        self.cleanup_cooldown_seconds=0
-        self.scale=1  # capacity is already the final 12000; do not double it twice
-        self.base_capacity=True
-        self.base_model=None
-        self.dir="."
-        self.day_str="campaign-managed"
-        self.allocator="fixed-equal"
-        self.environment="primary-route-metadata"
-        self.attack_strategy="external-immutable-mask"
-        self.algorithm_configs={p:{"kwargs":deepcopy(k)} for p,k in POLICY_KWARGS.items()}
-        self.algorithm_configs["NeuralUCB"]={"kwargs":{"mode":"neural"}}
-        self.backup_mgr=SimpleNamespace(mode="campaign",quantum_data_paths={"obj":{"model_state":{"campaign":Path("campaign-managed-no-legacy-io")}}})
-
-    def can_resume(self, model):
-        return True  # suppress submodel fallback; no legacy resume path is consulted
-
-    def resume_obj(self, model):
-        return False
-
-    def save_obj(self, model):
-        raise RuntimeError("Campaign persistence belongs exclusively to AttemptBundle")
+def model_config_view(configs):
+    """Execution-only view of canonical config, never a second policy registry."""
+    if configs.persistence or configs.overwrite:
+        raise ValueError("Immutable execution requires persistence=False, overwrite=False")
+    view = copy(configs)
+    view.algorithm_configs = deepcopy(configs.algorithm_configs)
+    # Constructors multiply capacity at BOTH parent/child levels. Supply resolved
+    # capacity once, with unit conversion disabled in this execution-only view.
+    view.scale = 1
+    view.cleanup_cooldown_seconds = 0
+    return view
 
 
 @contextmanager
@@ -161,28 +146,29 @@ def model_state(model):
     return result
 
 
-def run_policy(policy, contexts, rewards, mask, seed, recorder=None, capture_state=False):
-    """Single execution, no retry or cache. Called only by the bounded entry point/tests."""
-    frames=len(mask)
-    configs=CampaignModelConfig()
-    kwargs=deepcopy(POLICY_KWARGS[policy])
-    classes={"Oracle":Oracle,"CEpsilonGreedy":CEpsilonGreedy,"EXPNeuralUCB":EXPNeuralUCB}
+def run_policy(configs, policy, contexts, rewards, mask, seed, recorder=None, capture_state=False):
+    """Registry-driven single attempt; no legacy retry/cache orchestration."""
+    resolved = resolve_configuration(configs)
+    if policy not in resolved["policies"]:
+        raise ValueError("Unconfigured policy")
+    entry = configs.algorithm_configs[policy]
+    view = model_config_view(configs)
     with policy_rng(seed):
-        # No learner receives a selector argument containing the mask or q table.
-        # Existing models retain these internally for outcome/reference bookkeeping.
-        model=classes[policy](configs=configs,X_n=contexts,reward_list=rewards,
-                              frame_number=frames,attack_list=mask,capacity=12000,**kwargs)
-        if policy=="CEpsilonGreedy" and (model.epsilon,model.learning_rate,model.n_experts)!=(0.1,0.1,1):
-            raise ValueError("Inherited CEpsilonGreedy defaults changed")
-        if policy=="EXPNeuralUCB":
-            if model.mode != "hybrid" or any(n.replay_buffer.capacity!=12000 for n in model.neuralucb_list):
-                raise ValueError("Hybrid mode/replay invariant failed")
+        model=entry["model_class"](configs=view,X_n=contexts,reward_list=rewards,
+                                  frame_number=len(mask),attack_list=mask,
+                                  capacity=resolved["replay"]["capacity"],**deepcopy(entry["kwargs"]))
+        if model.mode != entry["kwargs"]["mode"] or model.capacity != resolved["replay"]["capacity"]:
+            raise ValueError("Constructed policy contradicts resolved mode/capacity")
+        if entry["runner_type"] == "batch":
             model.run(mask,verbose=False,event_sink=recorder)
         else:
-            for frame in range(frames):
+            for frame in range(len(mask)):
                 if recorder is not None:
                     recorder.preselection(frame,contexts)
-                route, action=model.take_action()
+                selected=model.take_action()
+                if not isinstance(selected,tuple) or len(selected)!=2:
+                    raise ValueError("HOLD: step-wise trace requires route/allocation action pair")
+                route, action=selected
                 if recorder is not None:
                     recorder.decision(frame,route,action)
                 q=rewards[route][action]
@@ -196,19 +182,28 @@ def run_policy(policy, contexts, rewards, mask, seed, recorder=None, capture_sta
         return model.get_results(), model_state(model) if capture_state else None
 
 
-def execute_preflight(output_root, policy="EXPNeuralUCB", threat="RandomAttack", block=0, frames=8):
-    """At most 64 frames. Never launches a 6000-frame scientific unit."""
-    manifest,catalog,mask=prepare_manifest(policy,threat,block,frames=frames)
+def execute_preflight(output_root, configs, policy, threat, block, scale_m):
+    """Bounded technical execution only; all choices are explicit configuration."""
+    if configs.execution.execution_kind != "technical_preflight":
+        raise ValueError("Scientific execution is not authorized by this entry point")
+    frames=configs.execution.horizon
+    manifest,catalog,mask=prepare_manifest(configs,policy,threat,block,scale_m=scale_m)
     validate_catalog(catalog)
     routes=tuple(PrimaryRoute(r["route_id"],tuple(r["link_rates"]),tuple(r["nodes"])) for r in catalog["routes"])
-    env=QuantumEnvironment(NoAttack(),qubit_capacities=(9,)*10,route_metadata=routes,num_paths=10,num_total_qubits=90)
+    env=RecordedQuantumEnvironment(attack=configs.resolve_attack_strategy(threat),availability=mask,
+                           qubit_capacities=tuple(r["budget"] for r in catalog["observations"]["routes"]),
+                           route_metadata=routes,num_paths=len(routes),frame_length=frames,
+                           horizon_length=frames, external_topology=catalog["topology"],
+                           num_total_qubits=configs.allocator.total_qubits,
+                           seed=manifest["identity"]["seeds"]["environment"]["actual_seed"],
+                           **configs.physics_params)
     for x,obs,q,expected in zip(env.contexts,catalog["observations"]["routes"],env.reward_list,catalog["physics"]["base_expected_payoffs"]):
         if not np.array_equal(x,obs["actions"]) or not np.array_equal(q,expected):
             raise ValueError("Environment/catalog mismatch")
     bundle=AttemptBundle(output_root,manifest,catalog,mask)
     try:
         start=time.perf_counter()
-        results,_=run_policy(policy,env.contexts,env.reward_list,mask,
+        results,_=run_policy(configs,policy,env.contexts,env.reward_list,mask,
                             manifest["identity"]["seeds"]["policy"]["actual_seed"],bundle.recorder)
         elapsed=time.perf_counter()-start
         # These legacy keys are confined to the test observation, never the raw event schema.
@@ -228,15 +223,7 @@ def execute_preflight(output_root, policy="EXPNeuralUCB", threat="RandomAttack",
 
 
 def main():
-    import argparse
-    parser=argparse.ArgumentParser(description=PREFLIGHT_LABEL)
-    parser.add_argument("--output",required=True,type=Path)
-    parser.add_argument("--policy",choices=tuple(POLICY_KWARGS),default="EXPNeuralUCB")
-    parser.add_argument("--threat",choices=("NoAttack","RandomAttack"),default="RandomAttack")
-    parser.add_argument("--frames",type=int,default=8)
-    args=parser.parse_args()
-    directory,completion=execute_preflight(args.output,args.policy,args.threat,frames=args.frames)
-    print(canonical_json({"label":PREFLIGHT_LABEL,"bundle":str(directory),"completion":completion}))
+    raise SystemExit("Supply explicit ExperimentConfiguration to execute_preflight; no scientific/default CLI preset.")
 
 
 if __name__=="__main__":

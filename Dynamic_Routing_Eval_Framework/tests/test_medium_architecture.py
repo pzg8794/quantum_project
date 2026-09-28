@@ -127,7 +127,7 @@ def test_fail_closed_entire_configuration(fault,tmp_path):
     if fault=="bad_allocator": cfg.allocator.allocation_capability="dynamic"
     if fault=="budget": cfg.allocator.total_qubits=91
     if fault=="batch": cfg.algorithm_configs["Oracle"]["runner_type"]="unsupported"
-    if fault=="mode": cfg.algorithm_configs["EXPNeuralUCB"]["kwargs"]["mode"]="neural"
+    if fault=="mode": cfg.algorithm_configs["EXPNeuralUCB"]["kwargs"]["mode"]="invalid-mode"
     with pytest.raises(ValueError):
         execute_preflight(tmp_path,cfg,"Oracle","NoAttack",0,3)
     assert not list(tmp_path.iterdir())  # cannot run even a supported cell of an invalid matrix

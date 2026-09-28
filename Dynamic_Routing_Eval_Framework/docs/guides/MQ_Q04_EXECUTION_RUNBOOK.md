@@ -113,6 +113,25 @@ fabricate a static approximation.
   topology, threat, allocator, horizon, replay, seed, reward, update, metric, or
   evidence semantics.
 
+## Q-04 full-roster TEST checkpoint — 2026-09-27
+
+- Required medium/primary regression: `134 passed in 171.33s`.
+- Complete scientific-notebook qualification, including a fresh real serial
+  75-cell matrix and fresh exact serial/process equivalence: `9 passed in
+  470.62s`.
+- The first expanded regression exposed a test-fixture leak because the shared
+  five-model list was passed by reference and an extensibility test appended its
+  injected policy. The fixture now passes a defensive list copy.
+- The same regression exposed an obsolete negative fixture that treated
+  `EXPNeuralUCB` mode `neural` as invalid even though corrected full-roster trace
+  support legitimately uses the inherited neural mode for `GNeuralUCB`. The
+  fail-closed test now uses the genuinely unsupported value `invalid-mode`.
+- These two corrections affect technical tests only. They do not change runtime
+  model, threat, allocator, seed, reward, update, evidence, or campaign behavior.
+- `git diff --check` and Python compilation of the changed campaign modules pass.
+- Scientific 6,000-frame execution remains unstarted pending independent final
+  Q-04 review.
+
 ## Q-04 bounded validation receipt — 2026-09-27
 
 - DEV commit: `477f6eb4`.

@@ -132,6 +132,30 @@ fabricate a static approximation.
 - Scientific 6,000-frame execution remains unstarted pending independent final
   Q-04 review.
 
+## Q-04 independent final review — 2026-09-27
+
+- Decision: **PASS** at source/test revision `8787565e`.
+- The independent ULTRA reviewer verified the exact five-model roster, five
+  threats, three blocks, fresh `v2` namespace/root, 75-cell completion contract,
+  absence of `CEpsilonGreedy`, and preservation of the old 45-cell diagnostic.
+- The reviewer independently reran the required regression (`134 passed`) and
+  complete notebook qualification (`9 passed`), confirmed byte-identical
+  notebook regeneration, and inspected the process boundary.
+- Each process reconstructs private configuration/model/RNG/state, invokes the
+  existing evaluator/runner with `threaded=False`, and produces 15 disjoint
+  bundles for one threat. Only the parent writes the 75-cell receipt.
+- **BLOCKER:** none.
+- **DEBT:** the serial `AllocatorRunner` retains a legacy catch-and-continue
+  completion banner; the immutable receipt gate still fails closed, and the
+  qualified process path propagates worker failures.
+- **OPTIONAL:** a longer multi-frame serial/process byte comparison could add
+  assurance, but is not required because the inner execution is unchanged and
+  the existing 4- and 8-frame semantic tests also pass.
+- Release: Q-05 may launch from exact revision `8787565e` with two process
+  workers, the fresh `default-fixed-full-roster-v2` root, and acceptance only
+  after a parent-written receipt reports exactly 75 completed cells and no
+  failures.
+
 ## Q-04 bounded validation receipt — 2026-09-27
 
 - DEV commit: `477f6eb4`.

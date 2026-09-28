@@ -184,6 +184,30 @@ fabricate a static approximation.
   accepted until that reviewer adjudicates the complete full-roster package,
   including the unexpectedly low Oracle-normalized efficiencies.
 
+## Q-05/Q-06 independent result review — 2026-09-28
+
+- Decision: **ACCEPT Q-05 ARTIFACTS FOR SCIENTIFIC REVIEW** and close Q-06
+  artifact completeness/data-quality validation.
+- The reviewer independently reran the repository validator and a separate raw-
+  bundle recomputation. All 75 cells and 1.8 million ordered events pass; all
+  receipt hashes match disk; the aggregate maximum numerical delta is `0.0`.
+- The reviewer confirmed the exact five-model roster in every threat group,
+  `threaded=False` inside process workers, zero old/new run-ID overlap, and no
+  reuse of the superseded 45-cell diagnostic.
+- **BLOCKER:** none for artifact acceptance.
+- **DEBT:** all learned policies exhibit unexpectedly low Oracle-normalized
+  efficiency. The primary catalog contains 270/550 zero-payoff allocations,
+  and learned policies select zero-payoff actions in approximately 88--90% of
+  Baseline frames. Existing traces must be analyzed before interpretation.
+- **DEBT:** OnlineAdaptive's realized mean global availability is approximately
+  4.635%; five zero-result cells are consistent with the recorded trajectories.
+- **DEBT:** causal-threat Oracle normalization matches block/threat/seed but not
+  an identical realized trajectory because the threat responds to each policy.
+- Full decision and descriptive results:
+  `docs/guides/MQ_Q05_DEFAULT_FIXED_RESULT_REVIEW.md`.
+- No rerun, filtering, evidence replacement, manuscript update, architecture
+  change, or new experiment was performed.
+
 ## Q-04 bounded validation receipt — 2026-09-27
 
 - DEV commit: `477f6eb4`.

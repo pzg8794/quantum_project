@@ -13,6 +13,16 @@ import pytest
 
 from daqr.campaigns.medium_spec import build_catalog, seed_manifest
 from daqr.campaigns.medium_execution_evidence import MediumExecutionEvidencePlugin
+from daqr.campaigns.medium_process import run_process_isolated_campaign
+from daqr.campaigns.medium_tier1 import (
+    MODEL_ROSTER,
+    PROFILE_POOL as MEDIUM_PROFILE_POOL,
+    build_block_payload,
+    catalog_configuration as medium_catalog_configuration,
+    configure_external_persistence as configure_medium_persistence,
+    framework_configuration,
+    run_serial_campaign,
+)
 from daqr.campaigns.medium_trace import PHASES, file_hash, validate_completion
 from daqr.config.execution_contract import ExecutionSettings
 from daqr.config.experiment_config import ExperimentConfiguration
@@ -55,6 +65,13 @@ def notebook_namespace():
         "QubitAllocator": QubitAllocator,
         "build_catalog": build_catalog,
         "MediumExecutionEvidencePlugin": MediumExecutionEvidencePlugin,
+        "MODEL_ROSTER": MODEL_ROSTER,
+        "MEDIUM_PROFILE_POOL": MEDIUM_PROFILE_POOL,
+        "build_block_payload": build_block_payload,
+        "medium_catalog_configuration": medium_catalog_configuration,
+        "configure_medium_persistence": configure_medium_persistence,
+        "framework_configuration": framework_configuration,
+        "run_process_isolated_campaign": run_process_isolated_campaign,
     }
     exec("".join(notebook["cells"][4]["source"]), namespace)
     exec("".join(notebook["cells"][6]["source"]), namespace)
@@ -93,7 +110,8 @@ def test_notebook_uses_only_real_allocator_runner():
     notebook = load_notebook(NOTEBOOK)
     source = "\n".join("".join(cell.get("source", [])) for cell in notebook["cells"])
     assert "from daqr.evaluation.allocator_runner import AllocatorRunner" in source
-    assert "MediumExecutionEvidencePlugin" in source
+    assert "run_process_isolated_campaign" in source
+    assert "configure_medium_persistence" in source
     assert "daqr.campaigns.medium_scientific" not in source
     assert inspect.getmodule(AllocatorRunner).__name__ == "daqr.evaluation.allocator_runner"
     assert not (ROOT / "daqr" / "campaigns" / "medium_scientific.py").exists()
@@ -257,9 +275,11 @@ def test_real_runner_dispatches_frozen_full_spectrum(monkeypatch):
 def test_real_runner_tiny_full_matrix_writes_complete_event_evidence(tmp_path, monkeypatch):
     namespace = notebook_namespace()
     namespace["BASE_FRAMES"] = 4
+    namespace["EXECUTION_KIND"] = "technical_preflight"
     framework = copy.deepcopy(namespace["FRAMEWORK_CONFIG"])
     framework["base_frames"] = 4
     framework["capacity"] = 8
+    framework["execution_kind"] = "technical_preflight"
     framework["aggregate_state"] = False
     framework["enable_plots"] = False
 
@@ -357,6 +377,7 @@ def test_real_runner_tiny_full_matrix_writes_complete_event_evidence(tmp_path, m
             for line in (bundle / "events.jsonl").read_text().splitlines()
         ]
         assert completion["state"] == "COMPLETE"
+        assert completion["scientific_evidence"] is False
         assert completion["actual_record_counts"] == {phase: 4 for phase in PHASES}
         assert "result.json" in completion["file_hashes"]
         assert file_hash(bundle / "result.json") == completion["file_hashes"]["result.json"]
@@ -400,3 +421,56 @@ def test_real_runner_tiny_full_matrix_writes_complete_event_evidence(tmp_path, m
             else:
                 assert update["policy_update_target"] == outcome["selected_continuous_payoff"]
     assert zero_outcomes > 0
+
+
+def test_process_isolated_matrix_matches_serial_reference(tmp_path):
+    serial_root = tmp_path / "serial"
+    process_root = tmp_path / "process"
+    run_serial_campaign(
+        serial_root,
+        base_frames=1,
+        execution_kind="technical_preflight",
+    )
+    run_process_isolated_campaign(
+        process_root,
+        base_frames=1,
+        execution_kind="technical_preflight",
+        max_workers=2,
+    )
+
+    def bundles_by_run(root):
+        return {
+            json.loads((bundle / "manifest.json").read_text())["run_id"]: bundle
+            for bundle in (root / "q04-evidence").glob("*/attempt-1")
+        }
+
+    serial = bundles_by_run(serial_root)
+    process = bundles_by_run(process_root)
+    assert serial.keys() == process.keys()
+    assert len(serial) == 75
+    identical = (
+        "manifest.json",
+        "attempt.json",
+        "topology.json",
+        "routes.json",
+        "observations.json",
+        "physics.json",
+        "catalog_diagnostics.json",
+        "availability.json",
+        "events.jsonl",
+        "result.json",
+    )
+    for run_id in serial:
+        for filename in identical:
+            assert (serial[run_id] / filename).read_bytes() == (
+                process[run_id] / filename
+            ).read_bytes()
+        serial_completion = json.loads(
+            (serial[run_id] / "completion.json").read_text()
+        )
+        process_completion = json.loads(
+            (process[run_id] / "completion.json").read_text()
+        )
+        serial_completion.pop("wall_seconds")
+        process_completion.pop("wall_seconds")
+        assert serial_completion == process_completion

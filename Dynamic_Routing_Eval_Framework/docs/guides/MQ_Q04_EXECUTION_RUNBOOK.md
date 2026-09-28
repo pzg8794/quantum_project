@@ -13,8 +13,8 @@
 
 1. Checkout the pushed Q-04 execution commit; never run from an uncommitted source tree.
 2. Set `QUANTUM_MEDIUM_OUTPUT_ROOT` to a durable directory outside this source repository.
-3. Execute the notebook from top to bottom through the real `daqr.evaluation.allocator_runner.AllocatorRunner` path.
-4. Keep the Default run serial. Process acceleration is optional and deferred because no acceleration layer has yet demonstrated identity with the proven notebook workflow.
+3. Execute the notebook from top to bottom. `QUANTUM_MEDIUM_MAX_WORKERS=1` retains the direct serial `daqr.evaluation.allocator_runner.AllocatorRunner` path; a value greater than one uses the qualified process-isolated outer scheduler while retaining `MultiRunEvaluator -> QuantumExperimentRunner` inside every worker.
+4. Parallel execution is limited to independent scenario-group processes. Each process reconstructs configuration from primitive inputs, uses a unique state/log root, evaluates the complete five-model roster and all three blocks, and writes immutable attempt bundles to the shared evidence root. Do not use the existing thread executors for this campaign.
 5. Do not delete, retry, or replace valid poor/zero state solely because of performance.
 6. Outcome/performance-triggered reruns are disabled for this campaign. The existing
    bounded technical-exception retry remains available, and a terminal failure is
@@ -46,7 +46,8 @@ Notebook SHA-256 before execution:
 Notebook SHA-256 after execution:
 External output root:
 Start/end time:
-Execution mode: serial proven AllocatorRunner
+Execution mode: serial proven AllocatorRunner / qualified process-isolated scenario groups
+Configured process workers:
 Policies/threats/blocks: 5/5/3
 External catalog: 15 nodes / 10 routes / 550 actions
 External state/log inventory:
@@ -69,7 +70,7 @@ Independent review decision:
 
 - Random remains on separate native-stochastic provenance qualification; changing allocations are expected, but every result must bind the allocation/catalog/environment that generated it.
 - DynamicUCB and ThompsonSampling remain held; do not label initialization-only allocation as adaptive execution.
-- Process acceleration is OPTIONAL and remains deferred; it must not replace or shadow the proven runner.
+- Process acceleration is OPTIONAL. It may be used only through the qualified scenario-group process scheduler; the direct serial path remains the reference and fallback.
 - No manuscript, historical corpus, Tier-2, or F-10 change is authorized by this runbook.
 
 ## Causal availability boundary
@@ -84,6 +85,33 @@ trajectory across policies within each block/threat pairing, while Adaptive and
 OnlineAdaptive trajectories are policy-conditioned by definition. The evidence
 manifest records this boundary; it does not force equal adaptive masks or
 fabricate a static approximation.
+
+## Q-04 process-isolated acceleration qualification — 2026-09-27
+
+- Parallelism is outside the scientific treatment: the five threat groups may run
+  in separate OS processes, but each worker executes the complete pinned roster
+  (`Oracle`, `GNeuralUCB`, `EXPNeuralUCB`, `CPursuitNeuralUCB`, and
+  `iCPursuitNeuralUCB`) and all three blocks through the existing evaluator and
+  experiment runner.
+- Workers receive only primitive job specifications and reconstruct their own
+  configuration, allocator, model objects, scenario components, RNG state, and
+  backup manager. Live evaluator/model/plugin objects are never shared or
+  pickled across workers.
+- Each worker has a unique `process-state/<scenario>` scratch root. Immutable
+  attempt bundles share the campaign evidence root because their run IDs and
+  exclusive-create paths are disjoint. Only the parent process validates the
+  complete 75-cell matrix and writes `campaign-receipt.json`.
+- `spawn` process creation and one scenario task per child prevent inherited
+  process-global RNG/model state. No thread-based model execution is used.
+- Exact tiny-horizon serial/process equivalence passed: one fresh 75-cell serial
+  campaign and one fresh 75-cell process campaign had identical run-ID sets and
+  byte-identical manifests, attempts, catalogs, availability trajectories,
+  event streams, and results. Completion records were identical after removing
+  the non-scientific wall-clock field (`1 passed in 306.40s`).
+- This qualification changes scheduling only. It does not pool or reuse any cell
+  from the superseded 45-cell diagnostic, change the five-model cohort, or alter
+  topology, threat, allocator, horizon, replay, seed, reward, update, metric, or
+  evidence semantics.
 
 ## Q-04 bounded validation receipt — 2026-09-27
 

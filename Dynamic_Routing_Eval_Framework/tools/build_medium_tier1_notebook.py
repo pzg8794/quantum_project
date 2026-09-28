@@ -87,13 +87,17 @@ print(f"NetworkX version: {nx.__version__}")
 import daqr
 print('✓ daqr import OK')
 
-from daqr.config.execution_contract import ExecutionSettings
 from daqr.config.experiment_config import ExperimentConfiguration
-from daqr.config.local_backup_manager import LocalBackupManager
-from daqr.core.catalog_components import LayeredPrimaryCatalog, PrimaryPayoff
 from daqr.core.qubit_allocator import QubitAllocator
-from daqr.campaigns.medium_spec import build_catalog
-from daqr.campaigns.medium_execution_evidence import MediumExecutionEvidencePlugin
+from daqr.campaigns.medium_process import run_process_isolated_campaign
+from daqr.campaigns.medium_tier1 import (
+    MODEL_ROSTER,
+    PROFILE_POOL as MEDIUM_PROFILE_POOL,
+    build_block_payload,
+    catalog_configuration as medium_catalog_configuration,
+    configure_external_persistence as configure_medium_persistence,
+    framework_configuration,
+)
 from daqr.evaluation.allocator_runner import AllocatorRunner
 
 print('✓ medium-scale catalog components and real AllocatorRunner loaded')
@@ -104,13 +108,7 @@ SOURCE_NOTEBOOK_COMMIT = '96b327de7e3571ad3cbf05bbeee02cfb922ca2c3'
 SOURCE_NOTEBOOK_BLOB = '599bb49b58a41fc98ff7d6f10c4077c941507269'
 SOURCE_NOTEBOOK_SHA256 = '714eefbd1eafc3c66347fc6b0460e6aaf706ad25b1ea411bcc89ac317a4711c9'
 
-models = [
-    'Oracle',
-    'GNeuralUCB',
-    'EXPNeuralUCB',
-    'CPursuitNeuralUCB',
-    'iCPursuitNeuralUCB',
-]
+models = list(MODEL_ROSTER)
 BASE_FRAMES = 6000
 FRAME_STEP = 0
 RUNS = [3]
@@ -119,6 +117,7 @@ ALLOCATORS = ['Default']
 ATTACK_INTENSITY = 0.25
 BASE_SEED = 12345
 PHYSICS_MODELS = ['medium_tier1']
+EXECUTION_KIND = 'scientific'
 
 # Preserve the established full-spectrum notebook order.
 test_scenarios = {
@@ -129,40 +128,9 @@ test_scenarios = {
     'none': 'Baseline (Optimal Conditions)',
 }
 
-PROFILE_POOL = list(itertools.combinations_with_replacement((1e-4, 1.5e-4, 2e-4), 3))
-MEDIUM_CONFIG = {
-    'testbed': 'medium_tier1',
-    'topology_family': 'layered-primary-form-v1',
-    'profile_pool': PROFILE_POOL,
-    'num_paths': 10,
-    'total_qubits': 90,
-    'min_qubits_per_route': 1,
-    'baseline_allocation': (9,) * 10,
-    'entanglement_success_factor': 100,
-    'physics_model_name': 'medium_tier1',
-    'state_suffix': 'medium_tier1_default_full_roster_v2',
-}
-
-FRAMEWORK_CONFIG = {
-    'exp_num': 3,
-    'test_mode': False,
-    'base_frames': BASE_FRAMES,
-    'frame_step': FRAME_STEP,
-    'models': models,
-    'intensity': ATTACK_INTENSITY,
-    'routing_strategy': 'fixed',
-    'capacity': 12000,
-    'main_env': 'stochastic',
-    'aggregate_state': False,
-    'enable_plots': False,
-    'scientific_block_ids': [0, 1, 2],
-    'env_attrs': {
-        'intensity': ATTACK_INTENSITY,
-        'base_seed': BASE_SEED,
-        'reproducible': True,
-    },
-    'medium_tier1': MEDIUM_CONFIG,
-}
+PROFILE_POOL = list(MEDIUM_PROFILE_POOL)
+FRAMEWORK_CONFIG = framework_configuration(BASE_FRAMES, EXECUTION_KIND)
+MEDIUM_CONFIG = FRAMEWORK_CONFIG['medium_tier1']
 
 assert list(test_scenarios) == ['stochastic', 'markov', 'adaptive', 'onlineadaptive', 'none']
 assert len(models) * len(test_scenarios) * RUNS[0] == 75
@@ -180,44 +148,12 @@ print('PHYSICS_MODELS:', PHYSICS_MODELS)
     replace_source(cells[5], "## Medium-Scale Helper Functions (catalog, contexts, rewards, external evidence)\n")
     replace_source(cells[6], """# --- Frozen medium-scale external catalog + physics adapter ---
 def _catalog_configuration(base_seed: int, qubit_cap):
-    allocation = tuple(int(value) for value in qubit_cap)
-    if allocation != (9,) * 10:
-        raise ValueError(f'F-08 fixed allocator must supply ten nine-qubit budgets, got {allocation}')
-    config = ExperimentConfiguration(
-        models=models,
-        scenarios=test_scenarios,
-        runs=3,
-        scale=2,
-        base_capacity=True,
-        base_seed=int(base_seed),
-        attack_intensity=ATTACK_INTENSITY,
-        attack_rate=ATTACK_INTENSITY,
-        physics_params={'entanglement_success_factor': 100},
-        testbed_config={
-            'topology_family': 'layered-primary-form-v1',
-            'profile_pool': PROFILE_POOL,
-        },
-        allocator=QubitAllocator(
-            total_qubits=90,
-            num_routes=10,
-            min_qubits_per_route=1,
-            baseline_allocation=allocation,
-        ),
-        persistence=False,
-        resume=False,
-        use_last_backup=False,
-        overwrite=False,
-        catalog_component=LayeredPrimaryCatalog(),
-        reward_component=PrimaryPayoff(),
+    return medium_catalog_configuration(
+        BASE_FRAMES,
+        EXECUTION_KIND,
+        base_seed,
+        qubit_cap,
     )
-    config.execution = ExecutionSettings(
-        protocol_namespace='f08-tier1-default-fixed-full-roster-v2',
-        horizon=BASE_FRAMES,
-        base_horizon=BASE_FRAMES,
-        scale_points=(3,),
-        execution_kind='scientific',
-    )
-    return config
 
 
 def get_physics_params(
@@ -227,96 +163,24 @@ def get_physics_params(
     qubit_cap,
     block_id: int = 0,
 ):
-    if physics_model != 'medium_tier1':
-        raise ValueError(f'Unsupported medium physics model: {physics_model}')
     if int(current_frames) != BASE_FRAMES:
         raise ValueError(f'Frozen horizon is {BASE_FRAMES}, got {current_frames}')
-
-    from daqr.campaigns.medium_spec import seed_manifest
-    from daqr.core.scenario_execution import ScenarioExecutionComponent
-
-    scenario_config = _catalog_configuration(base_seed, qubit_cap)
-    catalog = build_catalog(
-        scenario_config,
-        block=int(block_id),
-        scale_m=3,
+    return build_block_payload(
+        physics_model,
+        current_frames,
+        base_seed,
+        qubit_cap,
+        block_id=block_id,
+        execution_kind=EXECUTION_KIND,
     )
-    graph = nx.Graph()
-    graph.add_nodes_from(catalog['topology']['nodes'])
-    graph.add_edges_from(catalog['topology']['edges'])
-    contexts = [np.asarray(route['actions'], dtype=int) for route in catalog['observations']['routes']]
-    rewards = [np.asarray(values, dtype=float) for values in catalog['physics']['base_expected_payoffs']]
-
-    assert graph.number_of_nodes() == 15
-    assert len(contexts) == len(rewards) == 10
-    assert sum(len(actions) for actions in contexts) == 550
-
-    scenario_execution_components = {}
-    for scenario in test_scenarios:
-        strategy = scenario_config.resolve_attack_strategy(scenario)
-        threat_seed = seed_manifest(
-            scenario_config,
-            block=int(block_id),
-            policy=models[0],
-            threat=scenario,
-            scale_m=3,
-        )['threat']['actual_seed']
-        scenario_execution_components[scenario] = ScenarioExecutionComponent(
-            strategy=strategy,
-            seed=threat_seed,
-        )
-
-    print(f'📊 Medium topology: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges')
-    print(f'📊 Medium routes/actions: {len(contexts)} routes, {sum(len(x) for x in contexts)} actions')
-
-    return {
-        'noise_model': None,
-        'fidelity_calculator': None,
-        'external_topology': graph,
-        'external_contexts': contexts,
-        'external_rewards': rewards,
-        '_campaign_catalog_identity': {
-            'block': int(block_id),
-            'topology_hash': catalog['topology_hash'],
-            'route_set_hash': catalog['route_set_hash'],
-            'action_catalog_hash': catalog['action_catalog_hash'],
-            'observation_catalog_hash': catalog['observation_catalog_hash'],
-            'physics_hash': catalog['physics_hash'],
-        },
-        '_campaign_trace_catalog': catalog,
-        '_scenario_execution_components': scenario_execution_components,
-        '_execution_evidence_configuration': scenario_config,
-    }
 
 
 def configure_external_persistence(custom_config, output_root):
-    root = Path(output_root).expanduser().resolve()
-    source_root = Path.cwd().resolve()
-    if root == source_root or root.is_relative_to(source_root):
-        raise ValueError('QUANTUM_MEDIUM_OUTPUT_ROOT must be outside the source repository')
-    root.mkdir(parents=True, exist_ok=True)
-    custom_config.dir = root
-    custom_config.persistence = True
-    custom_config.backup_mgr = LocalBackupManager(
-        date_str=custom_config.day_str,
-        config_dir=root,
-        verbose=False,
-    )
-    custom_config.backup_mgr.in_share_drive = False
-    custom_config.backup_mgr.mode = 'local'
-    custom_config.scientific_evidence_root = root / 'q04-evidence'
-    custom_config.execution_evidence_plugin = MediumExecutionEvidencePlugin(
-        custom_config.scientific_evidence_root,
-        scale_m=3,
-    )
-    custom_config.scientific_seed_namespace = 'f08-tier1-default-fixed-full-roster-v2'
-    custom_config.scientific_campaign_base_seed = BASE_SEED
-    custom_config.disable_outcome_retries = True
-    return custom_config
+    return configure_medium_persistence(custom_config, output_root)
 """)
     replace_source(cells[7], """## Run (Real AllocatorRunner)
 
-The Default allocator runs serially through the same `ExperimentConfiguration` + `daqr.evaluation.allocator_runner.AllocatorRunner` workflow as the pinned source notebook. Process acceleration is intentionally deferred rather than changing workflow identity.
+The Default allocator uses the same configured model roster, catalog, evaluator, runner, and evidence plug-ins as the pinned source notebook. Set `QUANTUM_MEDIUM_MAX_WORKERS` above one only for the qualified process-isolated scenario-group scheduler; shared-process thread execution is not used.
 """)
     replace_source(cells[8], "### Allocator: Default / fixed\n")
     replace_source(cells[9], """allocator_type = 'Default'
@@ -345,43 +209,53 @@ print('Threat order:              ', list(test_scenarios))
 print('External evidence root:    ', OUTPUT_ROOT)
 print('=' * 70)
 
-for allocator_type in ALLOCATORS:
-    for scale in SCALES:
-        for physics_model in PHYSICS_MODELS:
-            initial_allocator = QubitAllocator(
-                total_qubits=90,
-                num_routes=10,
-                min_qubits_per_route=1,
-                baseline_allocation=(9,) * 10,
-            )
-            custom_config = ExperimentConfiguration(
-                env_type=FRAMEWORK_CONFIG['main_env'],
-                scenarios=test_scenarios,
-                use_last_backup=last_backup,
-                resume=False,
-                models=models,
-                attack_intensity=attack_intensity,
-                attack_rate=attack_intensity,
-                scale=scale,
-                base_capacity=base_cap,
-                overwrite=overwrite,
-                base_seed=BASE_SEED,
-                allocator=initial_allocator,
-                persistence=False,
-            )
-            configure_external_persistence(custom_config, OUTPUT_ROOT)
+MAX_WORKERS = int(os.environ.get('QUANTUM_MEDIUM_MAX_WORKERS', '1'))
+if MAX_WORKERS > 1:
+    receipt = run_process_isolated_campaign(
+        OUTPUT_ROOT,
+        base_frames=BASE_FRAMES,
+        execution_kind=EXECUTION_KIND,
+        max_workers=MAX_WORKERS,
+    )
+    print('Process-isolated campaign receipt:', receipt)
+else:
+    for allocator_type in ALLOCATORS:
+        for scale in SCALES:
+            for physics_model in PHYSICS_MODELS:
+                initial_allocator = QubitAllocator(
+                    total_qubits=90,
+                    num_routes=10,
+                    min_qubits_per_route=1,
+                    baseline_allocation=(9,) * 10,
+                )
+                custom_config = ExperimentConfiguration(
+                    env_type=FRAMEWORK_CONFIG['main_env'],
+                    scenarios=test_scenarios,
+                    use_last_backup=last_backup,
+                    resume=False,
+                    models=models,
+                    attack_intensity=attack_intensity,
+                    attack_rate=attack_intensity,
+                    scale=scale,
+                    base_capacity=base_cap,
+                    overwrite=overwrite,
+                    base_seed=BASE_SEED,
+                    allocator=initial_allocator,
+                    persistence=False,
+                )
+                configure_external_persistence(custom_config, OUTPUT_ROOT)
 
-            alloc_runner = AllocatorRunner(
-                allocator_type=allocator_type,
-                physics_models=[physics_model],
-                framework_config=FRAMEWORK_CONFIG,
-                scales=[scale],
-                runs=RUNS,
-                models=models,
-                test_scenarios=test_scenarios,
-                config=custom_config,
-            )
-            alloc_runner.run(get_physics_params_func=get_physics_params)
+                alloc_runner = AllocatorRunner(
+                    allocator_type=allocator_type,
+                    physics_models=[physics_model],
+                    framework_config=FRAMEWORK_CONFIG,
+                    scales=[scale],
+                    runs=RUNS,
+                    models=models,
+                    test_scenarios=test_scenarios,
+                    config=custom_config,
+                )
+                alloc_runner.run(get_physics_params_func=get_physics_params)
 
 print('DEFAULT ALLOCATOR FULL-SPECTRUM RUN COMPLETE!')
 """)
@@ -396,7 +270,7 @@ print('DEFAULT ALLOCATOR FULL-SPECTRUM RUN COMPLETE!')
 - Three equal 6,000-frame blocks are represented by `RUNS=[3]`, `BASE_FRAMES=6000`, and `FRAME_STEP=0` in the proven runner.
 - Raw state/evidence must remain under the configured external output root.
 - Random is under separate native-semantics reassessment; DynamicUCB and ThompsonSampling remain on hold.
-- Process acceleration is optional and is not introduced here because preserving the proven runner workflow is the critical path.
+- Process acceleration is optional and may be used only after serial/process equivalence passes for this exact notebook/configuration.
 """),
     })
 
@@ -419,7 +293,7 @@ print('DEFAULT ALLOCATOR FULL-SPECTRUM RUN COMPLETE!')
         ],
         "required_threats": ["stochastic", "markov", "adaptive", "onlineadaptive", "none"],
         "required_cells": 75,
-        "execution_mode": "serial-proven-runner",
+        "execution_mode": "serial-or-qualified-process-isolated",
     }
     OUTPUT.write_text(json.dumps(notebook, indent=1) + "\n", encoding="utf-8")
     print(OUTPUT)

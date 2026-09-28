@@ -21,6 +21,31 @@ from daqr.evaluation.execution_evidence import (
 )
 
 
+def finalize_medium_campaign(output_root, configuration, scale_m, bundle_paths=None):
+    output_root = Path(output_root).expanduser().resolve()
+    if bundle_paths is None:
+        bundle_paths = sorted(
+            path.parent
+            for path in output_root.glob("*/attempt-*/completion.json")
+        )
+    else:
+        bundle_paths = sorted(Path(path).resolve() for path in bundle_paths)
+    report = validate_scale_completion(configuration, scale_m, bundle_paths)
+    receipt = {
+        "schema_version": "medium-campaign-completion-v1",
+        "state": "COMPLETE",
+        "required_cells": report["required_cells"],
+        "completed_cells": report["completed_cells"],
+        "bundle_completion_hashes": {
+            str(path.relative_to(output_root)): file_hash(path / "completion.json")
+            for path in bundle_paths
+        },
+    }
+    receipt_path = output_root / "campaign-receipt.json"
+    write_json_exclusive(receipt_path, receipt)
+    return receipt_path
+
+
 class MediumExecutionEvidencePlugin(ExecutionEvidencePlugin):
     """Inject the frozen medium-scale manifest and trace contract at runtime."""
 
@@ -143,17 +168,9 @@ class MediumExecutionEvidencePlugin(ExecutionEvidencePlugin):
         if not self._block_configs:
             raise ValueError("No evidence blocks were registered")
         config = self._block_configs[min(self._block_configs)]
-        report = validate_scale_completion(config, self.scale_m, self._bundle_paths)
-        receipt = {
-            "schema_version": "medium-campaign-completion-v1",
-            "state": "COMPLETE",
-            "required_cells": report["required_cells"],
-            "completed_cells": report["completed_cells"],
-            "bundle_completion_hashes": {
-                str(path.relative_to(self.output_root)): file_hash(path / "completion.json")
-                for path in sorted(self._bundle_paths)
-            },
-        }
-        receipt_path = self.output_root / "campaign-receipt.json"
-        write_json_exclusive(receipt_path, receipt)
-        return receipt_path
+        return finalize_medium_campaign(
+            self.output_root,
+            config,
+            self.scale_m,
+            bundle_paths=self._bundle_paths,
+        )

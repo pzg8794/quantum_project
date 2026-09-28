@@ -156,6 +156,34 @@ fabricate a static approximation.
   after a parent-written receipt reports exactly 75 completed cells and no
   failures.
 
+## Q-05 completion / Q-06 manager validation — 2026-09-28
+
+- The fresh 6,000-frame Default/fixed campaign completed from source commit
+  `f5ed371c` at `2026-09-28T02:08:50Z` using two qualified process workers.
+- The parent-written receipt reports exactly 75/75 complete cells for three
+  blocks, five threats, and the exact roster `Oracle`, `GNeuralUCB`,
+  `EXPNeuralUCB`, `CPursuitNeuralUCB`, and `iCPursuitNeuralUCB`. Receipt
+  SHA-256: `cfa05be491183597963c6efe3e02de28b8ee13adc01f61cfe91b9d0bbcdd0c21`.
+- Repository validation reparsed all 1.8 million ordered phase records and
+  returned 75 required / 75 complete cells. All bundles are `attempt-1`,
+  `COMPLETE`, scientific-evidence marked, 6,000 frames, and contain exactly
+  6,000 `PRESELECTION`, `DECISION`, `OUTCOME`, and `UPDATE` records. There are
+  no failed cells, technical retries, or performance reruns.
+- Threat seed records are identical across policies within each matched
+  block/threat group. Static `none`, `stochastic`, and `markov` trajectories are
+  byte-identical across policies; causal `adaptive` and `onlineadaptive`
+  trajectories remain policy-conditioned by design.
+- The superseded 45-cell diagnostic remains unchanged with receipt SHA-256
+  `dee8b9fc17b2e5d670896deb85beaae8edbc7be19359a42f39cb6a90e72dbbb3`;
+  no cell was reused or pooled into the fresh campaign.
+- Manager artifacts are retained beside the executed notebook under
+  `execution-control/manager-validation.json`, `manager-cell-summary.csv`, and
+  `manager-aggregate-summary.json`. The aggregate is explicitly descriptive
+  and pending independent scientific review.
+- Independent ULTRA result review is active. Q-05/Q-06 are not scientifically
+  accepted until that reviewer adjudicates the complete full-roster package,
+  including the unexpectedly low Oracle-normalized efficiencies.
+
 ## Q-04 bounded validation receipt — 2026-09-27
 
 - DEV commit: `477f6eb4`.

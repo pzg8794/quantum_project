@@ -197,6 +197,7 @@ def configure_external_persistence(
     output_root,
     state_root=None,
     evidence_root=None,
+    scale_m=3,
 ):
     output_root = Path(output_root).expanduser().resolve()
     state_root = Path(state_root or output_root).expanduser().resolve()
@@ -220,7 +221,7 @@ def configure_external_persistence(
     custom_config.scientific_evidence_root = evidence_root
     custom_config.execution_evidence_plugin = MediumExecutionEvidencePlugin(
         evidence_root,
-        scale_m=3,
+        scale_m=scale_m,
     )
     custom_config.scientific_seed_namespace = PROTOCOL_NAMESPACE
     custom_config.scientific_campaign_base_seed = BASE_SEED

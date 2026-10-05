@@ -11,6 +11,7 @@ from daqr.campaigns.medium_trace import (
     file_hash,
     validate_completion,
     validate_scale_completion,
+    validate_scale_completion_by_block,
     write_json_exclusive,
 )
 from daqr.config.execution_contract import resolve_configuration
@@ -21,7 +22,8 @@ from daqr.evaluation.execution_evidence import (
 )
 
 
-def finalize_medium_campaign(output_root, configuration, scale_m, bundle_paths=None):
+def finalize_medium_campaign(output_root, configuration, scale_m, bundle_paths=None,
+                             block_configurations=None):
     output_root = Path(output_root).expanduser().resolve()
     if bundle_paths is None:
         bundle_paths = sorted(
@@ -30,7 +32,9 @@ def finalize_medium_campaign(output_root, configuration, scale_m, bundle_paths=N
         )
     else:
         bundle_paths = sorted(Path(path).resolve() for path in bundle_paths)
-    report = validate_scale_completion(configuration, scale_m, bundle_paths)
+    report = (validate_scale_completion_by_block(block_configurations, scale_m, bundle_paths)
+              if block_configurations is not None else
+              validate_scale_completion(configuration, scale_m, bundle_paths))
     receipt = {
         "schema_version": "medium-campaign-completion-v1",
         "state": "COMPLETE",
@@ -173,4 +177,5 @@ class MediumExecutionEvidencePlugin(ExecutionEvidencePlugin):
             config,
             self.scale_m,
             bundle_paths=self._bundle_paths,
+            block_configurations=self._block_configs,
         )

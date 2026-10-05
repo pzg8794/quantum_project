@@ -403,3 +403,38 @@ def validate_scale_completion(configs, scale_m, bundles):
     if actual!=expected:
         raise ValueError(f"Incomplete scale: missing {sorted(expected-actual)}, extra {sorted(actual-expected)}")
     return {"complete":True,"required_cells":len(expected),"completed_cells":len(actual)}
+
+
+def validate_scale_completion_by_block(block_configs, scale_m, bundles):
+    """Validate a configured matrix whose notebook blocks have distinct horizons."""
+    from daqr.config.execution_contract import resolve_configuration
+    if not block_configs:
+        raise ValueError("No configured blocks")
+    resolved = {int(block): resolve_configuration(config)
+                for block, config in block_configs.items()}
+    first = next(iter(resolved.values()))
+    expected = {(cell["block"], cell["scenario"], cell["policy"])
+                for cell in first["required_cells"] if cell["scale"] == scale_m}
+    if not expected or set(resolved) != {cell[0] for cell in expected}:
+        raise ValueError("Missing or unconfigured block")
+    for block, configuration in resolved.items():
+        cells = {(cell["block"], cell["scenario"], cell["policy"])
+                 for cell in configuration["required_cells"] if cell["scale"] == scale_m}
+        if cells != expected:
+            raise ValueError(f"Block {block} changes the configured matrix")
+    actual = set()
+    for path in bundles:
+        manifest = json.loads((Path(path) / "manifest.json").read_text())
+        validate_completion(path, manifest)
+        identity = manifest["identity"]
+        block = identity["block_id"]
+        cell = (block, identity["threat"], identity["policy"])
+        if identity["scale_m"] != scale_m or cell not in expected or cell in actual:
+            raise ValueError("Wrong scale, unexpected cell or duplicate completion")
+        if canonical_json(manifest["configuration"]["resolved"]) != canonical_json(resolved[block]):
+            raise ValueError("Completion configuration differs from its block contract")
+        actual.add(cell)
+    if actual != expected:
+        raise ValueError(f"Incomplete scale: missing {sorted(expected-actual)}")
+    return {"complete": True, "required_cells": len(expected),
+            "completed_cells": len(actual)}

@@ -563,7 +563,7 @@ class AllocatorRunner:
                     for block_id in block_ids:
                         block_payload = get_physics_params_func(
                             physics_model=physics_model,
-                            current_frames=current_frames,
+                            current_frames=current_frames + frame_step * int(block_id),
                             base_seed=base_seed,
                             qubit_cap=qubit_cap,
                             block_id=int(block_id),

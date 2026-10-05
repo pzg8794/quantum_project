@@ -33,6 +33,8 @@ def main() -> None:
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--max-concurrent", type=int, default=2)
     parser.add_argument("--poll-seconds", type=int, default=30)
+    parser.add_argument("--include-cell", action="append", default=[],
+                        help="Run only this exact cell ID; repeat for independent cells")
     args = parser.parse_args()
     if not 1 <= args.max_concurrent <= 12:
         raise ValueError("Invalid concurrency")
@@ -55,6 +57,12 @@ def main() -> None:
                               "capacity_scale": capacity, "notebook": str(notebook),
                               "notebook_sha256": digest, "status": "QUEUED",
                               "output_root": str(root / name), "attempt": 1})
+    if args.include_cell:
+        selected = set(args.include_cell)
+        available = {cell["id"] for cell in cells}
+        if len(selected) != len(args.include_cell) or not selected <= available:
+            raise ValueError("Duplicate or unknown included cell")
+        cells = [cell for cell in cells if cell["id"] in selected]
     state = {"created_at": now(), "source_root": str(source),
              "execution_kind": "three-block-scientific-notebook",
              "max_concurrent": args.max_concurrent, "cells": cells}

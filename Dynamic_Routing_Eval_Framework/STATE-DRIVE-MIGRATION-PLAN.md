@@ -1,5 +1,60 @@
 # Drive State Migration Plan
 
+## 2026-10-23 component consolidation — current authority
+
+Piter authorized four component shared drives and approved the same access as
+`ai_quantum_project`: the Rochester and RIT accounts are Managers; the existing
+framework service account is Content manager. No public/domain-wide grants.
+The repeated `model_state` in the request denotes one component, not a fifth drive.
+
+| Component | Shared drive | Preserved storage convention |
+|---|---|---|
+| Notebooks | [ai_quantum_notebooks](https://drive.google.com/drive/folders/0AGbQ6E7AidVNUk9PVA) | `notebooks/`; source-qualified revisions |
+| Framework state | [ai_quantum_framework_state](https://drive.google.com/drive/folders/0AMEB9SU4Raw3Uk9PVA) | `quantum_data_lake/framework_state/` |
+| Model state | [ai_quantum_model_state](https://drive.google.com/drive/folders/0AIxNGjMWQME3Uk9PVA) | `quantum_data_lake/model_state/` |
+| Execution logs | [ai_quantum_logs](https://drive.google.com/drive/folders/0AEPPet33IkCtUk9PVA) | `quantum_logs/` |
+
+This is a non-destructive copy of the registered current/historical Drive sources,
+local quantum component directories and commit-pinned Git sources. Original names,
+dated paths, source IDs/versions and byte hashes are preserved. Exact duplicates
+retain provenance aliases; distinct same-name contents occupy source-variant paths.
+Credentials and Git internals are not migration content. Accepted/reduced experiment
+notebooks retain distinct source identities; this does not pool their evidence.
+
+The existing `H-MABs_MasterDataset_VerificationHub.ipynb` remains the canonical
+validation record. Its component-consolidation section links the private manifest,
+copy receipts, approved permission readback and executed positive/negative checks.
+The migration evidence is maintained locally at
+`GA-Work/research_analysis/COMPONENT_STORAGE_2026-10-23/`.
+
+**Copy validation completed:** 20,774 unique files / 21,659 source identities,
+including 885 exact-content aliases: 192 notebooks, 4,627 framework-state/support
+files, 15,305 model-state files and 650 logs. All destination sizes, SHA-256 and
+MD5 hashes were re-read successfully at `2026-10-23T17:24:18Z`; all four drives
+retain exactly the approved three members. Twenty-one positive/negative tests pass.
+The [restricted copy evidence](https://drive.google.com/drive/folders/1d7T-9kOTbC0n45gvw4tPWMlNFO4IC-9B)
+includes the source manifest (SHA-256
+`12fedbf89a29f0f78385c5b57bf2216a2d64bc3cbb4e577584527ab41b1dfbce`),
+181 explicit Paper7 source-to-copy mappings, copy/readback receipts and executed
+Validation Hub output. Original data and scientific result bindings are unchanged.
+
+**Storage copy and production cutover are different operations.** Do not infer
+completion from drive creation, queued uploads or a successful subset. Require
+complete manifest-to-destination coverage and hash readback. The existing
+`GoogleDriveBackupManager`/`LocalBackupManager` and production registries remain
+unchanged; no existing root, original state or historical filename is removed.
+The current root `0AK0VchnNyM-xUk9PVA` and historical root
+`0APT9hcMpvuHYUk9PVA` remain registered sources, not interchangeable identities.
+
+The previous sections below are historical planning, not current mount discovery.
+In particular, `equitable_routing_and_diagnostic_ai` is not the identity of
+`ai_quantum_project`; the two must never be substituted based on a local mount name.
+New shared drives separate administration and per-drive limits; they do not create
+additional organizational pooled storage. No deletion or storage-recovery claim is
+authorized by this copy task.
+
+---
+
 This document records the **state-storage migration plan** for the GA project so the
 reasoning, constraints, and approval steps are preserved before any code changes.
 

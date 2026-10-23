@@ -22,6 +22,9 @@ class AttackStrategy:
     
     All subclasses generate attack masks for arbitrary num_paths values.
     """
+    mask_capability = "undeclared"
+    uses_rng = True
+
     def __init__(self, attack_rate: float = 0.25):
         if not (0.0 <= attack_rate <= 1.0):
             raise ValueError(f"attack_rate must be in [0, 1], got {attack_rate}")
@@ -55,6 +58,16 @@ class AttackStrategy:
         if num_paths <= 0:
             raise ValueError(f"num_paths must be > 0, got {num_paths}")
 
+    def validate_execution(self):
+        if self.mask_capability == "static":
+            return
+        if self.mask_capability not in {"selection_history", "online_selection_history"} or not callable(getattr(self, "availability_at", None)):
+            raise ValueError("HOLD: strategy has no supported causal execution interface")
+
+    def open_session(self, rng, frames, routes):
+        from daqr.core.scenario_execution import ScenarioSession
+        return ScenarioSession(self, rng, frames, routes)
+
     def __repr__(self):
         env = self.__class__.__name__.replace("Attack", "")
         return env
@@ -66,6 +79,9 @@ class AttackStrategy:
 
 class NoAttack(AttackStrategy):
     """✅ No attack - all paths always succeed (capacity-agnostic)."""
+    mask_capability = "static"
+    uses_rng = False
+
     def __init__(self):
         super().__init__(attack_rate=0.0)
     
@@ -87,6 +103,8 @@ class RandomAttack(AttackStrategy):
         per_path_rates: Optional array of per-path attack rates [p1, p2, ...]
                        Must match num_paths in generate()
     """
+    mask_capability = "static"
+
     def __init__(self, attack_rate: float = 0.25, 
                  per_path_rates: Optional[np.ndarray] = None):
         super().__init__(attack_rate)
@@ -125,6 +143,8 @@ class MarkovAttack(AttackStrategy):
     
     Works independently on each path, scales to any num_paths.
     """
+    mask_capability = "static"
+
     def __init__(self, attack_rate: float = 0.25, p_stay: float = 0.7):
         super().__init__(attack_rate)
         if not (0.0 <= p_stay <= 1.0):
@@ -160,6 +180,8 @@ class AdaptiveAttack(AttackStrategy):
     
     Tracks path selection frequency and increases attack rates accordingly.
     """
+    mask_capability = "selection_history"
+
     def __init__(self, attack_rate: float = 0.25, 
                  adaptation_window: int = 100,
                  adaptation_strength: float = 0.5):
@@ -169,48 +191,31 @@ class AdaptiveAttack(AttackStrategy):
             raise ValueError(f"adaptation_strength must be in [0, 1], got {adaptation_strength}")
         self.adaptation_strength = adaptation_strength
     
+    def availability_at(self, frame, history, state, rng, num_paths, frames):
+        if len(history) != frame:
+            raise ValueError("Adaptive strategy requires exact prior selection history")
+        recent = history[max(0,frame-self.adaptation_window):frame]
+        if not recent:
+            return (rng.random(num_paths) >= self.attack_rate).astype(np.int8)
+        if min(recent) < 0 or max(recent) >= num_paths:
+            raise ValueError("Invalid path index in selection history")
+        counts = np.bincount(recent, minlength=num_paths)
+        probabilities = counts / len(recent)
+        return np.array([int(rng.random() >= min(self.attack_rate + self.adaptation_strength*p, 0.9))
+                         for p in probabilities],dtype=np.int8)
+
+    def validate_execution(self):
+        super().validate_execution()
+        if type(self.adaptation_window) is not int or self.adaptation_window < 1:
+            raise ValueError("Positive adaptation window required")
+
     def generate(self, rng, frame_length, num_paths, selection_trace=None):
         self._validate_inputs(frame_length, num_paths)
-        
-        if selection_trace is None:
-            return RandomAttack(self.attack_rate).generate(rng, frame_length, num_paths)
-        
-        # ✅ Validate selection_trace
-        if len(selection_trace) < frame_length:
-            raise ValueError(
-                f"selection_trace length {len(selection_trace)} < frame_length {frame_length}"
-            )
-        
-        mask = np.ones((frame_length, num_paths), dtype=np.int8)
-        
-        for t in range(frame_length):
-            window_start = max(0, t - self.adaptation_window)
-            recent_selections = selection_trace[window_start:t]
-            
-            if len(recent_selections) > 0:
-                # ✅ Validate path indices
-                max_idx = np.max(recent_selections)
-                min_idx = np.min(recent_selections)
-                if max_idx >= num_paths or min_idx < 0:
-                    raise ValueError(
-                        f"Invalid path index in selection_trace: "
-                        f"range [{min_idx}, {max_idx}], must be in [0, {num_paths})"
-                    )
-                
-                # Count selections per path
-                path_counts = np.bincount(recent_selections, minlength=num_paths)
-                path_probs = path_counts / len(recent_selections)
-                
-                # Adapt attack rates
-                for path in range(num_paths):
-                    adapted_rate = self.attack_rate + (self.adaptation_strength * path_probs[path])
-                    adapted_rate = min(adapted_rate, 0.9)
-                    mask[t, path] = 1 if rng.random() >= adapted_rate else 0
-            else:
-                # No history yet
-                mask[t, :] = (rng.random(num_paths) >= self.attack_rate).astype(np.int8)
-        
-        return mask
+        self.validate_execution()
+        if selection_trace is None or len(selection_trace) < frame_length:
+            raise ValueError("Adaptive strategy requires selection history; no random fallback")
+        return np.array([self.availability_at(t,tuple(selection_trace[:t]),{},rng,num_paths,frame_length)
+                         for t in range(frame_length)],dtype=np.int8)
 
 
 # ============================================================================
@@ -223,6 +228,8 @@ class OnlineAdaptiveAttack(AttackStrategy):
     
     Responds immediately to path selections with burst attacks.
     """
+    mask_capability = "online_selection_history"
+
     def __init__(self, attack_rate: float = 0.25, 
                  response_delay: int = 5,
                  burst_probability: float = 0.3):
@@ -232,48 +239,51 @@ class OnlineAdaptiveAttack(AttackStrategy):
             raise ValueError(f"burst_probability must be in [0, 1], got {burst_probability}")
         self.burst_probability = burst_probability
     
+    def availability_at(self, frame, history, state, rng, num_paths, frames):
+        if len(history) != frame:
+            raise ValueError("Online strategy requires exact prior selection history")
+        # Preserve the existing algorithm exactly, including its burst carry-over:
+        # a later targeted-path assignment can overwrite a pending burst zero.
+        row = np.full(num_paths, int(frame >= state.get("burst_until",0)), dtype=np.int8)
+        if rng.random() < self.burst_probability:
+            state["burst_until"] = min(frame+10,frames)
+            return np.zeros(num_paths,dtype=np.int8)
+        if frame >= self.response_delay:
+            recent = history[max(0,frame-self.response_delay):frame]
+            if recent:
+                selected = recent[-1]
+                if selected < 0 or selected >= num_paths:
+                    raise ValueError("Invalid path index in selection history")
+                row[selected] = 0 if rng.random() < self.attack_rate*2 else 1
+        for path in range(num_paths):
+            if row[path] == 1:
+                row[path] = 1 if rng.random() >= self.attack_rate else 0
+        return row
+
+    def validate_execution(self):
+        super().validate_execution()
+        if type(self.response_delay) is not int or self.response_delay < 1:
+            raise ValueError("Positive response delay required for causal online execution")
+
     def generate(self, rng, frame_length, num_paths, selection_trace=None):
         self._validate_inputs(frame_length, num_paths)
-        
-        if selection_trace is None:
-            return RandomAttack(self.attack_rate).generate(rng, frame_length, num_paths)
-        
-        mask = np.ones((frame_length, num_paths), dtype=np.int8)
-        
-        for t in range(frame_length):
-            # Burst attack
-            if rng.random() < self.burst_probability:
-                burst_length = min(10, frame_length - t)
-                mask[t:t+burst_length, :] = 0
-                continue
-            
-            # Track recently selected paths
-            if t >= self.response_delay:
-                recent_window = selection_trace[max(0, t - self.response_delay):t]
-                if len(recent_window) > 0:
-                    last_selected = recent_window[-1]
-                    
-                    # ✅ Validate path index
-                    if last_selected >= num_paths or last_selected < 0:
-                        raise ValueError(
-                            f"Invalid path index {last_selected} in selection_trace "
-                            f"(must be in [0, {num_paths}))"
-                        )
-                    
-                    # Attack most recently used path
-                    mask[t, last_selected] = 0 if rng.random() < (self.attack_rate * 2) else 1
-            
-            # Base random attack on other paths
-            for path in range(num_paths):
-                if mask[t, path] == 1:
-                    mask[t, path] = 1 if rng.random() >= self.attack_rate else 0
-        
-        return mask
+        self.validate_execution()
+        if selection_trace is None or len(selection_trace) < frame_length:
+            raise ValueError("Online strategy requires selection history; no random fallback")
+        state = {}
+        return np.array([self.availability_at(t,tuple(selection_trace[:t]),state,rng,num_paths,frame_length)
+                         for t in range(frame_length)],dtype=np.int8)
 
 
 # ============================================================================
 # HELPER: Create attack from string
 # ============================================================================
+
+STRATEGY_REGISTRY = {
+    "none": NoAttack, "random": RandomAttack, "stochastic": RandomAttack,
+    "markov": MarkovAttack, "adaptive": AdaptiveAttack, "onlineadaptive": OnlineAdaptiveAttack,
+}
+
 
 def create_attack_strategy(scenario_name: str, 
                           attack_rate: float = 0.25, 
@@ -292,16 +302,9 @@ def create_attack_strategy(scenario_name: str,
         AttackStrategy instance that works with any num_paths
     """
     scenario_lower = scenario_name.lower()
-    
-    if scenario_lower == 'none':
-        return NoAttack()
-    elif scenario_lower == 'stochastic':
-        return RandomAttack(attack_rate=attack_rate, **kwargs)
-    elif scenario_lower == 'markov':
-        return MarkovAttack(attack_rate=attack_rate, **kwargs)
-    elif scenario_lower == 'adaptive':
-        return AdaptiveAttack(attack_rate=attack_rate, **kwargs)
-    elif scenario_lower == 'onlineadaptive':
-        return OnlineAdaptiveAttack(attack_rate=attack_rate, **kwargs)
-    else:
+    if scenario_lower not in STRATEGY_REGISTRY:
         raise ValueError(f"Unknown scenario: {scenario_name}")
+    cls = STRATEGY_REGISTRY[scenario_lower]
+    # The existing factory's no-attack call takes no rate argument.
+    parameters = {} if cls is NoAttack else {"attack_rate": attack_rate, **kwargs}
+    return cls(**parameters)

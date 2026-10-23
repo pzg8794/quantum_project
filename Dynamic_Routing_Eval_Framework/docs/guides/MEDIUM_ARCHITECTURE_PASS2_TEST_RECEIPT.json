@@ -1,0 +1,92 @@
+{
+  "label": "TECHNICAL VERIFICATION — NOT SCIENTIFIC EVIDENCE",
+  "implementation_commit": "ae411fda35a21230747004158e7a1cf0716dbac8",
+  "starting_commit": "b447ee6f54bfcb721ab0691996ef6a9591ad360c",
+  "cwd": "/Users/pitergarcia/DataScience/Semester4/Quantum-PR2-architecture-review/Dynamic_Routing_Eval_Framework",
+  "commands": {
+    "required": "PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 OMP_NUM_THREADS=1 MPLCONFIGDIR=/tmp/quantum-pass2-G4NRob/mpl /Users/pitergarcia/DataScience/Semester4/GA-Work/.quantum/bin/python -B -m pytest -p no:cacheprovider tests/test_medium_architecture_pass2.py tests/test_medium_architecture.py tests/test_primary_routes.py tests/test_medium_catalog.py tests/test_medium_preflight.py tests/test_environment_contexts.py tests/test_resume_behavior.py tests/test_runner_resume_compare.py tests/test_allocator_runner_cleanup.py tests/test_registry_update_on_save.py tests/test_drive_state_offload.py -q --tb=short --basetemp=/tmp/quantum-pass2-G4NRob/required-final --junitxml=/tmp/quantum-pass2-G4NRob/required-final.xml",
+    "broader": "PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 OMP_NUM_THREADS=1 MPLCONFIGDIR=/tmp/quantum-pass2-G4NRob/mpl /Users/pitergarcia/DataScience/Semester4/GA-Work/.quantum/bin/python -B -m pytest -p no:cacheprovider tests tools/tests/test_state_naming_and_resume.py -q --tb=short --basetemp=/tmp/quantum-pass2-G4NRob/broad-final --junitxml=/tmp/quantum-pass2-G4NRob/broad-final.xml",
+    "runtime": "PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 OMP_NUM_THREADS=1 MPLCONFIGDIR=/tmp/quantum-pass2-G4NRob/mpl /Users/pitergarcia/DataScience/Semester4/GA-Work/.quantum/bin/python -B tests/runtime_primary_k55.py"
+  },
+  "results": {
+    "required-final": {
+      "summary": {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "121",
+        "time": "84.083",
+        "timestamp": "2026-09-27T03:04:51.758248-04:00"
+      },
+      "junit_sha256": "3f573ef3f64e23c618188c2d17030a72fd682c37e466c561df7b7769e0a2caa4",
+      "failures": [],
+      "architecture_cases": {
+        "tests.test_medium_architecture": 26,
+        "tests.test_medium_architecture_pass2": 23,
+        "test_medium_architecture": 0,
+        "test_medium_architecture_pass2": 0
+      }
+    },
+    "broad-final": {
+      "summary": {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "4",
+        "skipped": "0",
+        "tests": "142",
+        "time": "87.160",
+        "timestamp": "2026-09-27T03:04:52.810387-04:00"
+      },
+      "junit_sha256": "b722a63e80852f92babf3c22a337165ba07c52cfd011fc0c1694fcf8769d2f2e",
+      "failures": [
+        {
+          "id": "tests.test_local_backup_manager_pattern_drive_ops.TestLocalBackupManagerPatternDriveOps::test_standalone_migrate_files_by_pattern_deletes_verified_files_across_dates",
+          "message": "TypeError: TestLocalBackupManagerPatternDriveOps.test_standalone_migrate_files_by_pattern_deletes_verified_files_across_dates.<locals>._FakeManager.upload_files_by_pattern() got an unexpected keyword argument 'workers'"
+        },
+        {
+          "id": "tests.test_local_backup_manager_pattern_drive_ops.TestLocalBackupManagerPatternDriveOps::test_standalone_migrate_files_by_pattern_reports_summary_status",
+          "message": "TypeError: TestLocalBackupManagerPatternDriveOps.test_standalone_migrate_files_by_pattern_reports_summary_status.<locals>._FakeManager.upload_files_by_pattern() got an unexpected keyword argument 'workers'"
+        },
+        {
+          "id": "tests.test_local_backup_manager_pattern_drive_ops.TestLocalBackupManagerPatternDriveOps::test_standalone_migrate_files_by_pattern_runs_in_parallel_and_deletes_verified_local",
+          "message": "TypeError: TestLocalBackupManagerPatternDriveOps.test_standalone_migrate_files_by_pattern_runs_in_parallel_and_deletes_verified_local.<locals>._FakeManager.upload_files_by_pattern() got an unexpected keyword argument 'workers'"
+        },
+        {
+          "id": "tools.tests.test_state_naming_and_resume::test_expected_keys_no_qubit_suffix_for_random_runtime",
+          "message": "AttributeError: 'ExperimentConfiguration' object has no attribute 'backup_registry'"
+        }
+      ],
+      "architecture_cases": {
+        "tests.test_medium_architecture": 26,
+        "tests.test_medium_architecture_pass2": 23,
+        "test_medium_architecture": 0,
+        "test_medium_architecture_pass2": 0
+      }
+    },
+    "pass2final": {
+      "summary": {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "23",
+        "time": "29.554",
+        "timestamp": "2026-09-27T03:02:54.174870-04:00"
+      },
+      "junit_sha256": "08bf8b379499251c276b62f87d2b96a95826f38f0cafd31c0f611ec50b083b6d",
+      "failures": [],
+      "architecture_cases": {
+        "tests.test_medium_architecture": 0,
+        "tests.test_medium_architecture_pass2": 23,
+        "test_medium_architecture": 0,
+        "test_medium_architecture_pass2": 0
+      }
+    }
+  },
+  "known_failure_count": 4,
+  "new_failures": 0,
+  "skipped": 0,
+  "xfail": 0,
+  "note": "Final required/broader runs include all 23 Pass-2 and 26 Pass-1 architecture tests. The separate Pass-2 run preceded implementation commit; final reruns certify that commit. Task-scoped temporary test data/cache are removed after handoff receipts are retained."
+}

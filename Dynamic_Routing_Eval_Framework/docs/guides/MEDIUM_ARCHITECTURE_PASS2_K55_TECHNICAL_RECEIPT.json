@@ -1,0 +1,282 @@
+{
+  "code_runtime": {
+    "commit": "ae411fda35a21230747004158e7a1cf0716dbac8",
+    "imported_diff_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "imported_files": {
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/CMAB.py": "583e3df555f3ba9ff76bd8f64ba08d19657c4c7f2c9af5d6049115069d6020c4",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/__init__.py": "a6094d196ec975ad67e2396ca3f702df8f421d901e2383878dbbbdbe0cd5637f",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/bandits/EXP4.py": "f9de2b1d6a8be100f671ca50204a7f0aed904586b8050bfb3e632f8fdc6bc5a1",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/bandits/EpochGreedy.py": "8a5eb44a7b1fb7ffce5295be92f0bf6e8a563c35ed70d631cca00ea7a050dc51",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/bandits/EpsilonGreedy.py": "aea43f945fcc6cc3f75455bc20ea5622ae72564db402aecc792f24ab702fd4a4",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/bandits/KernelUCB.py": "9076822bde2a470e2f065b0931c61fce043109e67e6858472d8be5ca558b0539",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/bandits/Pursuit.py": "f82cf4c991f3caa980ddcf8a9946f855183e00fa9cb04dc347feaea98ede7339",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/bandits/ThompsonSampling.py": "2f559ae5cd39b6db4d9d4a96d31e1146ae37bb3da7385386c7c4ee6abb5b4aef",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/bandits/__init__.py": "27946382987111041707b375bd956a1630c5c8f61ec821b4a1ed9a6efd61e08e",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/interface/__init__.py": "64727e59f88059044b4ed4f60f6458f62744f9d99230c8ac761fe57033b305ee",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/interface/bandit.py": "12b0749fd2fd2ffb2a62ea22544ca28b99b050697663163451e4d89ac0a8cc6c",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/base_bandit.py": "8098a51415aa22e76dfc51486e47100d91b072ff688986c0278a68c8fcc1145f",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/neural_bandits.py": "4f6546086af207bd2eff1039f031af4cac7723ae59acc3303d2170d11340afc5",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/predictive_bandits.py": "c0bbdfcd10da1c18b7bc4ce70b2b94ba4b196bbe86329b5972ae0a4900e41dfb",
+      "Dynamic_Routing_Eval_Framework/daqr/campaigns/__init__.py": "af5a64c6874c34a1ce1550bd2d7cb721525033f3d8bb69d1684daa70c5becacc",
+      "Dynamic_Routing_Eval_Framework/daqr/campaigns/medium_runner.py": "fe8efd664f5f3e1b30073107b449ab6056904af4b3cdcc48dcb11c5728a4c2c9",
+      "Dynamic_Routing_Eval_Framework/daqr/campaigns/medium_spec.py": "7597c489ae6a357cd554253d237b18270f2a25e0a992bbe70f914f890a4bd924",
+      "Dynamic_Routing_Eval_Framework/daqr/campaigns/medium_trace.py": "778a61bd8768d937faec30e8c34a9628147fdb2b4a1104564b7205e0ef70f2a3",
+      "Dynamic_Routing_Eval_Framework/daqr/config/execution_contract.py": "ae4d48fa3b2371017f4e6c1487f13ce6be4b067ab70d2ab610b044c242f0c1b5",
+      "Dynamic_Routing_Eval_Framework/daqr/config/experiment_config.py": "4abd55c788a087e25ca66968f9db409066ca4b57017c6e24d40b47b8f4e6e438",
+      "Dynamic_Routing_Eval_Framework/daqr/config/gd_backup_manager.py": "0917cf334628255e5f6ac9e609e3bb3393e063cf67d86910be13ce04ab87d447",
+      "Dynamic_Routing_Eval_Framework/daqr/config/local_backup_manager.py": "b23c2104fa00928da5c09780ede5928207b53ef2df87c2231127096b0152430e",
+      "Dynamic_Routing_Eval_Framework/daqr/config/state_registry.py": "f262747ed4beeca41c6d23c03aa2b397a36a9d1f0f0b94e207f741dd35541e9b",
+      "Dynamic_Routing_Eval_Framework/daqr/core/attack_strategy.py": "9dd1aec6a27cbd6d1a70783b5a9bbac9d3732064dd02378a49571f4acc5d3fe7",
+      "Dynamic_Routing_Eval_Framework/daqr/core/catalog_components.py": "dde128b4be33416c2f5be49a21149fe3beda4e464a1ee87483c484f1d9c0eb70",
+      "Dynamic_Routing_Eval_Framework/daqr/core/event_generators.py": "45c2c3c9ca68aba2865a43b263e80e680b62401ddd0906300a03266b406583f3",
+      "Dynamic_Routing_Eval_Framework/daqr/core/identity.py": "f25b0a65023978d217e1b09df5a59aeb6da56d73e9174329d6ffa00fe0b08ffa",
+      "Dynamic_Routing_Eval_Framework/daqr/core/network_environment.py": "0fff9eb53136b5dccd52b54fdbce2c31a13da734f70e7bbe1a5389c215d42f7b",
+      "Dynamic_Routing_Eval_Framework/daqr/core/primary_routes.py": "690c14264c12f0088992485e3fcfe3f9a59a89e174295956acab19f4ee89921c",
+      "Dynamic_Routing_Eval_Framework/daqr/core/quantum_physics.py": "31547251d013466727cac1b478458308e6846515df55dc30151c501145640e05",
+      "Dynamic_Routing_Eval_Framework/daqr/core/qubit_allocator.py": "1ed84b9d0a9f44dab6a23f2c19e4fca97ac17316624c8c50c4e4b331a7bf5bc8",
+      "Dynamic_Routing_Eval_Framework/daqr/core/scenario_execution.py": "54bb7e0af33f15cd70ab01ebeaff7d20d2520df1e8b0421b681a569df3f4df43"
+    },
+    "runtime": {
+      "blas_threads": 1,
+      "deterministic_algorithms": true,
+      "device": "cpu",
+      "machine": "arm64",
+      "packages": {
+        "networkx": "3.5",
+        "numpy": "1.26.4",
+        "pmdarima": "2.0.4",
+        "scikit-learn": "1.3.2",
+        "scipy": "1.11.4",
+        "threadpoolctl": "3.6.0",
+        "torch": "2.8.0"
+      },
+      "platform": "macOS-27.2-arm64-arm-64bit",
+      "python": "3.12.11",
+      "torch_threads": 1
+    }
+  },
+  "config_hash": "049e07746f7894850d8cb4048febf6b3ed355bc181b4424731c7919e4c8cdf28",
+  "frames": 256,
+  "label": "TECHNICAL COST BENCHMARK — NOT SCIENTIFIC EVIDENCE",
+  "peak_rss_platform_units": 480690176,
+  "resolved_configuration": {
+    "policy": "EXPNeuralUCB",
+    "policy_kwargs": {
+      "beta": 1,
+      "eta_factor": 0.05,
+      "gamma_factor": 0.01,
+      "mode": "hybrid"
+    },
+    "protocol": {
+      "base_seed": 12345,
+      "catalog_version": "primary-catalog-v2",
+      "namespace": "technical-regression-v2",
+      "seed_rule": "sha256-first-four-bytes-big-endian-v1"
+    },
+    "required_run_count": 1,
+    "resolved": {
+      "allocator": {
+        "class": "daqr.core.qubit_allocator.QubitAllocator",
+        "parameters": {
+          "allocated": false,
+          "baseline_allocation": [
+            9,
+            9,
+            9,
+            9
+          ],
+          "exploration_bonus": null,
+          "has_uniform_base": false,
+          "min_qubits_per_route": 1,
+          "num_routes": 4,
+          "testbed": "default",
+          "testbed_config": {},
+          "total_qubits": 36
+        },
+        "source_sha256": "1ed84b9d0a9f44dab6a23f2c19e4fca97ac17316624c8c50c4e4b331a7bf5bc8"
+      },
+      "base_seed": 12345,
+      "blocks": 1,
+      "components": {
+        "catalog": {
+          "class": "daqr.core.catalog_components.LayeredPrimaryCatalog",
+          "component_id": "layered-primary-form-v1",
+          "parameters": {},
+          "source_sha256": "dde128b4be33416c2f5be49a21149fe3beda4e464a1ee87483c484f1d9c0eb70"
+        },
+        "reward": {
+          "class": "daqr.core.catalog_components.PrimaryPayoff",
+          "component_id": "primary-payoff-v1",
+          "parameters": {},
+          "source_sha256": "dde128b4be33416c2f5be49a21149fe3beda4e464a1ee87483c484f1d9c0eb70"
+        }
+      },
+      "execution": {
+        "base_horizon": 6000,
+        "execution_kind": "technical_preflight",
+        "horizon": 256,
+        "protocol_namespace": "technical-regression-v2",
+        "scale_points": [
+          1
+        ]
+      },
+      "physics": {
+        "entanglement_success_factor": 100
+      },
+      "policies": {
+        "EXPNeuralUCB": {
+          "class": "daqr.algorithms.neural_bandits.EXPNeuralUCB",
+          "constructor_defaults": {
+            "beta": 1,
+            "capacity": 10000,
+            "eta_factor": 0.05,
+            "gamma_factor": 0.01,
+            "lamb": 1,
+            "mode": "hybrid",
+            "n_experts": 4,
+            "verbose": false
+          },
+          "kwargs": {
+            "beta": 1,
+            "eta_factor": 0.05,
+            "gamma_factor": 0.01,
+            "mode": "hybrid"
+          },
+          "runner_type": "batch",
+          "seed_offset": 500,
+          "source_sha256": "4f6546086af207bd2eff1039f031af4cac7723ae59acc3303d2170d11340afc5",
+          "trace": {
+            "feedback": "bernoulli-route-continuous-allocation-v2",
+            "privileged": false,
+            "probability_floor": 1e-12
+          }
+        }
+      },
+      "replay": {
+        "anchor": "T_b",
+        "base": 6000,
+        "capacity": 12000,
+        "scale": 2
+      },
+      "required_cells": [
+        {
+          "block": 0,
+          "policy": "EXPNeuralUCB",
+          "scale": 1,
+          "scenario": "NoAttack"
+        }
+      ],
+      "scenarios": {
+        "NoAttack": {
+          "capability": "static",
+          "class": "daqr.core.attack_strategy.NoAttack",
+          "configured": {
+            "parameters": {},
+            "strategy": "none"
+          },
+          "parameters": {
+            "attack_rate": 0
+          },
+          "source_sha256": "9dd1aec6a27cbd6d1a70783b5a9bbac9d3732064dd02378a49571f4acc5d3fe7"
+        }
+      },
+      "testbed": {
+        "profile_pool": [
+          [
+            0.0001,
+            0.0001,
+            0.0001
+          ],
+          [
+            0.0001,
+            0.0001,
+            0.00015
+          ],
+          [
+            0.0001,
+            0.0001,
+            0.0002
+          ],
+          [
+            0.0001,
+            0.00015,
+            0.00015
+          ],
+          [
+            0.0001,
+            0.00015,
+            0.0002
+          ],
+          [
+            0.0001,
+            0.0002,
+            0.0002
+          ],
+          [
+            0.00015,
+            0.00015,
+            0.00015
+          ],
+          [
+            0.00015,
+            0.00015,
+            0.0002
+          ],
+          [
+            0.00015,
+            0.0002,
+            0.0002
+          ],
+          [
+            0.0002,
+            0.0002,
+            0.0002
+          ]
+        ],
+        "topology_family": "layered-primary-form-v1"
+      }
+    },
+    "threat": "NoAttack"
+  },
+  "route_states": [
+    {
+      "K": 55,
+      "T": 53,
+      "optimizer_parameter_states": 0,
+      "optimizer_steps": [],
+      "replay_capacity": 12000,
+      "replay_size": 53
+    },
+    {
+      "K": 55,
+      "T": 65,
+      "optimizer_parameter_states": 4,
+      "optimizer_steps": [
+        20
+      ],
+      "replay_capacity": 12000,
+      "replay_size": 65
+    },
+    {
+      "K": 55,
+      "T": 75,
+      "optimizer_parameter_states": 4,
+      "optimizer_steps": [
+        40
+      ],
+      "replay_capacity": 12000,
+      "replay_size": 75
+    },
+    {
+      "K": 55,
+      "T": 63,
+      "optimizer_parameter_states": 4,
+      "optimizer_steps": [
+        16
+      ],
+      "replay_capacity": 12000,
+      "replay_size": 63
+    }
+  ],
+  "wall_seconds": 5.897495625002193
+}

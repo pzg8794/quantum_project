@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from reviewer_closure_reconciliation import EXPECTED_INPUTS, PRIMARY_EXPORT_SHA256, audit_primary_exports, audit_recorded_run_headers, reconcile
+from reviewer_closure_reconciliation import EXPECTED_INPUTS, PRIMARY_EXPORT_SHA256, audit_primary_exports, audit_recorded_run_headers, compare_original_export_rows, decode_recorded_contexts, reconcile, summarize_original_receipt
 
 
 HERE = Path(__file__).resolve().parent
@@ -186,6 +186,110 @@ class PrimarySourceTests(unittest.TestCase):
             with patch.dict(PRIMARY_EXPORT_SHA256, {"Hybrid": hashlib.sha256(target.read_bytes()).hexdigest()}):
                 with self.assertRaisesRegex(ValueError, "winner disagrees"):
                     audit_primary_exports(directory, self.shared)
+
+
+class OriginalComparisonTests(unittest.TestCase):
+    def setUp(self):
+        self.saved = [{"source_file": "state.pkl", "scenario": "NONE", "experiment": "1", "model": "GNEURALUCB",
+                       "reward": "0.125", "eff_pct": "", "winner": "GNeuralUCB"}]
+        self.original = [{"source_file": "state.pkl", "scenario": "NONE", "experiment": 1, "model": "GNEURALUCB",
+                          "reward": 0.125, "eff_pct": None, "winner": "GNeuralUCB"}]
+
+    def test_original_values_reproduce_export(self):
+        result = compare_original_export_rows(self.saved, self.original)
+        self.assertEqual(result["matched_all_fields_rows"], 1)
+        self.assertEqual(result["differences"], [])
+        self.assertEqual(sum(result["field_checks"].values()), 6)
+
+    def test_changed_original_value_does_not_pass(self):
+        self.original[0]["reward"] = 0.25
+        result = compare_original_export_rows(self.saved, self.original)
+        self.assertEqual(result["matched_all_fields_rows"], 0)
+        self.assertEqual(result["differences"][0]["field"], "reward")
+
+    def test_missing_original_row_is_not_skipped(self):
+        result = compare_original_export_rows(self.saved, [])
+        self.assertEqual(result["matched_all_fields_rows"], 0)
+        self.assertEqual(result["differences"][0]["issue"], "missing_original_row")
+
+    def test_absent_original_column_is_not_a_present_null(self):
+        del self.original[0]["eff_pct"]
+        result = compare_original_export_rows(self.saved, self.original)
+        self.assertEqual(result["matched_all_fields_rows"], 0)
+        self.assertEqual(result["differences"][0]["issue"], "missing_original_field")
+
+    def test_duplicate_original_row_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Duplicate original"):
+            compare_original_export_rows(self.saved, self.original * 2)
+
+    def test_duplicate_export_row_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Duplicate exported"):
+            compare_original_export_rows(self.saved * 2, self.original)
+
+    def test_recorded_context_string_is_decoded_without_execution(self):
+        self.assertIsNone(decode_recorded_contexts("None"))
+        self.assertEqual(decode_recorded_contexts("[array([[3., 0.5, 0.9], [3., 0.5, 0.9]])]"),
+                         [[[3.0, 0.5, 0.9], [3.0, 0.5, 0.9]]])
+
+    def test_invalid_context_expression_or_shape_is_rejected(self):
+        for value in ("'abc'", "[['abc']]", "[array(['x'])]", "[array([[True]])]", "__import__('os').getcwd()"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                decode_recorded_contexts(value)
+
+
+@unittest.skipUnless(os.environ.get("QFT_ORIGINAL_RECEIPT"), "Set QFT_ORIGINAL_RECEIPT for original-state verification")
+class OriginalReceiptTests(unittest.TestCase):
+    def test_original_receipt_coverage(self):
+        result = summarize_original_receipt(os.environ["GA_WORK_ROOT"], os.environ["QFT_ORIGINAL_RECEIPT"])
+        self.assertEqual(result["source_filenames"], 101)
+        self.assertEqual(result["export_rows"], 10240)
+        self.assertEqual(result["field_comparisons"], 296960)
+
+    def test_missing_and_mutated_originals_cannot_pass(self):
+        receipt = json.loads(Path(os.environ["QFT_ORIGINAL_RECEIPT"]).read_text())
+        for mutation in ("remove", "checksum", "value", "scope", "errors", "fields", "string_boolean", "empty_digest", "zero_recovered", "no_errors", "count_type", "negative_wins", "stored_winner", "null_differences", "object_differences", "string_differences"):
+            altered = json.loads(json.dumps(receipt))
+            name = next(iter(altered["sources"]))
+            entry = altered["sources"][name]
+            comparison = next(iter(entry["export_comparisons"].values()))
+            if mutation == "remove":
+                del altered["sources"][name]
+            elif mutation == "checksum":
+                entry["sha256"] = "0" * 64
+            elif mutation == "value":
+                comparison["differences"] = [{"field": "reward", "export": 1, "original": 0}]
+            elif mutation == "scope":
+                comparison["matched_all_fields_rows"] -= 1
+            elif mutation == "fields":
+                comparison["field_checks"].pop("reward")
+            elif mutation == "string_boolean":
+                entry["strict_original_load"] = "false"
+            elif mutation == "empty_digest":
+                entry["sha256"] = None
+                entry["metadata"].pop("sha256Checksum")
+            elif mutation == "zero_recovered":
+                comparison["recovered_rows"] = 0
+            elif mutation == "no_errors":
+                altered.pop("errors")
+            elif mutation == "count_type":
+                comparison["export_rows"] = float(comparison["export_rows"])
+            elif mutation.endswith("_differences"):
+                comparison["differences"] = {"null_differences": None, "object_differences": {}, "string_differences": ""}[mutation]
+            elif mutation in ("negative_wins", "stored_winner"):
+                original = next(item for source_name, item in altered["sources"].items()
+                                if source_name.startswith("MultiRunEvaluator_100-Dynamic_Adversarial"))
+                rule = original["scenario_summary_rules"]["markov"]
+                if mutation == "negative_wins":
+                    rule["experiment_winner_counts"] = {key: -1 for key in rule["experiment_winner_counts"]}
+                else:
+                    rule["stored_overall_winner"] = "CONTRADICTORY"
+            else:
+                altered["errors"] = {name: "download failed"}
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory(prefix="qft-original-negative-") as directory:
+                path = Path(directory) / "receipt.json"
+                path.write_text(json.dumps(altered))
+                with self.assertRaises(ValueError):
+                    summarize_original_receipt(os.environ["GA_WORK_ROOT"], path)
 
 
 if __name__ == "__main__":

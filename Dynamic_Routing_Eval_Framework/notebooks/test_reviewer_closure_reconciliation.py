@@ -1,6 +1,8 @@
 """Validator regression tests; no simulator execution or scientific rerun."""
 
 import ast
+import csv
+import hashlib
 import json
 import math
 import os
@@ -10,10 +12,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
 
-from reviewer_closure_reconciliation import EXPECTED_INPUTS, reconcile
+from reviewer_closure_reconciliation import EXPECTED_INPUTS, PRIMARY_EXPORT_SHA256, audit_primary_exports, audit_recorded_run_headers, reconcile
 
 
 HERE = Path(__file__).resolve().parent
@@ -131,6 +134,58 @@ class ReconciliationTests(unittest.TestCase):
             figure = root / "figures/icnp/rq3_switching_reconciled.tex"
             figure.write_text(figure.read_text().replace("99.8851", "96.0000"))
             self.assertFalse(reconcile(self.workspace, root)["manuscript_checks"]["switching_figure_values"])
+
+
+@unittest.skipUnless(os.environ.get("QFT_SHARED_IMPLEMENTATION"), "Set QFT_SHARED_IMPLEMENTATION for shared source-contract checks")
+class PrimarySourceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.workspace = Path(os.environ["GA_WORK_ROOT"])
+        cls.shared = Path(os.environ["QFT_SHARED_IMPLEMENTATION"])
+        cls.result = audit_primary_exports(cls.workspace, cls.shared)
+
+    def test_export_units_and_winners(self):
+        self.assertEqual((self.result["total_rows"], self.result["learned_rows"], self.result["oracle_rows"]),
+                         (10240, 8241, 1999))
+        self.assertEqual(self.result["unique_learner_labels"], 15)
+        self.assertEqual(self.result["experiment_winner_checks"], 1999)
+        self.assertEqual(self.result["experiment_winner_mismatches"], 0)
+        self.assertEqual(self.result["experiment_exact_reward_ties"], 0)
+        self.assertEqual(len(self.result["scenario_summary_disagreements"]), 8)
+        self.assertTrue(all(row["suite"] == "Hybrid" for row in self.result["scenario_summary_disagreements"]))
+
+    def test_modified_export_is_rejected(self):
+        with tempfile.TemporaryDirectory(prefix="qft-source-negative-") as directory:
+            target = Path(directory) / "Validated_Logs/Master_Dataset_Hybrid.csv"
+            target.parent.mkdir(parents=True)
+            target.write_bytes((self.workspace / "Validated_Logs/Master_Dataset_Hybrid.csv").read_bytes() + b"\n")
+            with self.assertRaisesRegex(ValueError, "Evidence hash mismatch"):
+                audit_primary_exports(directory, self.shared)
+
+    def test_logged_rates_are_not_summary_labels(self):
+        result = audit_recorded_run_headers(self.workspace)
+        self.assertEqual(result["configured_rates_by_attack"]["Random"], ["0.0625"])
+        self.assertEqual(result["configured_rates_by_attack"]["Markov"], ["0.25"])
+        self.assertGreater(result["fixed_budget_calls"], 0)
+
+    def test_inconsistent_winner_cannot_receive_pass(self):
+        with tempfile.TemporaryDirectory(prefix="qft-winner-negative-") as directory:
+            root = Path(directory) / "Validated_Logs"
+            root.mkdir()
+            for suite in PRIMARY_EXPORT_SHA256:
+                shutil.copy2(self.workspace / f"Validated_Logs/Master_Dataset_{suite}.csv", root)
+            target = root / "Master_Dataset_Hybrid.csv"
+            with target.open(newline="") as stream:
+                reader = csv.DictReader(stream)
+                fields, rows = reader.fieldnames, list(reader)
+            rows[0]["winner"] = "INVALID_WINNER"
+            with target.open("w", newline="") as stream:
+                writer = csv.DictWriter(stream, fieldnames=fields)
+                writer.writeheader()
+                writer.writerows(rows)
+            with patch.dict(PRIMARY_EXPORT_SHA256, {"Hybrid": hashlib.sha256(target.read_bytes()).hexdigest()}):
+                with self.assertRaisesRegex(ValueError, "winner disagrees"):
+                    audit_primary_exports(directory, self.shared)
 
 
 if __name__ == "__main__":

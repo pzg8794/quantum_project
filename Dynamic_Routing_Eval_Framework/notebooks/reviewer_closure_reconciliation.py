@@ -1,9 +1,11 @@
 """Read-only reconciliation of saved historical evidence; never runs a model."""
 
 import argparse
+import ast
 import csv
 import hashlib
 import json
+import math
 import re
 import sys
 from collections import Counter
@@ -31,6 +33,151 @@ PRIMARY_EXPORT_SHA256 = {
 def require(condition, message):
     if not condition:
         raise ValueError(message)
+
+
+def decode_recorded_contexts(value):
+    class ArrayLiteral(ast.NodeTransformer):
+        def visit_Call(self, node):
+            require(isinstance(node.func, ast.Name) and node.func.id == "array"
+                    and len(node.args) == 1 and not node.keywords, "Unsupported recorded context expression")
+            return self.visit(node.args[0])
+
+    if isinstance(value, str):
+        value = ast.literal_eval(ArrayLiteral().visit(ast.parse(value, mode="eval")))
+    if value is None:
+        return None
+    require(isinstance(value, (list, tuple)), "Recorded contexts must be a route sequence or None")
+    result = []
+    for route in value:
+        route = route.tolist() if hasattr(route, "tolist") else route
+        require(isinstance(route, (list, tuple)) and route, "Recorded route contexts must contain actions")
+        actions = []
+        for action in route:
+            action = action.tolist() if hasattr(action, "tolist") else action
+            require(isinstance(action, (list, tuple)) and action, "Recorded action context must be a feature vector")
+            require(all(isinstance(feature, (int, float)) and not isinstance(feature, bool)
+                        and math.isfinite(feature) for feature in action), "Recorded context features must be finite numbers")
+            actions.append(list(action))
+        result.append(actions)
+    return result
+
+
+def compare_original_export_rows(saved_rows, original_rows):
+    def identity(row):
+        return str(row["scenario"]).upper(), str(row["experiment"]), str(row["model"]).upper()
+
+    def equal(saved, original):
+        if saved == "" or saved is None:
+            return original is None or original == "" or (isinstance(original, float) and math.isnan(original))
+        try:
+            return math.isclose(float(saved), float(original), rel_tol=1e-12, abs_tol=1e-9)
+        except (TypeError, ValueError):
+            return str(saved) == str(original)
+
+    recovered = {identity(row): row for row in original_rows}
+    require(len(recovered) == len(original_rows), "Duplicate original observation identity")
+    require(len({identity(row) for row in saved_rows}) == len(saved_rows), "Duplicate exported observation identity")
+    differences, matched_rows, field_counts = [], 0, Counter()
+    for row in saved_rows:
+        original = recovered.get(identity(row))
+        if original is None:
+            differences.append({"key": identity(row), "field": "*", "issue": "missing_original_row"})
+            continue
+        row_match = True
+        for field, value in row.items():
+            if field == "source_file":
+                continue
+            field_counts[field] += 1
+            if field not in original:
+                differences.append({"key": identity(row), "field": field, "issue": "missing_original_field"})
+                row_match = False
+                continue
+            if not equal(value, original.get(field)):
+                differences.append({"key": identity(row), "field": field, "export": value,
+                                    "original": original.get(field)})
+                row_match = False
+        matched_rows += row_match
+    return {"export_rows": len(saved_rows), "recovered_rows": len(original_rows),
+            "matched_all_fields_rows": matched_rows, "field_checks": dict(field_counts),
+            "differences": differences}
+
+
+def summarize_original_receipt(workspace, receipt_path):
+    path = Path(receipt_path)
+    receipt = json.loads(path.read_text())
+    require(isinstance(receipt, dict) and isinstance(receipt.get("errors"), dict), "Invalid original-source receipt schema")
+    require(not receipt["errors"], "Original-source retrieval/extraction errors remain")
+    sources = receipt.get("sources", {})
+    expected, suite_totals = {}, Counter()
+    for suite, expected_hash in PRIMARY_EXPORT_SHA256.items():
+        source = Path(workspace) / f"Validated_Logs/Master_Dataset_{suite}.csv"
+        require(hashlib.sha256(source.read_bytes()).hexdigest() == expected_hash, f"Evidence hash mismatch: {source.name}")
+        with source.open(newline="") as stream:
+            rows = list(csv.DictReader(stream))
+        for row in rows:
+            expected.setdefault(row["source_file"], Counter())[suite] += 1
+        suite_totals[suite] = len(rows)
+    require(set(sources) == set(expected), "Original-source receipt does not cover exactly the required filenames")
+    checked_fields, checked_rows, byte_groups = 0, 0, set()
+    for name, suites in expected.items():
+        entry = sources[name]
+        metadata = entry["metadata"]
+        require(metadata["name"] == name and not metadata.get("trashed"), "Invalid original file identity")
+        require(entry.get("strict_original_load") is True and entry.get("provider_checksums_match") is True, "Original byte/load verification missing")
+        require(isinstance(entry.get("sha256"), str) and re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]), "Invalid original SHA-256")
+        require(entry["sha256"] == metadata.get("sha256Checksum"), "Provider SHA-256 mismatch")
+        require(set(entry["export_comparisons"]) == set(suites), "Original-source suite scope mismatch")
+        byte_groups.add((metadata["size"], metadata["md5Checksum"]))
+        for suite, count in suites.items():
+            comparison = entry["export_comparisons"][suite]
+            require(all(type(comparison.get(field)) is int for field in ("export_rows", "recovered_rows", "matched_all_fields_rows")), "Invalid original/export count type")
+            require(comparison["export_rows"] == count == comparison["matched_all_fields_rows"] == comparison["recovered_rows"], "Original/export row mismatch")
+            require(type(comparison.get("differences")) is list and comparison["differences"] == [], "Original/export field mismatch or invalid differences schema")
+            with (Path(workspace) / f"Validated_Logs/Master_Dataset_{suite}.csv").open(newline="") as stream:
+                fields = set(next(csv.reader(stream))) - {"source_file"}
+            require(set(comparison["field_checks"]) == fields, "Original/export field coverage incomplete")
+            require(all(value == count for value in comparison["field_checks"].values()), "Original/export field denominator mismatch")
+            checked_rows += count
+            checked_fields += sum(comparison["field_checks"].values())
+    explanations = []
+    with (Path(workspace) / "Validated_Logs/Master_Dataset_Hybrid.csv").open(newline="") as stream:
+        hybrid = list(csv.DictReader(stream))
+    scenarios = {}
+    for row in hybrid:
+        if row["model"].upper() != "ORACLE":
+            scenarios.setdefault((row["source_file"], row["scenario"]), []).append(row)
+    for (name, scenario), rows in scenarios.items():
+        efficiencies = {}
+        for row in rows:
+            efficiencies.setdefault(row["model"], []).append(float(row["eff_pct"]))
+        means = {model: mean(values) for model, values in efficiencies.items()}
+        leaders = [model for model, value in means.items() if abs(value - max(means.values())) <= 1e-12]
+        labels = {row["scenario_winner"].upper() for row in rows}
+        if len(labels) == 1 and next(iter(labels)) in leaders:
+            continue
+        rule = sources[name]["scenario_summary_rules"][scenario.lower()]
+        require(rule["rule"] == "modal_experiment_winner_fallback", "Unexplained scenario-summary rule")
+        require(rule["stored_overall_winner"] is None, "Fallback explanation contradicts stored scenario winner")
+        require(labels == {rule["fallback_winner"].upper()}, "Saved label does not reproduce original modal winner")
+        counts = rule["experiment_winner_counts"]
+        experiments = {}
+        for row in rows:
+            experiments.setdefault(row["experiment"], set()).add(row["winner"])
+        require(all(len(winners) == 1 for winners in experiments.values()), "Inconsistent experiment-winner record")
+        actual_counts = Counter(next(iter(winners)) for winners in experiments.values())
+        require(counts and all(type(value) is int and value > 0 for value in counts.values()), "Invalid modal-winner counts")
+        require(counts == dict(actual_counts), "Modal-winner counts disagree with exported experiments")
+        require(rule["fallback_winner"] == actual_counts.most_common(1)[0][0], "Modal tie-order mismatch")
+        require(counts and rule["fallback_winner"] == max(counts, key=counts.get), "Invalid modal-winner/tie-order record")
+        explanations.append({"source_file": name, "scenario": scenario, "saved_label": rule["fallback_winner"],
+                             "experiment_winner_counts": counts, "mean_efficiency_leaders": leaders,
+                             "disposition": "Different defined statistics, not a data discrepancy; preserve both."})
+    return {"verdict": "PASS_ORIGINAL_EXPORT_PARITY", "receipt_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "source_filenames": len(sources), "distinct_byte_groups": len(byte_groups),
+            "export_rows": checked_rows, "field_comparisons": checked_fields,
+            "suite_rows": dict(suite_totals), "field_mismatches": 0,
+            "explained_scenario_metric_differences": explanations,
+            "scope": "Original framework-state bytes and all exported columns; not an experiment rerun or proof of unrecorded settings."}
 
 
 def audit_primary_exports(workspace, shared_implementation):
@@ -246,7 +393,7 @@ def reconcile(workspace, paper):
         "unresolved": [
             "Historical source-to-run allocator cadence, attack settings, effective training/predictive overrides and some external contexts.",
             "Display-rounding differences alone are not scientific closure blockers; dataset scope and calculation definitions determine material discrepancies.",
-            "Eight saved Hybrid scenario-summary labels differ from recomputed mean-efficiency leaders; their historical export/summary rule remains unresolved. The manuscript now reports descriptive statistics without unsupported bootstrap inference.",
+            "Saved modal-win-frequency labels and mean-efficiency leaders are different statistics. The original-state receipt documents the historical fallback rule; do not relabel one as the other. No unsupported bootstrap inference is claimed.",
             "Venue page count, human author fields and external integration review remain separate release gates; GitHub main supports the owner's normal Overleaf pull.",
         ],
     }
@@ -258,11 +405,14 @@ if __name__ == "__main__":
     parser.add_argument("--paper", required=True)
     parser.add_argument("--output")
     parser.add_argument("--shared-implementation")
+    parser.add_argument("--original-receipt")
     arguments = parser.parse_args()
     result = reconcile(arguments.workspace, arguments.paper)
     if arguments.shared_implementation:
         result["primary_export_audit"] = audit_primary_exports(arguments.workspace, arguments.shared_implementation)
         result["recorded_run_headers"] = audit_recorded_run_headers(arguments.workspace)
+    if arguments.original_receipt:
+        result["original_source_audit"] = summarize_original_receipt(arguments.workspace, arguments.original_receipt)
     rendered = json.dumps(result, indent=2) + "\n"
     if arguments.output:
         Path(arguments.output).write_text(rendered)

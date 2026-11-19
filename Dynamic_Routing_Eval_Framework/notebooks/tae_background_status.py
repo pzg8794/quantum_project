@@ -1,7 +1,10 @@
 """Publish runner-owned cohort status to the existing TAE_Workflow index."""
 
 import base64
+from collections import OrderedDict
+import io
 import json
+import pickle
 import re
 from threading import RLock, Timer
 import time
@@ -44,7 +47,40 @@ def reconcile_cohort_report(document, existing, snapshots=None):
     return report
 
 
-def cohort_progress(document, report, snapshots):
+class _OpaqueCheckpointObject:
+    def __new__(cls, *args, **kwargs):
+        return super().__new__(cls)
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def __setstate__(self, state):
+        pass
+
+
+class _CheckpointMetadataReader(pickle._Unpickler):
+    def find_class(self, module, name):
+        if (module, name) == ('collections', 'OrderedDict'):
+            return OrderedDict
+        return _OpaqueCheckpointObject
+
+    def get_extension(self, code):
+        raise pickle.UnpicklingError('Checkpoint extensions are not supported')
+
+
+def completed_runner_models(data, position, expected):
+    stream = io.BytesIO(data)
+    saved = _CheckpointMetadataReader(stream).load()
+    if (stream.read(1) or not isinstance(saved, dict) or saved.get('is_complete') is not True
+            or saved.get('id') != position or type(saved.get('frames_count')) is not int
+            or saved['frames_count'] <= 0 or not isinstance(saved.get('results'), dict)):
+        raise ValueError('Expected a complete runner checkpoint for the indexed position')
+    return {name for name in expected if isinstance(record := saved['results'].get(name), dict)
+            and not record.get('error') and record.get('frames_count') == saved['frames_count']
+            and 'final_reward' in record}
+
+
+def cohort_progress(document, report, snapshots, runner_models=None):
     plan = document.get('plan') or {}
     if not all(plan.get(key) for key in ('allocators', 'cohorts', 'threats', 'models', 'runs')):
         return None
@@ -66,6 +102,7 @@ def cohort_progress(document, report, snapshots):
                     checkpoint = published.get(f'{allocator}/{threat}/{position}', {})
                     done_experiments += saved.get('state') == 'done' or bool(checkpoint.get('state'))
                     model_files = {name.split('(', 1)[0] for name in checkpoint.get('models', {})}
+                    model_files.update((runner_models or {}).get((cohort, allocator, threat, position), ()))
                     done_models += sum(saved.get('models', {}).get(model, {}).get('state') == 'done'
                                        or model in model_files for model in models)
         done_allocators += all(states.get(cohort) == 'done' for cohort in cohorts)
@@ -95,6 +132,8 @@ def reconcile_index(store, cohort_store, *, pipeline=None, apply=False):
         key = 'pipeline-' + identity.split('_')[1]
         cohort_entry = cohort_pipelines.get(key, {})
         snapshots = {}
+        runner_models = {}
+        reader = None
         for cohort, reference in cohort_entry.get('cohorts', {}).items():
             commit, tag = reference['commit'], reference.get('tag')
             if not tag:
@@ -106,10 +145,34 @@ def reconcile_index(store, cohort_store, *, pipeline=None, apply=False):
             if (snapshot['pipeline'], snapshot['execution'], snapshot['cohort']) != (key, cohort_entry['execution'], cohort):
                 raise ValueError('Cohort snapshot identity differs')
             snapshots[cohort] = snapshot['experiments']
+            plan = document.get('plan') or {}
+            models = set(plan.get('models') or ())
+            for experiment, record in snapshot['experiments'].items():
+                allocator, threat, position_text = experiment.split('/')
+                position = int(position_text)
+                reference = record.get('state')
+                if (not reference or not models or allocator not in (plan.get('allocators') or ())
+                        or cohort not in (plan.get('cohorts') or ()) or threat not in (plan.get('threats') or ())
+                        or not 1 <= position <= plan['runs']):
+                    continue
+                saved = (document.get('allocators', {}).get(allocator, {}).get('cohorts', {})
+                         .get(cohort, {}).get('threats', {}).get(threat, {}).get('experiments', {})
+                         .get(position_text, {}))
+                known = {name for name in models if saved.get('models', {}).get(name, {}).get('state') == 'done'}
+                known.update(name.split('(', 1)[0] for name in record.get('models', {}))
+                if models <= known:
+                    continue
+                if not 0 < reference['size'] <= 50 * 1024**2:
+                    raise ValueError('Indexed runner checkpoint has an invalid size')
+                if reader is None:
+                    from p155_github_checkpoint_store import GitHubCheckpointStore
+                    reader = GitHubCheckpointStore(cohort_store.repository)
+                data = reader.read(commit, reference['path'], reference['size'], reference['sha256'])
+                runner_models[cohort, allocator, threat, position] = completed_runner_models(data, position, models)
         previous = entry.get('allocators', {})
         report = reconcile_cohort_report(document, previous, snapshots)
         counts = sum(len(value['cohorts']) for value in report.values())
-        progress = cohort_progress(document, report, snapshots)
+        progress = cohort_progress(document, report, snapshots, runner_models)
         changed = report != previous or (progress is not None and entry.get('progress') != progress)
         if report != previous:
             entry['allocators'] = report

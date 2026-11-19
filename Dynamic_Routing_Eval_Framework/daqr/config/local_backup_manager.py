@@ -11,12 +11,23 @@ from collections import defaultdict
 from threading import Lock
 from googleapiclient.http import MediaIoBaseDownload
 from .gd_backup_manager import GoogleDriveBackupManager
+from .pipeline_storage import load_registry, validate_local_path
 
 
 class LocalBackupManager(GoogleDriveBackupManager):
 
-    def __init__(self, date_str, config_dir, verbose=False):
-        super().__init__(date_str, config_dir, verbose=verbose)
+    def __init__(self, date_str, config_dir, verbose=False, *, pipeline_storage=None, staging_dir=None, drive_service=None):
+        if pipeline_storage is None and staging_dir is None and drive_service is None:
+            super().__init__(date_str, config_dir, verbose=verbose)
+        else:
+            super().__init__(date_str, config_dir, verbose=verbose,
+                pipeline_storage=pipeline_storage, staging_dir=staging_dir, drive_service=drive_service)
+        if self.pipeline_storage is not None:
+            self.backup_registry = load_registry(self.dir)
+            for component in ('framework_state', 'model_state'):
+                self.backup_registry.setdefault(component, {})
+            self.reset_shared_drive_state_cache = False
+            return
         # FIX: Minimal locks only where needed
         # ------------------------------------------------------------
         # Load registry from Drive if available
@@ -107,7 +118,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
                     else:
                         print(f"            → Overwriting (force=True)")
                 except Exception as e:
-                    print(f"            ℹ️  New file, will upload: {e}")
+                    # print(f"            ℹ️  New file, will upload: {e}")
+                    pass
 
                 # print(f"            📤 Uploading...")
                 self._upload_file_to_drive(component, date_str=date_str, local_path=abs_path, filename=fname)
@@ -451,6 +463,9 @@ class LocalBackupManager(GoogleDriveBackupManager):
         return summary
 
     def upload_files_by_pattern(self, pattern, components=None, date_str=None, status_callback=None, progress_every=25, workers=1):
+        if (getattr(self, '_provided_drive_service', None) is not None
+                and getattr(getattr(self.drive, '_http', None), 'credentials', None) is None):
+            workers = 1
         local_matches = self._collect_local_state_files_by_pattern(
             pattern,
             components=components,
@@ -480,7 +495,13 @@ class LocalBackupManager(GoogleDriveBackupManager):
                     def _worker_manager():
                         manager = getattr(thread_local, "manager", None)
                         if manager is None:
-                            manager = create_pattern_drive_manager(current_date, self.dir, verbose=self.verbose)
+                            arguments = {}
+                            if getattr(self, 'pipeline_storage', None) is not None:
+                                arguments.update(pipeline_storage=self.pipeline_storage, staging_dir=self.dir)
+                            service = self._upload_worker_drive_service()
+                            if service is not None:
+                                arguments['drive_service'] = service
+                            manager = create_pattern_drive_manager(current_date, self.dir, verbose=self.verbose, **arguments)
                             thread_local.manager = manager
                         return manager
 
@@ -572,6 +593,11 @@ class LocalBackupManager(GoogleDriveBackupManager):
     
 
     def save_file(self, component, filename, file_data):
+        self._assert_pipeline_binding()
+        if getattr(self, 'pipeline_storage', None) is not None:
+            if component not in ('framework_state', 'model_state') or Path(filename).name != filename:
+                raise ValueError('Original bound native component and basename required')
+            validate_local_path(self.dir / component / self.date_str / filename, self.dir)
         # self.date_str = self.normalize_day_prefix(self.date_str)
         save_dir = self.dir / component / self.date_str
         save_dir.mkdir(parents=True, exist_ok=True)
@@ -598,6 +624,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
             print(f"✓ Saved: {component}/{filename} ({file_size/1024/1024:.2f} MB)")
 
             drive_path = self.quantum_data_paths["obj"][component]["drive"] / self.date_str / filename
+            if getattr(self, 'pipeline_storage', None) is not None:
+                validate_local_path(drive_path, self.dir)
 
             # -------------------------------------------------------
             # 2. If Drive is unavailable, keep local staged file
@@ -649,7 +677,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
             # -------------------------------------------------------
             # 7. Delete local staged file only after verified success
             # -------------------------------------------------------
-            if file_path.exists():
+            if file_path.exists() and file_path.resolve() != drive_path.resolve():
                 file_path.unlink()
 
             return str(drive_path)
@@ -717,6 +745,7 @@ class LocalBackupManager(GoogleDriveBackupManager):
 
     def get_latest_state(self, component, filename):
         """Resolve a usable filesystem path for a saved state."""
+        self._assert_pipeline_binding()
         entry = self.backup_registry.get(component, {}).get(filename)
 
         if not entry:
@@ -731,6 +760,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
         #   A) old style → {"local_path": "...", "date": "..."}
         #   B) new style → "/path/to/file.pkl"
         registry_path = entry.get("local_path") if isinstance(entry, dict) else entry
+        if registry_path and getattr(self, 'pipeline_storage', None) is not None:
+            validate_local_path(registry_path, self.dir)
 
         local_root = Path(self.quantum_data_paths["obj"][component]["local"])
         drive_root = Path(self.quantum_data_paths["obj"][component]["drive"])
@@ -773,6 +804,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
             seen.add(key)
 
             if candidate.exists():
+                if getattr(self, 'pipeline_storage', None) is not None:
+                    validate_local_path(candidate, self.dir)
                 if self.verbose:
                     print(f"\t✓ Resolved: {component}/{filename} → {candidate}")
                 return str(candidate)
@@ -784,6 +817,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
         # across any `day_*` folder.
         recovered = self._download_file_from_drive(component=component, filename=filename)
         if recovered:
+            if getattr(self, 'pipeline_storage', None) is not None:
+                validate_local_path(recovered, self.dir)
             if self.verbose:
                 print(f"\t☁️ Recovered from Drive: {recovered}")
             return str(recovered)
@@ -796,6 +831,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
         """Load and return the actual data from a state file."""
         path = self.get_latest_state(component, filename)
         if not path or not Path(path).exists(): return None
+        if getattr(self, 'pipeline_storage', None) is not None:
+            validate_local_path(path, self.dir)
         try:
             with open(path, "rb") as f: data = pickle.load(f)
             print(f"✓ Loaded data from: {path}")
@@ -823,8 +860,8 @@ class LocalBackupManager(GoogleDriveBackupManager):
         sys.stdout = TeeStream(self._orig_stdout, f)
         sys.stderr = TeeStream(self._orig_stderr, f)
 
-        print(f"[Logging Redirect Initialized]")
-        print(f"Log File: {logfile}")
+        # print(f"[Logging Redirect Initialized]")
+        # print(f"Log File: {logfile}")
 
         return logfile
 
@@ -1144,13 +1181,17 @@ class LocalBackupManager(GoogleDriveBackupManager):
         return True
 
 
-def create_pattern_drive_manager(date_str, config_dir, verbose=False):
+def create_pattern_drive_manager(date_str, config_dir, verbose=False, *, pipeline_storage=None, staging_dir=None, drive_service=None):
     """
     Create a Drive-backed manager for data-management operations without forcing
     a full LocalBackupManager registry rebuild.
     """
     manager = LocalBackupManager.__new__(LocalBackupManager)
-    GoogleDriveBackupManager.__init__(manager, date_str, Path(config_dir), verbose=verbose)
+    if pipeline_storage is None and staging_dir is None and drive_service is None:
+        GoogleDriveBackupManager.__init__(manager, date_str, Path(config_dir), verbose=verbose)
+    else:
+        GoogleDriveBackupManager.__init__(manager, date_str, Path(config_dir), verbose=verbose,
+            pipeline_storage=pipeline_storage, staging_dir=staging_dir, drive_service=drive_service)
     manager.backup_registry = {}
     manager.new_entries = {}
     manager.metadata = {}

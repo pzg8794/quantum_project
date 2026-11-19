@@ -234,6 +234,20 @@ class ExperimentArchive:
                 if entries.get(path.name) == str(path):
                     entries.pop(path.name)
 
+    def remove_verified_log(self, key, log):
+        try:
+            pinned = self.run.store.open_published(**self.run.identity)
+            if pinned.read(key, 'log') == log.read_bytes():
+                log.unlink()
+                return True
+            raise ValueError('Published log differs')
+        except Exception as error:
+            try:
+                print(f'Log backup pending for {key}; temporary log retained: {error}', flush=True)
+            except Exception:
+                pass
+            return False
+
     def _handoff_staged(self, key, checkpoint, models, evaluator, moved):
         self._handoff(key, moved[checkpoint], {name: moved[path] for name, path in models.items()},
                       moved[evaluator])

@@ -1,7 +1,9 @@
 from __future__ import annotations
+from daqr.config.tae_workflow import tracked_experiment, observe_model
 
-from    concurrent.futures import ThreadPoolExecutor, as_completed
 import pathlib
+import os
+MODEL_WORKER_ENV = 'DAQR_MODEL_MAX_WORKERS'
 from    pathlib import Path
 try:
     from tqdm import tqdm
@@ -69,7 +71,10 @@ class QuantumExperimentRunner:
         self.capacity = capacity if capacity else self.frames_count
         
         # ADD these new parallel execution attributes
-        self.max_workers = max_workers if max_workers else min(4, mp.cpu_count())
+        configured_workers = os.environ.get(MODEL_WORKER_ENV)
+        if configured_workers is not None and configured_workers not in ('1', '2', '3', '4'):
+            raise ValueError('DAQR_MODEL_MAX_WORKERS must be between 1 and 4')
+        self.max_workers = max_workers if max_workers else min(int(configured_workers or '4'), mp.cpu_count())
         self._model_cache = {}  # Cache for model reuse
         self._execution_stats = {'total_time': 0, 'parallel_efficiency': 0}
 
@@ -161,6 +166,12 @@ class QuantumExperimentRunner:
             for check in non_dflt_checks:
                 other_attrs.pop(check, None)
                 self_attrs.pop(check, None)
+
+            for attrs in (self_attrs, other_attrs):
+                metadata = attrs.get("metadata")
+                if ((isinstance(metadata, dict) and not metadata)
+                        or (isinstance(metadata, str) and metadata == "{}")):
+                    attrs.pop("metadata", None)
 
             # Random allocator: ignore qubit capacities in resume comparison
             if "random" in str(self.configs.allocator).lower():
@@ -307,7 +318,12 @@ class QuantumExperimentRunner:
         Returns:
             dict[str, str] → {qubits_alloc: file_name}
         """
-        registry = self.configs.backup_mgr.backup_registry.get(self.component, {})
+        git_loader = self.configs.git_checkpoint_loader(self.component, self.file_name)
+        if git_loader is None:
+            registry = self.configs.backup_mgr.backup_registry.get(self.component, {})
+        else:
+            registry = git_loader.runner_alternatives(self.file_name, self.configs.suffix)
+            self.configs.backup_mgr.backup_registry.setdefault(self.component, {}).update(registry)
         # pattern to strip trailing '_d+_d+_d+_d+' before the extension
         pattern = r"_\(\d+_\d+_\d+_\d+\)|\s+"
         sub_registry = {}
@@ -494,7 +510,7 @@ class QuantumExperimentRunner:
         total_reward, attempts = 0.0, 0
         model = None
 
-        if alg_name in self.results.keys(): 
+        if alg_name in self.results and float(self.results[alg_name].get('final_reward', 0.0) or 0.0) > 0:
             # if self.configs.overwrite: 
             # print(f"\t{alg_name} already processed")
             # if alg_name == base_model:
@@ -516,11 +532,12 @@ class QuantumExperimentRunner:
                 retry_count = 0
                 max_retries = 3  # Prevent infinite loops
                 while total_reward <= 0.0 and retry_count < max_retries:
+                    retry_count += 1
                     # model_kwargs['verbose'] = enable_progress
                     self.configs.verbose = enable_progress
                     
                     # Debug Paper7 reward structure
-                    if alg_name == 'Oracle' and retry_count == 0:
+                    if alg_name == 'Oracle' and retry_count == 1:
                         reward_funcs = env_info.get('reward_functions', [])
                         if reward_funcs:
                             print(f"\t📊 Reward structure for Oracle:")
@@ -548,15 +565,8 @@ class QuantumExperimentRunner:
                         if enable_progress: self.validate_quantum_model(model)
                         if runner_type == 'step-wise': total_reward = float(self.run_step_wise_oracle(env_info, model, self.frames_count, alg_name))
                         else: result = model.run(attack_list=env_info['attack_pattern'], verbose=enable_progress)
-                        if result is None:
-                            mr = model.get_results() if hasattr(model, 'get_results') else {}
-                            if mr and 'final_reward' in mr: total_reward = float(mr['final_reward'])
-                        
-                        retry_count += 1
-                        if retry_count >= max_retries and total_reward <= 0.0:
-                            # Break out to avoid infinite loop - allow zero rewards for context-aware modes
-                            print(f"\t⚠️ Max retries ({max_retries}) reached. Proceeding with total_reward={total_reward}")
-                            break
+                        mr = model.get_results() if hasattr(model, 'get_results') else {}
+                        if mr and 'final_reward' in mr: total_reward = float(mr['final_reward'])
 
                         enable_progress = False
                         avg_reward = total_reward / self.frames_count if (self.frames_count > 0 and total_reward > 0) else 0.0
@@ -571,6 +581,9 @@ class QuantumExperimentRunner:
                             'model_results': model.get_results(),
                             'retries': attempts
                         }
+                        if retry_count >= max_retries and total_reward <= 0.0:
+                            print(f"\t⚠️ {alg_name}: Max retries ({max_retries}) reached. Proceeding with total_reward={total_reward}")
+                            break
                         if model.resumed: break
                     except Exception as e: 
                         model = None
@@ -847,7 +860,7 @@ class QuantumExperimentRunner:
                 self.results[alg_name]['efficiency'] = efficiency
                 self.results[alg_name]['gap'] = gap
 
-                if failed_attempts['under_threshold'] >= 3 or (hasattr(temp_model, 'resumed') and temp_model.resumed): break
+                if final_reward <= 0 or failed_attempts['total'] >= 3 or (hasattr(temp_model, 'resumed') and temp_model.resumed): break
                 # if failed_attempts['under_threshold'] >= 3 or temp_model.state == 1:break
             # Do not disable resume globally; config is shared across the pipeline.
 
@@ -900,12 +913,19 @@ class QuantumExperimentRunner:
 
         return oracle_reward
     
-    def run_experiment(self, frames_count=None, models=None, base_model='Oracle', attack_type=None, qubit_cap=None, neuralUCB='GNeuralUCB'):
+    @tracked_experiment
+    def run_experiment(self, frames_count=None, models=None, base_model='Oracle', attack_type=None, qubit_cap=None, neuralUCB='GNeuralUCB', *, execution='process', max_workers=None, process_timeout=86400):
+        if execution == 'process':
+            return self.run_experiment_parallel(frames_count, models, base_model, attack_type,
+                                                qubit_cap, max_workers, timeout=process_timeout)
+        if execution != 'sequential':
+            raise ValueError('Use process or sequential model execution')
         if attack_type is not None: self.configs.attack_type = attack_type
         if models is None: models = set(self.algorithm_configs.keys())
         if frames_count: self.frames_count = frames_count
 
         self.get_oracle_reward(base_model)
+        observe_model(self, base_model)
         scaled_capacity = int(self.capacity * self.configs.scale)
         # self.run_single_model(neuralUCB, base_model, is_parallel=False)
 
@@ -913,7 +933,8 @@ class QuantumExperimentRunner:
             if alg_name == base_model: continue
             # Always invoke the module entrypoint; each model/runner is responsible for
             # internally deciding whether it must compute or can resume/skip.
-            self.run_single_model(alg_name, base_model, is_parallel=False)
+            self.run_single_model(alg_name, base_model, is_parallel=True)
+            observe_model(self, alg_name)
 
             fa = self.results.get(alg_name, {}).get("failed_attempts", {}) if isinstance(self.results, dict) else {}
             under_thr = fa.get("under_threshold", 0)
@@ -943,58 +964,70 @@ class QuantumExperimentRunner:
         return {'results': self.results, 'winner': self.winner}
 
 
-    def run_experiment_parallel(self, frames_count=None, models=None, base_model='Oracle', attack_type=None, qubit_cap=None, max_workers=None):
-        """Enhanced parallel execution of multiple models simultaneously"""
+    @tracked_experiment
+    def run_experiment_parallel(self, frames_count=None, models=None, base_model='Oracle', attack_type=None, qubit_cap=None, max_workers=None, *, timeout=86400):
+        """Run models in isolated processes; only this parent saves aggregate runners."""
+        from .model_process_executor import run_models
         if attack_type is not None: self.configs.attack_type = attack_type
-        if models is None: models = set(self.algorithm_configs.keys())
+        models = list(self.algorithm_configs) if models is None else list(models)
         if frames_count: self.frames_count =frames_count
-        if max_workers is None: max_workers = min(len(models), mp.cpu_count())
-
-        # self.results = {}
-        # best_reward = -1.0
+        if max_workers is None: max_workers = self.max_workers
         self.get_oracle_reward(base_model)
-        scaled_capacity = int(self.capacity*self.configs.scale)
-        parallel_models = [m for m in models if m != base_model]
-
-        # Execute models in parallel with controlled concurrency
-        print(f"\n\t🚀{str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Running {len(parallel_models)} models in parallel (max_workers={max_workers})")
-        print("\t", "="*100)
-        
-        self.winner = None
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all model tasks
-            future_to_model = {
-                executor.submit(self.run_single_model, model_name): model_name 
-                for model_name in parallel_models if model_name != base_model
-            }
-            
-            # Process results as they complete (live progress)
-            for future in as_completed(future_to_model):
-                alg_name = future.result()
-                if len(self.results[alg_name]) == 0: continue
-                try:
-                    efficiency = self.results[alg_name]['efficiency']
-                    final_reward = self.results[alg_name]['final_reward']
-                    failed_attempts = self.results[alg_name]['failed_attempts']
-                    
-                    total = failed_attempts.get('total', 0)
-                    failed = failed_attempts.get('failed', 0)
-                    threshold = failed_attempts.get('threshold', 0)
-                    under_thr= failed_attempts.get('under_threshold', 0)
-
-                    # NEEDS TO GO TO A HELPER METHOD
-                    print(f"\tEXP {self.id} {alg_name.upper():<20}: Reward={final_reward:07.2f}, Efficiency={efficiency:05.1f}% [Retries={total}, Failed={failed}, < Threshold={under_thr}, SCapacity={scaled_capacity}, Threshold={threshold}]")
-                        
-                except Exception as e:
-                    print(f"❌ Parallel execution failed for {alg_name}: {e}")
-                    self.results[alg_name] = {'final_reward': 0.0, 'error': str(e)}
-
-        # NEEDS TO GO TO A HELPER METHOD
+        observe_model(self, base_model)
+        # Obsolete ThreadPoolExecutor path shared RNG/configuration and partial runner saves.
+        # Processes keep original model methods; save/resume requests are serialized by the parent.
+        run_models(self, models, base_model, max_workers, timeout)
+        non_oracle = [name for name in self.results if name != base_model]
+        if non_oracle:
+            self.winner = max(non_oracle, key=lambda name: float(self.results[name].get('final_reward', 0.0) or 0.0))
         self.display_experiment_conditions()
-        print(f"\t-->🏆 EXP{self.id} Winner:{self.winner:<20}(Gap:{self.results.get(self.winner, {}).get('gap', 100):05.1f}%) [Env:{str(self.environment)}, Attack:{str(self.environment.attack)} X Rate:{self.environment.attack_rate}, Frames:{self.environment.frame_length}, SCapacity={scaled_capacity}, Alloc={str(self.configs.allocator)}]")
+        scaled_capacity = int(self.capacity * self.configs.scale)
+        winner_name = self.winner if self.winner else 'NA'
+        gap = self.results.get(self.winner, {}).get('gap', 100)
+        print(f"\t-->🏆 EXP{self.id} Winner:{winner_name:<20}(Gap:{gap:05.1f}%) [Env:{str(self.environment)}, Attack:{str(self.environment.attack)} X Rate:{self.environment.attack_rate}, Frames:{self.environment.frame_length}, SCapacity={scaled_capacity}, Alloc={str(self.configs.allocator)}]")
         return {'results': self.results, 'winner': self.winner}
 
 
+
+    # Legacy shared-thread executor retained for reference; not used by either entrypoint.
+    #
+    # # Execute models in parallel with controlled concurrency
+    # print(f"\n\t🚀{str(self.environment).upper()} ({str(self.environment.attack).upper()}) EXP {self.id}: Running {len(parallel_models)} models in parallel (max_workers={max_workers})")
+    # print("\t", "="*100)
+    #
+    # self.winner = None
+    # with ThreadPoolExecutor(max_workers=max_workers) as executor:
+    # # Submit all model tasks
+    # future_to_model = {
+    # executor.submit(self.run_single_model, model_name): model_name
+    # for model_name in parallel_models if model_name != base_model
+    # }
+    #
+    # # Process results as they complete (live progress)
+    # for future in as_completed(future_to_model):
+    # alg_name = future.result()
+    # if len(self.results[alg_name]) == 0: continue
+    # try:
+    # efficiency = self.results[alg_name]['efficiency']
+    # final_reward = self.results[alg_name]['final_reward']
+    # failed_attempts = self.results[alg_name]['failed_attempts']
+    #
+    # total = failed_attempts.get('total', 0)
+    # failed = failed_attempts.get('failed', 0)
+    # threshold = failed_attempts.get('threshold', 0)
+    # under_thr= failed_attempts.get('under_threshold', 0)
+    #
+    # # NEEDS TO GO TO A HELPER METHOD
+    # print(f"\tEXP {self.id} {alg_name.upper():<20}: Reward={final_reward:07.2f}, Efficiency={efficiency:05.1f}% [Retries={total}, Failed={failed}, < Threshold={under_thr}, SCapacity={scaled_capacity}, Threshold={threshold}]")
+    #
+    # except Exception as e:
+    # print(f"❌ Parallel execution failed for {alg_name}: {e}")
+    # self.results[alg_name] = {'final_reward': 0.0, 'error': str(e)}
+    #
+    # # NEEDS TO GO TO A HELPER METHOD
+    # self.display_experiment_conditions()
+    # print(f"\t-->🏆 EXP{self.id} Winner:{self.winner:<20}(Gap:{self.results.get(self.winner, {}).get('gap', 100):05.1f}%) [Env:{str(self.environment)}, Attack:{str(self.environment.attack)} X Rate:{self.environment.attack_rate}, Frames:{self.environment.frame_length}, SCapacity={scaled_capacity}, Alloc={str(self.configs.allocator)}]")
+    # return {'results': self.results, 'winner': self.winner}
 
     def get_or_create_model(self, alg_name, env_info, algorithm_seed):
         """Thread-safe model creation with caching"""

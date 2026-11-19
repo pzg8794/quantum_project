@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from daqr.config.tae_workflow import observe_completed_experiment, sync_completed_status
 from daqr.evaluation.experiment_runner import QuantumExperimentRunner
 
 import pathlib
@@ -728,6 +729,7 @@ class MultiRunEvaluator:
             for i in range(0, self.configs.runs):
                 exp_id = i + 1
                 if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
+                    observe_completed_experiment(self.configs, exp_id, self.env_experiments[self.configs.attack_type][exp_id])
                     scaled_cap = self.capacity * self.configs.scale
                     print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
                     self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
@@ -735,7 +737,9 @@ class MultiRunEvaluator:
                 self.run_experiment(exp_no=i, attack_category=attack_category)
 
             self.total_time = time.time() - self.start_time
-            self.save()
+            sync_completed_status(self.configs)
+            if getattr(self, '_experiment_archive', None) is None:
+                self.save()
 
             print(f"Total experiment time: {self.total_time:05.1f}s")
             print(f"Experiments completed for {self.configs.attack_type}")
@@ -790,6 +794,18 @@ class MultiRunEvaluator:
                 print(f"\t• {model_name:<15}: \t{metrics.get('avg_efficiency', 0):05.1f}% Efficiency \t{wins_str}")
             print("="*70)
 
+
+    def calculate_fairness(self, output_dir=None):
+        from .legacy_fairness_integration import LegacyFairnessIntegration, FairnessIntegrationError
+        self.fairness_status = dict(state='running')
+        try:
+            receipt = LegacyFairnessIntegration().generate(self, output_dir=output_dir)
+        except Exception as error:
+            self.fairness_status = dict(state='resume', error=str(error))
+            raise FairnessIntegrationError(str(error)) from error
+        self.fairness_status = dict(state='done', source_sha256=receipt['source_sha256'])
+        print(f"Fairness complete: {receipt['outcome_count']} model outcomes")
+        return receipt
 
     def calculate_scenarios_performance(self):
         """
@@ -1440,6 +1456,9 @@ class MultiRunEvaluator:
         self.frames_count = self.base_frames + (exp_no * self.frame_step)
         self.capacity = self.base_frames if self.configs.base_capacity else self.frames_count
         exp_id = exp_no + 1
+        archive = getattr(self, '_experiment_archive', None)
+        if archive is not None:
+            archive.begin(exp_id)
 
         print("-" * 100)
         print(f"EXPERIMENT {exp_id}: {self.frames_count} frames  <>  SCALED-CAPACITY: "
@@ -1487,6 +1506,7 @@ class MultiRunEvaluator:
         try:
             # Skip if already completed (resume-safe)
             if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
+                observe_completed_experiment(self.configs, exp_id, self.env_experiments[self.configs.attack_type][exp_id])
                 print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
                 self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], self.capacity * self.configs.scale)
                 return self.env_experiments[self.configs.attack_type][exp_id]
@@ -1511,8 +1531,11 @@ class MultiRunEvaluator:
             # That can disable resume for subsequent experiments/scales within the same process.
             del runner
             if gc: gc.collect()
-            self.save()
+            evaluator_checkpoint = self.save()
 
+        if archive is not None:
+            archive.finish(exp_id, experiment_results, evaluator_checkpoint)
+            observe_completed_experiment(self.configs, exp_id, experiment_results)
         return self.env_experiments[self.configs.attack_type][exp_id]
 
     
@@ -1553,6 +1576,7 @@ class MultiRunEvaluator:
         try:
             # Skip if already completed (resume-safe)
             if (self.configs.attack_type in self.env_experiments and exp_id in self.env_experiments[self.configs.attack_type]):
+                observe_completed_experiment(self.configs, exp_id, self.env_experiments[self.configs.attack_type][exp_id])
                 print(f"⏩ SKIPPING EXPERIMENT {exp_id}: ALREADY COMPLETED AND STORED")
                 scaled_cap = self.capacity * self.configs.scale
                 self.display_run_results(exp_id, self.env_experiments[self.configs.attack_type], scaled_cap)
@@ -1607,6 +1631,7 @@ class MultiRunEvaluator:
         self.start_time = time.time()
         for i in range(0, self.configs.runs):
             self.run_threaded_experiment(exp_no=i, attack_category=attack_category)
+        sync_completed_status(self.configs)
         self.total_time = time.time() - self.start_time
         self.save()
 
@@ -1656,6 +1681,7 @@ class MultiRunEvaluator:
                     self.save()
         self.total_time = time.time() - self.start_time
 
+        sync_completed_status(self.configs)
         print(f"\n\t⏱️  Total multi-run time: {self.total_time:05.1f}s")
         print(f"\tExperiments completed for {self.configs.attack_type}")
         return self.env_experiments[self.configs.attack_type]

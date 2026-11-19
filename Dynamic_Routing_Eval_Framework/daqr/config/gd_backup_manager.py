@@ -7,19 +7,55 @@ from collections import defaultdict
 import re
 import time
 import random
+import subprocess
 from googleapiclient.errors import HttpError
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+from .pipeline_storage import bind_staging, validate_local_path, validate_storage, provision_pipeline_storage, validate_staging_directory
 
 class GoogleDriveBackupManager:
     """Unified JSON registry backup to Google Drive Shared Drive."""
 
     DEFAULT_DRIVE_FOLDER_ID = "0AK0VchnNyM-xUk9PVA"
+    _pipeline_initializations = {}
 
-    def __init__(self, date_str, config_dir, verbose=False):
+    @staticmethod
+    def pipeline_creation_drive_service(credentials_path=None):
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+
+        path = credentials_path or os.environ.get('DAQR_PIPELINE_CREATION_CREDENTIALS')
+        if path is None:
+            path = Path(os.environ.get('CLOUDSDK_CONFIG', Path.home() / '.config' / 'gcloud')) / 'application_default_credentials.json'
+        login = ('Reauthenticate the existing Google user with gcloud auth login '
+                 '--enable-gdrive-access --update-adc, or configure '
+                 'DAQR_PIPELINE_CREATION_CREDENTIALS with authorized-user credentials')
+        try:
+            with Path(path).expanduser().open() as stream:
+                document = json.load(stream)
+            if document.get('type') != 'authorized_user':
+                raise ValueError('Pipeline creation requires a Google user, not the backup service account')
+            credentials = Credentials.from_authorized_user_info(document,
+                scopes=['https://www.googleapis.com/auth/drive'])
+            if not credentials.valid:
+                credentials.refresh(Request())
+        except Exception as error:
+            raise RuntimeError('Pipeline creation user authorization unavailable. ' + login) from error
+        return build('drive', 'v3', credentials=credentials, cache_discovery=False)
+
+    def __init__(self, date_str, config_dir, verbose=False, *, pipeline_storage=None, staging_dir=None, drive_service=None):
+        self.pipeline_storage = None
+        if pipeline_storage is not None:
+            self.pipeline_storage, staging_dir = bind_staging(pipeline_storage, staging_dir)
+            if Path(config_dir).resolve() != staging_dir:
+                raise ValueError('Bound manager config_dir must equal its pipeline staging_dir')
+            config_dir = staging_dir
+        elif staging_dir is not None:
+            raise ValueError('staging_dir requires an explicit pipeline storage binding')
         self.drive = None
+        self._provided_drive_service = drive_service
         self.metadata = {}
         self.new_entries = {}
         self.verbose = verbose
@@ -29,7 +65,7 @@ class GoogleDriveBackupManager:
         self._drive_state_index_by_component = {}
         self._drive_state_index_loaded_components = set()
         self.in_share_drive = True
-        self.drive_folder_id = os.environ.get(
+        self.drive_folder_id = self.pipeline_storage['driveId'] if self.pipeline_storage else os.environ.get(
             "DAQR_DRIVE_FOLDER_ID",
             self.DEFAULT_DRIVE_FOLDER_ID,
         )
@@ -44,7 +80,7 @@ class GoogleDriveBackupManager:
             Path(self.dir).resolve().relative_to(self.workspace_root)
             if self.workspace_root is not None else None
         )
-        self.drive_workspace_root = self._find_drive_workspace_root()
+        self.drive_workspace_root = None if self.pipeline_storage else self._find_drive_workspace_root()
         self.drive_config_dir = (
             self.drive_workspace_root / self.relative_config_dir
             if self.drive_workspace_root is not None and self.relative_config_dir is not None
@@ -58,7 +94,7 @@ class GoogleDriveBackupManager:
         self.drive_datalake_base            = (
             self.drive_workspace_root
             if self.drive_workspace_root is not None
-            else Path("/content/drive/Shareddrives/ai_quantum_computing")
+            else self.dir if self.pipeline_storage else Path("/content/drive/Shareddrives/ai_quantum_computing")
         )
         self.quantum_logs_file_name         = f"quantum_quick-run_log_{self.date_str}.txt"
 
@@ -67,7 +103,7 @@ class GoogleDriveBackupManager:
         self.quantum_data_paths["drive"]    = (
             self.drive_config_dir
             if self.drive_config_dir is not None
-            else self.drive_datalake_base / "quantum_data_lake"
+            else self.dir if self.pipeline_storage else self.drive_datalake_base / "quantum_data_lake"
         )
         
         self.quantum_data_paths["logs"]             = {}
@@ -127,6 +163,10 @@ class GoogleDriveBackupManager:
         # Initialize Google Drive API
         # ------------------------------------------------------------
         try:
+            if drive_service is not None:
+                self.drive = drive_service
+                self.remote_available = True
+                return
             self.credentials = service_account.Credentials.from_service_account_file(
                 os.environ["GOOGLE_APPLICATION_CREDENTIALS"],
                 scopes=["https://www.googleapis.com/auth/drive"]
@@ -373,6 +413,7 @@ class GoogleDriveBackupManager:
 
         Returns the cached mapping {filename: {drive_id, day}} when available.
         """
+        self._assert_pipeline_binding()
         if not component:
             return None
 
@@ -404,6 +445,109 @@ class GoogleDriveBackupManager:
             return index
 
         return None
+
+    @classmethod
+    def for_pipeline(cls, date_str, config_dir, *, pipeline_id, staging_dir,
+                     pipeline_storage=None, drive_service=None, overwrite=False, store=None, verbose=False):
+        from .pipeline_backup_index import GitHubBackupIndexStore
+        if type(pipeline_id) not in (int, str) or re.fullmatch(r'[1-9][0-9]*', str(pipeline_id)) is None:
+            raise ValueError('Existing positive canonical pipeline identity required')
+        if type(overwrite) is not bool:
+            raise ValueError('Explicit Boolean overwrite required')
+        pipeline_id = str(pipeline_id)
+        staging_dir = validate_staging_directory(staging_dir)
+        if Path(config_dir).resolve() != staging_dir:
+            raise ValueError('Bound manager config_dir must equal its pipeline staging_dir')
+        provided = validate_storage(pipeline_storage) if pipeline_storage is not None else None
+        if provided is not None and provided['pipelineId'] != pipeline_id:
+            raise ValueError('Pipeline storage identity differs')
+        cache_key = (os.getpid(), pipeline_id)
+        cache_allowed = store is None
+        cached = cls._pipeline_initializations.get(cache_key) if cache_allowed and not overwrite else None
+        if cached is not None:
+            if provided is not None and provided != cached['storage']:
+                raise ValueError('Cached pipeline storage identity differs')
+            binding, snapshot, pending = cached['storage'], None, None
+        else:
+            store = GitHubBackupIndexStore() if store is None else store
+            snapshot, pending = None, None
+            try:
+                snapshot = store.snapshot(pipeline_id, read_indexes=not overwrite)
+                record = store.read_record(snapshot)
+                if str(record.get('pipeline_id')) != pipeline_id:
+                    raise ValueError('Canonical pipeline identity differs')
+            except (RuntimeError, OSError, TimeoutError, subprocess.TimeoutExpired) as error:
+                if provided is None:
+                    raise
+                binding, pending = provided, str(error)
+            else:
+                recorded = record.get('storage')
+                binding = validate_storage(recorded) if recorded is not None else None
+                if binding is not None and binding['pipelineId'] != pipeline_id:
+                    raise ValueError('Recorded storage belongs to a different pipeline')
+                if provided is not None:
+                    if binding is None:
+                        if drive_service is None:
+                            raise ValueError('Reuse the authorized Drive client to finish registering the existing Drive')
+                        existing = drive_service.drives().get(driveId=provided['driveId'], fields='id').execute()
+                        if existing.get('id') != provided['driveId']:
+                            raise ValueError('Recoverable Drive identity differs')
+                        snapshot = store.bind_storage(provided, snapshot)
+                        binding = provided
+                    elif provided != binding:
+                        raise ValueError('Provided storage differs from the canonical pipeline binding')
+                if binding is None:
+                    if any(staging_dir.iterdir()):
+                        raise ValueError('New pipeline Drive creation requires an empty unbound staging directory')
+                    if drive_service is None:
+                        raise ValueError('Use the existing authorized user Drive client to create pipeline storage')
+                    binding = provision_pipeline_storage(drive_service, pipeline_id)
+                    try:
+                        snapshot = store.bind_storage(binding, snapshot)
+                    except Exception as error:
+                        raise RuntimeError('Drive exists; retry its idempotent pipeline initialization: '
+                                           + json.dumps(binding, sort_keys=True)) from error
+        arguments = dict(pipeline_storage=binding, staging_dir=staging_dir)
+        if drive_service is not None:
+            arguments['drive_service'] = drive_service
+        manager = cls(date_str, config_dir, verbose=verbose, **arguments)
+        if pending is not None:
+            manager.backup_index_status = dict(status='pending', error=pending)
+        elif cached is not None:
+            manager.backup_index_status = dict(status='reused', reason='initialized-in-process')
+        else:
+            try:
+                manager.backup_index_status = manager.synchronize_backup_index(
+                    overwrite=overwrite, store=store, snapshot=snapshot)
+            except Exception as error:
+                manager.backup_index_status = dict(status='pending', error=str(error))
+        if manager.backup_index_status['status'] == 'pending':
+            print('Pipeline ' + pipeline_id + ' Git backup initialization is pending; its Drive binding is preserved.')
+        elif cache_allowed:
+            cls._pipeline_initializations[cache_key] = dict(storage=dict(binding))
+        return manager
+
+    def _upload_worker_drive_service(self):
+        if getattr(self, '_provided_drive_service', None) is None:
+            return None
+        credentials = getattr(getattr(self.drive, '_http', None), 'credentials', None)
+        if credentials is None:
+            raise ValueError('Use serial uploads when the supplied client has no reusable credentials')
+        return build('drive', 'v3', credentials=credentials, cache_discovery=False)
+
+    def synchronize_backup_index(self, *, overwrite=False, store=None, snapshot=None):
+        from .pipeline_backup_index import synchronize_backup_index
+        self._assert_pipeline_binding()
+        if getattr(self, 'pipeline_storage', None) is None:
+            raise ValueError('A recorded pipeline storage binding is required for Git backup indexes')
+        return synchronize_backup_index(self.drive, self.pipeline_storage, overwrite=overwrite, store=store, snapshot=snapshot)
+
+    def _assert_pipeline_binding(self):
+        storage = getattr(self, 'pipeline_storage', None)
+        if storage is not None:
+            binding, directory = bind_staging(storage, self.dir)
+            if binding['driveId'] != self.drive_folder_id or directory != self.dir:
+                raise ValueError('Native manager pipeline/Drive binding changed')
 
     def _find_workspace_root(self, start_path: Path):
         start_path = Path(start_path).resolve()
@@ -470,7 +614,8 @@ class GoogleDriveBackupManager:
     # ------------------------------------------------------------
     # Find credentials (same behavior as your GCP code)
     # ------------------------------------------------------------
-    def _find_credentials(self):
+    @staticmethod
+    def _find_credentials():
         current_dir = Path(__file__).parent.resolve()
         locations = [
             os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
@@ -585,6 +730,7 @@ class GoogleDriveBackupManager:
         Fetch registry.json from Google Drive.
         If expected_keys is provided, filter down the registry to only those keys.
         """
+        self._assert_pipeline_binding()
         if len(self.metadata) != 0 and not force: return self.metadata
         print("\n==================== FETCH FROM DRIVE START ====================")
 
@@ -715,6 +861,7 @@ class GoogleDriveBackupManager:
 
 
     def save_registry(self, registry=None, *, force: bool = False):
+        self._assert_pipeline_binding()
         reg = registry or self.backup_registry
 
         # Debounce registry writes (common hot path during model/runner saves).
@@ -733,6 +880,9 @@ class GoogleDriveBackupManager:
             pickle.dump(reg, f)
         with open(file.replace(".pkl", ".json"), "w") as f:
             json.dump(reg, f)
+        if getattr(self, 'pipeline_storage', None) is not None:
+            os.chmod(file, 0o600)
+            os.chmod(file.replace('.pkl', '.json'), 0o600)
 
         self._last_registry_save_ts = now
         self._registry_dirty = False
@@ -745,6 +895,7 @@ class GoogleDriveBackupManager:
 
 
     def get_latest_state(self, component, filename):
+        self._assert_pipeline_binding()
         entry = self.backup_registry.get(component, {}).get(filename)
         if not entry: return None
 
@@ -752,6 +903,8 @@ class GoogleDriveBackupManager:
         try:                path = entry.get("local_path") if isinstance(entry, dict) else entry
         except Exception:   path = self.normalize_path(path, project_root=self.dir)
         if not path or not os.path.exists(path): return None
+        if getattr(self, 'pipeline_storage', None) is not None:
+            validate_local_path(path, self.dir)
 
         ext = Path(path).suffix.lower()
         if ext == ".pkl":
@@ -777,6 +930,7 @@ class GoogleDriveBackupManager:
 
     def _ensure_drive_folder(self, folder_name, parent_id):
         """Find or create a folder under a given parent (or Drive root)."""
+        self._assert_pipeline_binding()
         if not self.remote_available or not self.drive or not parent_id: return None
 
         try:
@@ -843,6 +997,37 @@ class GoogleDriveBackupManager:
         raise Exception("🚨 Drive API failed after maximum retries")
 
 
+    def upload_workflow_status(self, path):
+        """Publish only lightweight mutable workflow metadata within this pipeline Drive."""
+        if not self.pipeline_storage or not self.remote_available or not self.drive:
+            return None
+        import hashlib
+        digest = hashlib.md5(Path(path).read_bytes()).hexdigest()
+        cached = getattr(self, '_workflow_status_receipt', None)
+        if cached and cached.get('md5') == digest:
+            return cached
+        media = MediaFileUpload(str(path), mimetype='application/json', resumable=False)
+        if cached:
+            uploaded = self.drive.files().update(fileId=cached['fileId'], media_body=media,
+                supportsAllDrives=True, fields='id,md5Checksum').execute()
+        else:
+            folder = self._ensure_drive_folder('workflow_status', self.drive_folder_id)
+            matches = self.drive.files().list(q=f"name='status.json' and '{folder}' in parents and trashed=false",
+                supportsAllDrives=True, includeItemsFromAllDrives=True, fields='files(id,md5Checksum)').execute().get('files', [])
+            if len(matches) > 1:
+                raise ValueError('Ambiguous workflow status identity')
+            if matches:
+                uploaded = self.drive.files().update(fileId=matches[0]['id'], media_body=media,
+                    supportsAllDrives=True, fields='id,md5Checksum').execute()
+            else:
+                uploaded = self.drive.files().create(body=dict(name='status.json', parents=[folder]),
+                    media_body=media, supportsAllDrives=True, fields='id,md5Checksum').execute()
+        if uploaded.get('md5Checksum') != digest:
+            raise RuntimeError('Workflow status checksum differs')
+        self._workflow_status_receipt = dict(fileId=uploaded['id'], md5=digest,
+            driveId=self.drive_folder_id, path='workflow_status/status.json')
+        return self._workflow_status_receipt
+
     def _upload_file_to_drive(self, component, date_str, local_path, filename, parent_dir="quantum_data_lake"):
         """Upload a file into Google Drive, supporting both quantum_data_lake and quantum_logs."""
         if not self.remote_available or not self.drive: return False
@@ -872,7 +1057,7 @@ class GoogleDriveBackupManager:
         response                =   self._retry_drive(
                                         lambda: self.drive.files().list(
                                             q=query,
-                                            fields="files(id,name,size)",
+                                            fields="files(id,name,size,md5Checksum)",
                                             supportsAllDrives=True,
                                             includeItemsFromAllDrives=True
                                         ).execute()
@@ -885,11 +1070,23 @@ class GoogleDriveBackupManager:
         file_id                 =   existing_file["id"] if existing_file else None
         remote_size             =   int(existing_file.get("size", 0) or 0) if existing_file else 0
         local_size              =   Path(local_path).stat().st_size
+        import hashlib
+        digest = hashlib.md5()
+        with open(local_path, 'rb') as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(chunk)
+        local_md5 = digest.hexdigest()
+        if not hasattr(self, 'workflow_upload_receipts'):
+            self.workflow_upload_receipts = {}
+        self.workflow_upload_receipts.pop(filename, None)
 
         # ---------------------------------------------------------------
         # 5. Skip upload when Drive already has the same or a larger file
         # ---------------------------------------------------------------
         if existing_file and remote_size >= local_size:
+            if existing_file.get('md5Checksum') == local_md5:
+                self.workflow_upload_receipts[filename] = dict(fileId=file_id, md5=local_md5,
+                    driveId=self.drive_folder_id, size=local_size)
             if self.verbose:
                 print(
                     f"☁️ Skipping upload for {parent_dir}/{component}/{filename}: "
@@ -901,10 +1098,13 @@ class GoogleDriveBackupManager:
         # 6. Upload or update
         # ---------------------------------------------------------------
         media           =   MediaFileUpload(local_path, resumable=True)
-        if file_id:         self.drive.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
+        if file_id:         uploaded = self.drive.files().update(fileId=file_id, media_body=media, supportsAllDrives=True, fields='id,md5Checksum,size').execute()
         else:
             metadata    =   {"name": filename, "parents": [parent_folder_id]}
-            self.drive.files().create(body=metadata, media_body=media, supportsAllDrives=True).execute()
+            uploaded = self.drive.files().create(body=metadata, media_body=media, supportsAllDrives=True, fields='id,md5Checksum,size').execute()
+        if uploaded.get('md5Checksum') == local_md5:
+            self.workflow_upload_receipts[filename] = dict(fileId=uploaded['id'], md5=local_md5,
+                driveId=self.drive_folder_id, size=local_size)
         if self.verbose:    print(f"☁️ Uploaded {parent_dir}/{component}/{filename}")
 
         return True
@@ -1162,7 +1362,7 @@ class GoogleDriveBackupManager:
                     files_skipped += 1
                     continue
 
-                print(f"         🔄 Checking Drive status for {filename}...")
+                # print(f"         🔄 Checking Drive status for {filename}...")
                 # Already in Drive?
                 try:
                     self.metadata[component][filename]
@@ -1173,10 +1373,12 @@ class GoogleDriveBackupManager:
                         continue
                     print(f"            → Overwriting (force=True)")
                     files_overwritten += 1
-                except Exception as e:  print(f"            ℹ️ New file, will upload.")
+                except Exception as e:
+                    # print(f"            ℹ️ New file, will upload.")
+                    pass
 
                 try:
-                    print(f"            📤 Uploading...")
+                    # print(f"            📤 Uploading...")
                     self._upload_file_to_drive(
                         component=component,
                         date_str=str(path_obj.parent.name),
@@ -1184,7 +1386,7 @@ class GoogleDriveBackupManager:
                         filename=filename
                     )
                     files_uploaded += 1
-                    print(f"            ✓ Uploaded: {filename}")
+                    # print(f"            ✓ Uploaded: {filename}")
                 except Exception as e:  print(f"            Failed Uploading")
 
             # Component-level summary

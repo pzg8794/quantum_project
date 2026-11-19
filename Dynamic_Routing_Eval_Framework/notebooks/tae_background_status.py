@@ -517,15 +517,19 @@ class BackgroundWorkflowStatus:
         self.timer.daemon = True
         self.timer.start()
 
+    @best_effort_status
     def _heartbeat(self):
         with self.lock:
             if self.closed or self.latest['state'] != 'running':
                 return
-            if self.pending is None or self.pending.done():
-                self._submit([])
-            self._schedule_heartbeat()
+            try:
+                if self.pending is None or self.pending.done():
+                    self._submit([])
+            finally:
+                self._schedule_heartbeat()
 
     @staticmethod
+    @best_effort_status
     def _report_result(future):
         if not future.cancelled() and future.exception() is not None:
             print('TAE_Workflow status publication pending:', future.exception(), flush=True)

@@ -226,7 +226,10 @@ def reconcile_index(store, cohort_store, *, pipeline=None, apply=False, active_p
                 allocator, cohort = active
                 active_group = status['allocators'].get(allocator, {}).get('cohorts', {})
                 previous_cohort = previous_status.get('allocators', {}).get(allocator, {}).get('cohorts', {}).get(cohort)
-                if previous_cohort is None:
+                indexed = cohort_counts.get(allocator, {}).get(cohort, {}).get('threats')
+                if cohort in snapshots and indexed is not None:
+                    active_group[cohort] = dict(previous_cohort or {}, experiments=indexed)
+                elif previous_cohort is None:
                     active_group.pop(cohort, None)
                 else:
                     active_group[cohort] = previous_cohort

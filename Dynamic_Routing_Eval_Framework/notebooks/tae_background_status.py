@@ -3,13 +3,16 @@
 import base64
 from collections import OrderedDict
 import io
+from importlib.util import module_from_spec, spec_from_file_location
 import json
+from pathlib import Path
 import pickle
 import re
 from threading import RLock, Timer
 import time
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
+import warnings
 
 
 def reconcile_cohort_report(document, existing, snapshots=None):
@@ -80,7 +83,7 @@ def completed_runner_models(data, position, expected):
             and 'final_reward' in record}
 
 
-def cohort_progress(document, report, snapshots, runner_models=None):
+def cohort_progress(document, report, snapshots, runner_models=None, *, cohort_counts=None):
     plan = document.get('plan') or {}
     if not all(plan.get(key) for key in ('allocators', 'cohorts', 'threats', 'models', 'runs')):
         return None
@@ -93,6 +96,7 @@ def cohort_progress(document, report, snapshots, runner_models=None):
         states = report.get(allocator, {}).get('cohorts', {})
         for cohort in cohorts:
             done_cohorts += states.get(cohort) == 'done'
+            previous_experiments, previous_models = done_experiments, done_models
             observed = scope.get(cohort, {}).get('threats', {})
             published = snapshots.get(cohort, {})
             for threat in threats:
@@ -105,6 +109,10 @@ def cohort_progress(document, report, snapshots, runner_models=None):
                     model_files.update((runner_models or {}).get((cohort, allocator, threat, position), ()))
                     done_models += sum(saved.get('models', {}).get(model, {}).get('state') == 'done'
                                        or model in model_files for model in models)
+            if cohort_counts is not None:
+                cohort_counts.setdefault(allocator, {})[cohort] = dict(
+                    experiments=dict(current=done_experiments - previous_experiments, expected=len(threats) * runs),
+                    models=dict(current=done_models - previous_models, expected=len(threats) * runs * len(models)))
         done_allocators += all(states.get(cohort) == 'done' for cohort in cohorts)
     cohort_count = len(allocators) * len(cohorts)
     experiment_count = cohort_count * len(threats) * runs
@@ -113,15 +121,23 @@ def cohort_progress(document, report, snapshots, runner_models=None):
         ('experiments', done_experiments, experiment_count), ('models', done_models, experiment_count * len(models)))}
 
 
-def reconcile_index(store, cohort_store, *, pipeline=None, apply=False):
+def reconcile_index(store, cohort_store, *, pipeline=None, apply=False, active_progress_only=False):
+    if active_progress_only and pipeline is None:
+        raise ValueError('An explicit pipeline is required for active progress repair')
     head = store.api('git/ref/heads/main')['object']['sha']
     saved = store.api('contents/index.json?ref=' + head)
     index = json.loads(base64.b64decode(saved['content']))
+    original = json.loads(base64.b64decode(saved['content']))
     cohort_index = cohort_store.api('contents/index.json?ref=main')
     cohort_pipelines = json.loads(base64.b64decode(cohort_index['content']))['pipelines']
 
     def reconcile(item):
         identity, entry = item
+        runtime = entry.get('runnerStatus') or {}
+        running = runtime.get('state') == 'running'
+        active = runtime.get('allocator'), runtime.get('cohort')
+        if running and not all(active):
+            return identity, 0, False
         pin = entry['version']
         if not re.fullmatch(r'[a-f0-9]{40}', pin):
             raise ValueError('Invalid workflow pin')
@@ -149,6 +165,8 @@ def reconcile_index(store, cohort_store, *, pipeline=None, apply=False):
             models = set(plan.get('models') or ())
             for experiment, record in snapshot['experiments'].items():
                 allocator, threat, position_text = experiment.split('/')
+                if running and not active_progress_only and (allocator, cohort) == active:
+                    continue
                 position = int(position_text)
                 reference = record.get('state')
                 if (not reference or not models or allocator not in (plan.get('allocators') or ())
@@ -165,30 +183,108 @@ def reconcile_index(store, cohort_store, *, pipeline=None, apply=False):
                 if not 0 < reference['size'] <= 50 * 1024**2:
                     raise ValueError('Indexed runner checkpoint has an invalid size')
                 if reader is None:
-                    from p155_github_checkpoint_store import GitHubCheckpointStore
-                    reader = GitHubCheckpointStore(cohort_store.repository)
+                    spec = spec_from_file_location('tae_checkpoint_reader',
+                        Path(__file__).with_name('p155_github_checkpoint_store.py'))
+                    helper = module_from_spec(spec)
+                    spec.loader.exec_module(helper)
+                    reader = helper.GitHubCheckpointStore(cohort_store.repository)
                 data = reader.read(commit, reference['path'], reference['size'], reference['sha256'])
-                runner_models[cohort, allocator, threat, position] = completed_runner_models(data, position, models)
+                try:
+                    runner_models[cohort, allocator, threat, position] = completed_runner_models(data, position, models)
+                except (pickle.UnpicklingError, EOFError, KeyError):
+                    warnings.warn(f'{identity} {cohort}/{experiment}: model results could not be read from the saved checkpoint',
+                                  RuntimeWarning)
         previous = entry.get('allocators', {})
         report = reconcile_cohort_report(document, previous, snapshots)
         counts = sum(len(value['cohorts']) for value in report.values())
-        progress = cohort_progress(document, report, snapshots, runner_models)
-        changed = report != previous or (progress is not None and entry.get('progress') != progress)
+        cohort_counts = {}
+        progress = cohort_progress(document, report, snapshots, runner_models, cohort_counts=cohort_counts)
+        previous_status = entry.get('pipelineStatus') or {}
+        status = {**previous_status}
+        if progress is not None:
+            status['allocators'] = {allocator: dict(cohorts={
+                cohort: dict(status=state, progress=cohort_counts.get(allocator, {}).get(cohort, {}).get('experiments'),
+                             modelProgress=cohort_counts.get(allocator, {}).get(cohort, {}).get('models'))
+                for cohort, state in group['cohorts'].items()}) for allocator, group in report.items()}
+            for key, name in (('allocators', 'allocator'), ('cohorts', 'cohort')):
+                count = progress[key]
+                status[name] = dict(previous_status.get(name) or {}, current=count['completed'], expected=count['expected'])
+            positions = {**(previous_status.get('runPositions') or {})}
+            for key, name in (('experiments', 'experiment'), ('models', 'model')):
+                count = progress[key]
+                positions[name] = dict(positions.get(name) or {}, current=count['completed'], expected=count['expected'])
+            status['runPositions'] = positions
+        if running:
+            if progress is None:
+                return identity, counts, False
+            if not active_progress_only:
+                allocator, cohort = active
+                active_group = status['allocators'].get(allocator, {}).get('cohorts', {})
+                previous_cohort = previous_status.get('allocators', {}).get(allocator, {}).get('cohorts', {}).get(cohort)
+                if previous_cohort is None:
+                    active_group.pop(cohort, None)
+                else:
+                    active_group[cohort] = previous_cohort
+                active_counts = cohort_counts.get(allocator, {}).get(cohort, {})
+                for category, field, name in (('experiments', 'progress', 'experiment'),
+                                              ('models', 'modelProgress', 'model')):
+                    saved_count = (previous_cohort or {}).get(field)
+                    if saved_count and category in active_counts:
+                        status['runPositions'][name]['current'] += saved_count['current'] - active_counts[category]['current']
+                    else:
+                        old_count = (previous_status.get('runPositions') or {}).get(name)
+                        status['runPositions'][name]['current'] = (old_count or {}).get('current')
+            else:
+                for allocator, group in status['allocators'].items():
+                    for cohort, detail in group['cohorts'].items():
+                        saved_state = previous.get(allocator, {}).get('cohorts', {}).get(cohort)
+                        if saved_state is not None:
+                            detail['status'] = saved_state
+            changed = status != previous_status
+            if changed:
+                entry['pipelineStatus'] = status
+            return identity, counts, changed
+        changed = report != previous or status != previous_status or (progress is not None and 'progress' in entry)
         if report != previous:
             entry['allocators'] = report
         if progress is not None:
-            entry['progress'] = progress
+            entry['pipelineStatus'] = status
+            entry.pop('progress', None)
         return identity, counts, changed
 
     with ThreadPoolExecutor(max_workers=4) as workers:
         selected = index.items() if pipeline is None else [(pipeline, index[pipeline])]
         results = list(workers.map(reconcile, selected))
     if apply and any(changed for _, _, changed in results):
-        store.api('contents/index.json', {
-            'message': 'Reconcile allocator and cohort reports from pinned workflows',
-            'sha': saved['sha'], 'branch': 'main',
-            'content': base64.b64encode(json.dumps(index, sort_keys=True).encode()).decode(),
-        }, method='PUT')
+        latest = store.api('contents/index.json?ref=main')
+        merged = json.loads(base64.b64decode(latest['content']))
+        def unchanged_scope(identity):
+            before, current = original[identity], merged.get(identity)
+            if before == current:
+                return True
+            if current is None or active_progress_only:
+                return False
+            old_heartbeat = before.get('runnerStatus') or {}
+            new_heartbeat = current.get('runnerStatus') or {}
+            scope = ('heartbeatKey', 'state', 'allocator', 'cohort')
+            return (old_heartbeat.get('state') == 'running'
+                    and all(old_heartbeat.get(key) == new_heartbeat.get(key) for key in scope)
+                    and all(before.get(key) == current.get(key)
+                            for key in (before.keys() | current.keys()) - {'runnerStatus'}))
+
+        results = [(identity, count, changed and unchanged_scope(identity))
+                   for identity, count, changed in results]
+        for identity, _, changed in results:
+            if changed:
+                if 'runnerStatus' in merged[identity]:
+                    index[identity]['runnerStatus'] = merged[identity]['runnerStatus']
+                merged[identity] = index[identity]
+        if any(changed for _, _, changed in results):
+            store.api('contents/index.json', {
+                'message': 'Reconcile allocator and cohort reports from pinned workflows',
+                'sha': latest['sha'], 'branch': 'main',
+                'content': base64.b64encode(json.dumps(merged, sort_keys=True).encode()).decode(),
+            }, method='PUT')
     return results
 
 

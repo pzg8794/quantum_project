@@ -842,6 +842,16 @@ class LocalBackupManager(GoogleDriveBackupManager):
             return None
     
     def init_logging_redirect(self, evaluator):
+        try:
+            return self._init_logging_redirect(evaluator)
+        except Exception as error:
+            try:
+                print(f'Log setup pending: {error}')
+            except Exception:
+                pass
+            return None
+
+    def _init_logging_redirect(self, evaluator):
         # if file_name is None:
         log_day = f"{datetime.now().strftime('%Y%m%d')}"
         self.quantum_logs_file_name = f"{evaluator.configs.log_name}_{log_day}_log.txt"
@@ -1278,18 +1288,28 @@ class TeeStream:
         self.streams = streams
 
     def write(self, message):
+        failures = []
+        working = []
         for s in self.streams:
             try:
                 s.write(message)
                 s.flush()
-            except (IOError, ValueError):
-                pass  # Ignore broken streams
+                working.append(s)
+            except Exception as error:
+                failures.append(error)
+        if failures and working and not getattr(self, '_warned', False):
+            self._warned = True
+            try:
+                working[0].write(f'Log output pending: {failures[0]}\n')
+            except Exception:
+                pass
+        return len(message)
     
     def flush(self):
         for s in self.streams:
             try:
                 s.flush()
-            except:
+            except Exception:
                 pass
     
     def __enter__(self):

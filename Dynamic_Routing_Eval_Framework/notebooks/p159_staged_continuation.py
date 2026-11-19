@@ -66,9 +66,11 @@ class SharedStagingArchive(ExperimentArchive):
         return reference
 
     def _handoff(self, key, checkpoint, models, evaluator, *, log=None):
+        if getattr(self, 'log_stream', None) is None:
+            return super()._handoff(key, checkpoint, models, evaluator)
         try:
             self.log_stream.flush()
-        except OSError as error:
+        except (OSError, ValueError) as error:
             print(f'Log backup pending for {key}: {error!r}', flush=True)
             return super()._handoff(key, checkpoint, models, evaluator)
         return super()._handoff(key, checkpoint, models, evaluator, log=self.log_path)
@@ -77,16 +79,46 @@ class SharedStagingArchive(ExperimentArchive):
 class NotebookLog:
     def __init__(self, notebook, file):
         self.notebook, self.file = notebook, file
+        self.failed = {name for name in ('notebook', 'file') if getattr(self, name) is None}
+
+    def _emit(self, operation, *args):
+        for name in ('notebook', 'file'):
+            if name in self.failed:
+                continue
+            try:
+                getattr(getattr(self, name), operation)(*args)
+            except Exception as error:
+                self.failed.add(name)
+                other = self.file if name == 'notebook' else self.notebook
+                try:
+                    other.write(f'Log output pending ({name}): {error}\n')
+                except Exception:
+                    pass
 
     def write(self, content):
-        self.notebook.write(content)
-        self.file.write(content)
+        self._emit('write', content)
         self.flush()
         return len(content)
 
     def flush(self):
-        self.notebook.flush()
-        self.file.flush()
+        self._emit('flush')
+
+
+@contextlib.contextmanager
+def optional_log(open_log, *args, **kwargs):
+    stream = None
+    try:
+        stream = open_log(*args, **kwargs)
+    except Exception as error:
+        NotebookLog(sys.stdout, None).write(f'Log capture pending: {error}\n')
+    try:
+        yield stream
+    finally:
+        if stream is not None:
+            try:
+                stream.close()
+            except Exception as error:
+                NotebookLog(sys.stdout, None).write(f'Log cleanup pending: {error}\n')
 
 
 def run_continuation():
@@ -177,7 +209,7 @@ def continue_after_eight():
     scenarios = {name: name for name in settings['threats']}
     os.environ.update(DAQR_MODEL_MAX_WORKERS='4', DAQR_RESUME_ALLOW_DRIVE_DOWNLOADS='0')
     native_stdout = sys.stdout
-    with dashboard_log.open('a', encoding='utf-8') as live:
+    with optional_log(dashboard_log.open, 'a', encoding='utf-8') as live:
         for allocator_name in settings['allocators']:
             for base_cap in (False, True):
                 for scale in settings['scales']:
@@ -222,11 +254,13 @@ def continue_after_eight():
                                 print(f'{key}: skipped completed experiment with missing checkpoint',
                                       file=NotebookLog(native_stdout, live))
                                 continue
-                            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=root, prefix='experiment-log-') as experiment_log:
-                                archive.log_path, archive.log_stream = Path(experiment_log.name), experiment_log
+                            with optional_log(tempfile.NamedTemporaryFile, mode='w', encoding='utf-8',
+                                              dir=root, prefix='experiment-log-') as experiment_log:
+                                archive.log_path = Path(experiment_log.name) if experiment_log else None
+                                archive.log_stream = experiment_log
                                 with contextlib.redirect_stdout(NotebookLog(NotebookLog(native_stdout, live), experiment_log)):
                                     evaluator.run_experiment(exp_no=position-1)
-                                    print(f'{key}: checkpoint, log, and evaluator verified remotely.')
+                                    print(f'{key}: checkpoint and evaluator verified remotely.')
                     if all(set(evaluator.env_experiments[name]) == set(range(1, 11)) for name in scenarios):
                         evaluator.calculate_scenarios_performance()
                     else:

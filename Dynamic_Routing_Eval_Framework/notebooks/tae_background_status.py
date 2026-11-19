@@ -2,6 +2,7 @@
 
 import base64
 from collections import OrderedDict
+from functools import wraps
 import io
 from importlib.util import module_from_spec, spec_from_file_location
 import json
@@ -13,6 +14,19 @@ import time
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
 import warnings
+
+
+def best_effort_status(function):
+    @wraps(function)
+    def report(*args, **kwargs):
+        try:
+            return function(*args, **kwargs)
+        except Exception as error:
+            try:
+                print('TAE_Workflow status publication pending:', error, flush=True)
+            except Exception:
+                pass
+    return report
 
 
 def reconcile_cohort_report(document, existing, snapshots=None):
@@ -419,6 +433,7 @@ class BackgroundWorkflowStatus:
     def __enter__(self):
         return self
 
+    @best_effort_status
     def start(self, allocator, cohort):
         if self.active == (allocator, cohort):
             return
@@ -429,6 +444,7 @@ class BackgroundWorkflowStatus:
         self.completed = None
         self.active = (allocator, cohort)
 
+    @best_effort_status
     def finish_cohort(self, *, complete):
         if complete:
             self.completed = self.active
@@ -439,11 +455,14 @@ class BackgroundWorkflowStatus:
     def __exit__(self, error_type, error, traceback):
         self.finish_run(success=error is None)
 
+    @best_effort_status
     def finish_run(self, *, success):
-        if self.active:
-            final = 'done' if success and not self.incomplete and self.completed else 'stopped'
-            self.report(*self.active, state=final, completed=self.completed)
-        self.close()
+        try:
+            if self.active:
+                final = 'done' if success and not self.incomplete and self.completed else 'stopped'
+                self.report(*self.active, state=final, completed=self.completed)
+        finally:
+            self.close()
 
     def start_scope(self, config):
         self.start(str(config.allocator), f"S{float(config.scale):g}{'Tb' if config.base_capacity else 'T'}")
@@ -511,6 +530,7 @@ class BackgroundWorkflowStatus:
         if not future.cancelled() and future.exception() is not None:
             print('TAE_Workflow status publication pending:', future.exception(), flush=True)
 
+    @best_effort_status
     def close(self):
         with self.lock:
             self.closed = True

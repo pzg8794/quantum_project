@@ -790,6 +790,16 @@ class TAEWorkflow:
         return self.write_live_status()
 
     def write_live_status(self, synced=False):
+        try:
+            return self._write_live_status(synced)
+        except Exception as error:
+            try:
+                print('TAE local status publication pending:', error)
+            except Exception:
+                pass
+            return None
+
+    def _write_live_status(self, synced=False):
         runtime = getattr(self, 'runtime', None)
         if runtime is not None:
             self.document['runtime'] = copy.deepcopy(runtime)
@@ -1023,6 +1033,8 @@ def persist_status(tracker, manager):
     tracker.ensure_source()
     tracker.document.setdefault('collected', {}).update(copy.deepcopy(getattr(manager, 'workflow_upload_receipts', {})))
     path = tracker.write_live_status()
+    if path is None:
+        return
     receipt = manager.upload_workflow_status(path)
     if not receipt:
         raise RuntimeError('Workflow status upload pending')

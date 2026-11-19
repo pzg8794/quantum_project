@@ -99,7 +99,9 @@ def cohort_progress(document, report, snapshots, runner_models=None, *, cohort_c
             previous_experiments, previous_models = done_experiments, done_models
             observed = scope.get(cohort, {}).get('threats', {})
             published = snapshots.get(cohort, {})
+            threat_counts = {}
             for threat in threats:
+                previous_threat = done_experiments
                 positions = observed.get(threat, {}).get('experiments', {})
                 for position in range(1, runs + 1):
                     saved = positions.get(str(position), {})
@@ -109,8 +111,10 @@ def cohort_progress(document, report, snapshots, runner_models=None, *, cohort_c
                     model_files.update((runner_models or {}).get((cohort, allocator, threat, position), ()))
                     done_models += sum(saved.get('models', {}).get(model, {}).get('state') == 'done'
                                        or model in model_files for model in models)
+                threat_counts[threat] = dict(current=done_experiments - previous_threat, expected=runs)
             if cohort_counts is not None:
                 cohort_counts.setdefault(allocator, {})[cohort] = dict(
+                    threats=threat_counts,
                     experiments=dict(current=done_experiments - previous_experiments, expected=len(threats) * runs),
                     models=dict(current=done_models - previous_models, expected=len(threats) * runs * len(models)))
         done_allocators += all(states.get(cohort) == 'done' for cohort in cohorts)
@@ -204,7 +208,8 @@ def reconcile_index(store, cohort_store, *, pipeline=None, apply=False, active_p
         if progress is not None:
             status['allocators'] = {allocator: dict(cohorts={
                 cohort: dict(status=state, progress=cohort_counts.get(allocator, {}).get(cohort, {}).get('experiments'),
-                             modelProgress=cohort_counts.get(allocator, {}).get(cohort, {}).get('models'))
+                             modelProgress=cohort_counts.get(allocator, {}).get(cohort, {}).get('models'),
+                             experiments=cohort_counts.get(allocator, {}).get(cohort, {}).get('threats'))
                 for cohort, state in group['cohorts'].items()}) for allocator, group in report.items()}
             for key, name in (('allocators', 'allocator'), ('cohorts', 'cohort')):
                 count = progress[key]
@@ -288,7 +293,49 @@ def reconcile_index(store, cohort_store, *, pipeline=None, apply=False, active_p
     return results
 
 
-def publish_cohort_event(store, event):
+def reported_experiments(store, cohort_store, pipeline, entry, scopes):
+    def read(client, endpoint):
+        return json.loads(base64.b64decode(client.api(endpoint)['content']))
+
+    document = read(store, 'contents/workflow.json?ref=' + entry['version'])
+    if document.get('pipeline') != pipeline:
+        raise ValueError('Workflow identity differs')
+    plan = document.get('plan') or {}
+    runs, threats = plan.get('runs'), plan.get('threats')
+    if type(runs) is not int or runs < 1 or not threats:
+        return {}
+    key = 'pipeline-' + pipeline.split('_')[1]
+    index = read(cohort_store, 'contents/index.json?ref=main')
+    registered = index['pipelines'].get(key, {})
+    snapshots = {}
+    result = {}
+    for allocator, cohort in scopes:
+        if allocator not in (plan.get('allocators') or ()) or cohort not in (plan.get('cohorts') or ()):
+            continue
+        if cohort not in snapshots:
+            reference = registered.get('cohorts', {}).get(cohort)
+            snapshots[cohort] = {}
+            if reference:
+                commit, tag = reference['commit'], reference['tag']
+                if (not re.fullmatch(r'[a-f0-9]{40}', commit)
+                        or cohort_store.api('git/ref/tags/' + tag)['object']['sha'] != commit):
+                    raise ValueError('Cohort tag does not match its pinned commit')
+                snapshot = read(cohort_store, 'contents/run.json?ref=' + commit)
+                if (snapshot['pipeline'], snapshot['execution'], snapshot['cohort']) != (key, registered['execution'], cohort):
+                    raise ValueError('Cohort snapshot identity differs')
+                snapshots[cohort] = snapshot['experiments']
+        saved = document.get('allocators', {}).get(allocator, {}).get('cohorts', {}).get(cohort, {}).get('threats', {})
+        published = snapshots[cohort]
+        result[allocator, cohort] = {
+            threat: dict(current=sum(
+                saved.get(threat, {}).get('experiments', {}).get(str(position), {}).get('state') == 'done'
+                or bool(published.get(f'{allocator}/{threat}/{position}', {}).get('state'))
+                for position in range(1, runs + 1)), expected=runs)
+            for threat in threats}
+    return result
+
+
+def publish_cohort_event(store, event, *, cohort_store=None):
     pipeline = event['pipeline']
     if not re.fullmatch(r'Pipeline_[1-9][0-9]*', pipeline):
         raise ValueError('A registered pipeline ID is required')
@@ -306,10 +353,23 @@ def publish_cohort_event(store, event):
             raise RuntimeError('Another execution owns the running workflow entry')
         if owner == event['heartbeatKey'] and runtime.get('sequence', -1) >= event['sequence']:
             return
+        experiment_counts = {}
+        if cohort_store is not None:
+            try:
+                scopes = [(allocator, cohort) for allocator, cohort, _ in event['cohorts']]
+                experiment_counts = reported_experiments(store, cohort_store, pipeline, entry, scopes)
+            except (RuntimeError, ValueError, KeyError, OSError) as error:
+                print(f'{pipeline} experiment progress publication pending: {error}', flush=True)
         for allocator, cohort, state in event['cohorts']:
             report = entry.setdefault('allocators', {}).setdefault(allocator, {}).setdefault('cohorts', {})
             if report.get(cohort) != 'done' or state == 'done':
                 report[cohort] = state
+            counts = experiment_counts.get((allocator, cohort))
+            if counts is not None:
+                detail = entry.setdefault('pipelineStatus', {}).setdefault('allocators', {}).setdefault(
+                    allocator, {}).setdefault('cohorts', {}).setdefault(cohort, {})
+                detail.update(status=report[cohort], experiments=counts,
+                              progress={key: sum(count[key] for count in counts.values()) for key in ('current', 'expected')})
         entry['runnerStatus'] = {key: value for key, value in event.items() if key != 'cohorts'}
         payload = json.dumps(index, sort_keys=True, allow_nan=False).encode()
         try:
@@ -328,7 +388,11 @@ def publish_cohort_event(store, event):
 
 class BackgroundWorkflowStatus:
     def __init__(self, store, pipeline, execution, *, heartbeat_interval=60):
+        from daqr.config.pipeline_backup_index import GitHubBackupIndexStore
+
         self.store = store
+        self.cohort_store = GitHubBackupIndexStore()
+        self.cohort_store.repository = 'pzg8794/tae-cohort-checkpoints'
         self.pipeline = pipeline
         self.execution = execution
         self.runner = uuid4().hex
@@ -422,7 +486,7 @@ class BackgroundWorkflowStatus:
                      runner=self.runner, heartbeatKey=f'{self.pipeline}/{self.runner}',
                      updated=time.time(), heartbeatTimeout=self.heartbeat_interval * 3,
                      cohorts=[(*scope, state) for scope, state in self.changes.items()], **self.latest)
-        self.pending = self.worker.submit(publish_cohort_event, self.store, event)
+        self.pending = self.worker.submit(publish_cohort_event, self.store, event, cohort_store=self.cohort_store)
         self.pending.add_done_callback(self._report_result)
         return self.pending
 

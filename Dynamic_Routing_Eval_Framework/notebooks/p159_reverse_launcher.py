@@ -95,8 +95,8 @@ def main():
         pending = False
         runtime = {}
 
-        def transition(self, *_args):
-            return False
+        def transition(self, _config, _position, state):
+            return state == 'running'
 
     tae_workflow._WORKFLOWS[PIPELINE] = NoStatus()
     experiment_runner.observe_model = model_process_executor.observe_model = lambda *_args: None

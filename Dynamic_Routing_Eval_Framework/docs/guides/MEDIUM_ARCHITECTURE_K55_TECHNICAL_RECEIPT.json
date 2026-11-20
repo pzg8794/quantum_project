@@ -1,0 +1,266 @@
+{
+  "code_runtime": {
+    "commit": "03604df30d1fb3cb345ece8b7bfeef5b2cbaabfe",
+    "imported_diff_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "imported_files": {
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/CMAB.py": "583e3df555f3ba9ff76bd8f64ba08d19657c4c7f2c9af5d6049115069d6020c4",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/__init__.py": "a6094d196ec975ad67e2396ca3f702df8f421d901e2383878dbbbdbe0cd5637f",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/bandits/EXP4.py": "f9de2b1d6a8be100f671ca50204a7f0aed904586b8050bfb3e632f8fdc6bc5a1",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/bandits/EpochGreedy.py": "8a5eb44a7b1fb7ffce5295be92f0bf6e8a563c35ed70d631cca00ea7a050dc51",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/bandits/EpsilonGreedy.py": "aea43f945fcc6cc3f75455bc20ea5622ae72564db402aecc792f24ab702fd4a4",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/bandits/KernelUCB.py": "9076822bde2a470e2f065b0931c61fce043109e67e6858472d8be5ca558b0539",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/bandits/Pursuit.py": "f82cf4c991f3caa980ddcf8a9946f855183e00fa9cb04dc347feaea98ede7339",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/bandits/ThompsonSampling.py": "2f559ae5cd39b6db4d9d4a96d31e1146ae37bb3da7385386c7c4ee6abb5b4aef",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/bandits/__init__.py": "27946382987111041707b375bd956a1630c5c8f61ec821b4a1ed9a6efd61e08e",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/interface/__init__.py": "64727e59f88059044b4ed4f60f6458f62744f9d99230c8ac761fe57033b305ee",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/MABAlgorithms/rl/interface/bandit.py": "12b0749fd2fd2ffb2a62ea22544ca28b99b050697663163451e4d89ac0a8cc6c",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/base_bandit.py": "2b19f0df71468147c5385625bd2052b919ccbdfeafd4b34c22aacf60e8818b09",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/neural_bandits.py": "a2a5bc833e48f7f53068bcbe1f7031f91444046d1fb7355a7b7d2c4285b884ea",
+      "Dynamic_Routing_Eval_Framework/daqr/algorithms/predictive_bandits.py": "03aa407d59642f9b52d66abbaa0c6d7f7ab5a532dd4a0c6dfbdc0372828a6fce",
+      "Dynamic_Routing_Eval_Framework/daqr/campaigns/__init__.py": "af5a64c6874c34a1ce1550bd2d7cb721525033f3d8bb69d1684daa70c5becacc",
+      "Dynamic_Routing_Eval_Framework/daqr/campaigns/medium_runner.py": "c30317b90e3c72ba055d51b18915ae498b4ba6f731e624093a7c925165d6ba57",
+      "Dynamic_Routing_Eval_Framework/daqr/campaigns/medium_spec.py": "ed576745f7f23985f547b62a645d92f284a57994905c713a10edce69566b514e",
+      "Dynamic_Routing_Eval_Framework/daqr/campaigns/medium_trace.py": "369cc902755989c8a4828829bb5749fda6e1970443440e2c3d5a8edcd05035e5",
+      "Dynamic_Routing_Eval_Framework/daqr/config/execution_contract.py": "d1a68ba39ae6d1199965b3f820ca674e960756bd95f81efcd4c6f1fa16e885fc",
+      "Dynamic_Routing_Eval_Framework/daqr/config/experiment_config.py": "09706c78fbf1fc6806d8ba00028ad6f15c0504e3a0b1411f748c8e97d7b23694",
+      "Dynamic_Routing_Eval_Framework/daqr/config/gd_backup_manager.py": "0917cf334628255e5f6ac9e609e3bb3393e063cf67d86910be13ce04ab87d447",
+      "Dynamic_Routing_Eval_Framework/daqr/config/local_backup_manager.py": "b23c2104fa00928da5c09780ede5928207b53ef2df87c2231127096b0152430e",
+      "Dynamic_Routing_Eval_Framework/daqr/config/state_registry.py": "f262747ed4beeca41c6d23c03aa2b397a36a9d1f0f0b94e207f741dd35541e9b",
+      "Dynamic_Routing_Eval_Framework/daqr/core/attack_strategy.py": "b61ec690b55f6e9d8545a6e0eecaa1bb30fa082a703319d80a29f11c1ffbf39e",
+      "Dynamic_Routing_Eval_Framework/daqr/core/event_generators.py": "45c2c3c9ca68aba2865a43b263e80e680b62401ddd0906300a03266b406583f3",
+      "Dynamic_Routing_Eval_Framework/daqr/core/network_environment.py": "0fff9eb53136b5dccd52b54fdbce2c31a13da734f70e7bbe1a5389c215d42f7b",
+      "Dynamic_Routing_Eval_Framework/daqr/core/primary_routes.py": "690c14264c12f0088992485e3fcfe3f9a59a89e174295956acab19f4ee89921c",
+      "Dynamic_Routing_Eval_Framework/daqr/core/quantum_physics.py": "31547251d013466727cac1b478458308e6846515df55dc30151c501145640e05",
+      "Dynamic_Routing_Eval_Framework/daqr/core/qubit_allocator.py": "1ed84b9d0a9f44dab6a23f2c19e4fca97ac17316624c8c50c4e4b331a7bf5bc8",
+      "Dynamic_Routing_Eval_Framework/daqr/core/recorded_environment.py": "843d31b921beca6962270040b8ab9134d781b550e91b20720bc734ca2d6aaa94"
+    },
+    "runtime": {
+      "blas_threads": 1,
+      "deterministic_algorithms": true,
+      "device": "cpu",
+      "machine": "arm64",
+      "packages": {
+        "networkx": "3.5",
+        "numpy": "1.26.4",
+        "pmdarima": "2.0.4",
+        "scikit-learn": "1.3.2",
+        "scipy": "1.11.4",
+        "threadpoolctl": "3.6.0",
+        "torch": "2.8.0"
+      },
+      "platform": "macOS-27.2-arm64-arm-64bit",
+      "python": "3.12.11",
+      "torch_threads": 1
+    }
+  },
+  "config_hash": "bb863272c8c62d32da9c83435e265385d8c48d7c41e4e4cc011fd6bcab67a6ea",
+  "frames": 256,
+  "label": "TECHNICAL COST BENCHMARK — NOT SCIENTIFIC EVIDENCE",
+  "peak_rss_platform_units": 480247808,
+  "resolved_configuration": {
+    "policy": "EXPNeuralUCB",
+    "policy_kwargs": {
+      "beta": 1,
+      "eta_factor": 0.05,
+      "gamma_factor": 0.01,
+      "mode": "hybrid"
+    },
+    "protocol": {
+      "base_seed": 12345,
+      "catalog_version": "primary-catalog-v2",
+      "namespace": "technical-regression-v2",
+      "seed_rule": "sha256-first-four-bytes-big-endian-v1"
+    },
+    "required_run_count": 1,
+    "resolved": {
+      "allocator": {
+        "class": "daqr.core.qubit_allocator.QubitAllocator",
+        "parameters": {
+          "allocated": false,
+          "baseline_allocation": [
+            9,
+            9,
+            9,
+            9
+          ],
+          "exploration_bonus": null,
+          "has_uniform_base": false,
+          "min_qubits_per_route": 1,
+          "num_routes": 4,
+          "testbed": "default",
+          "testbed_config": {},
+          "total_qubits": 36
+        },
+        "source_sha256": "1ed84b9d0a9f44dab6a23f2c19e4fca97ac17316624c8c50c4e4b331a7bf5bc8"
+      },
+      "base_seed": 12345,
+      "blocks": 1,
+      "execution": {
+        "base_horizon": 6000,
+        "execution_kind": "technical_preflight",
+        "horizon": 256,
+        "protocol_namespace": "technical-regression-v2",
+        "scale_points": [
+          1
+        ]
+      },
+      "physics": {
+        "entanglement_success_factor": 100
+      },
+      "policies": {
+        "EXPNeuralUCB": {
+          "class": "daqr.algorithms.neural_bandits.EXPNeuralUCB",
+          "constructor_defaults": {
+            "beta": 1,
+            "capacity": 10000,
+            "eta_factor": 0.05,
+            "gamma_factor": 0.01,
+            "lamb": 1,
+            "mode": "hybrid",
+            "n_experts": 4,
+            "verbose": false
+          },
+          "kwargs": {
+            "beta": 1,
+            "eta_factor": 0.05,
+            "gamma_factor": 0.01,
+            "mode": "hybrid"
+          },
+          "runner_type": "batch",
+          "seed_offset": 500,
+          "source_sha256": "a2a5bc833e48f7f53068bcbe1f7031f91444046d1fb7355a7b7d2c4285b884ea",
+          "trace": {
+            "feedback": "bernoulli-route-continuous-allocation-v2",
+            "privileged": false,
+            "probability_floor": 1e-12
+          }
+        }
+      },
+      "replay": {
+        "anchor": "T_b",
+        "base": 6000,
+        "capacity": 12000,
+        "scale": 2
+      },
+      "required_cells": [
+        {
+          "block": 0,
+          "policy": "EXPNeuralUCB",
+          "scale": 1,
+          "scenario": "NoAttack"
+        }
+      ],
+      "scenarios": {
+        "NoAttack": {
+          "capability": "static",
+          "class": "daqr.core.attack_strategy.NoAttack",
+          "configured": {
+            "parameters": {},
+            "strategy": "none"
+          },
+          "parameters": {
+            "attack_rate": 0
+          },
+          "source_sha256": "b61ec690b55f6e9d8545a6e0eecaa1bb30fa082a703319d80a29f11c1ffbf39e"
+        }
+      },
+      "testbed": {
+        "profile_pool": [
+          [
+            0.0001,
+            0.0001,
+            0.0001
+          ],
+          [
+            0.0001,
+            0.0001,
+            0.00015
+          ],
+          [
+            0.0001,
+            0.0001,
+            0.0002
+          ],
+          [
+            0.0001,
+            0.00015,
+            0.00015
+          ],
+          [
+            0.0001,
+            0.00015,
+            0.0002
+          ],
+          [
+            0.0001,
+            0.0002,
+            0.0002
+          ],
+          [
+            0.00015,
+            0.00015,
+            0.00015
+          ],
+          [
+            0.00015,
+            0.00015,
+            0.0002
+          ],
+          [
+            0.00015,
+            0.0002,
+            0.0002
+          ],
+          [
+            0.0002,
+            0.0002,
+            0.0002
+          ]
+        ],
+        "topology_family": "layered-primary-form-v1"
+      }
+    },
+    "threat": "NoAttack"
+  },
+  "route_states": [
+    {
+      "K": 55,
+      "T": 53,
+      "optimizer_parameter_states": 0,
+      "optimizer_steps": [],
+      "replay_capacity": 12000,
+      "replay_size": 53
+    },
+    {
+      "K": 55,
+      "T": 65,
+      "optimizer_parameter_states": 4,
+      "optimizer_steps": [
+        20
+      ],
+      "replay_capacity": 12000,
+      "replay_size": 65
+    },
+    {
+      "K": 55,
+      "T": 75,
+      "optimizer_parameter_states": 4,
+      "optimizer_steps": [
+        40
+      ],
+      "replay_capacity": 12000,
+      "replay_size": 75
+    },
+    {
+      "K": 55,
+      "T": 63,
+      "optimizer_parameter_states": 4,
+      "optimizer_steps": [
+        16
+      ],
+      "replay_capacity": 12000,
+      "replay_size": 63
+    }
+  ],
+  "wall_seconds": 5.774626458995044
+}

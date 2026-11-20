@@ -58,6 +58,17 @@ class AllocatorRunner:
         env_flag = env_val not in {"0", "false", "no", "off"}
         return cfg_flag and env_flag
 
+    def set_runtime(self, config, *, phase='cohort', state='running'):
+        from daqr.config.tae_workflow import current_tracker
+        try:
+            tracker = current_tracker(config)
+            if tracker is not None:
+                tracker.set_runtime(config, phase=phase, state=state)
+            self.runtime_status_error = None
+        except Exception as error:
+            self.runtime_status_error = str(error)
+            print('Allocator runtime status pending:', error)
+
     def _plots_enabled(self) -> bool:
         """
         Default behavior: ON.
@@ -406,6 +417,7 @@ class AllocatorRunner:
 
     def run_single_evaluator(self, physics_model, scale, experiment_num, physics_params, current_frames, frame_step):
         """Run single experiment with full cleanup."""
+        from daqr.evaluation.legacy_fairness_integration import FairnessIntegrationError
         try:
             # Lazy import keeps AllocatorRunner importable in lightweight test environments.
             from daqr.evaluation.multi_run_evaluator import MultiRunEvaluator
@@ -429,6 +441,7 @@ class AllocatorRunner:
             self.evaluator = MultiRunEvaluator(configs=self.custom_config, base_frames=current_frames, frame_step=frame_step)
             self.evaluator.configs.set_log_name(base_frames=current_frames, frame_step=frame_step)
             self.evaluator.configs.backup_mgr.init_logging_redirect(self.evaluator)
+            self.set_runtime(self.evaluator.configs)
 
             print("⚙ Running evaluation...")
             comparison_results = self.evaluator.test_stochastic_environment(cal_winner=True, parellel=False)
@@ -438,14 +451,26 @@ class AllocatorRunner:
             except Exception as e:
                 print(f"⚠️ Evaluator summary contract check failed: {e}")
             self.evaluator.calculate_scenarios_performance()
+            self.evaluator.calculate_fairness()
             print("✅ Evaluation completed!")
 
             if self._plots_enabled():
                 self._run_robustness_plots(comparison_results)
 
+            self.set_runtime(self.evaluator.configs, phase='cohort-done')
             return True
 
+        except FairnessIntegrationError as error:
+            self.set_runtime(self.evaluator.configs, phase='fairness-error', state='stopped')
+            print(f'Scientific execution completed; fairness remains pending: {error}')
+            return False
+        except KeyboardInterrupt:
+            if self.evaluator is not None:
+                self.set_runtime(self.evaluator.configs, phase='cohort-interrupted', state='stopped')
+            raise
         except Exception as e:
+            if self.evaluator is not None:
+                self.set_runtime(self.evaluator.configs, phase='cohort-error', state='stopped')
             print(f"❌ Error in experiment: {e}")
             traceback.print_exc()
 
@@ -560,7 +585,7 @@ class AllocatorRunner:
                             frame_step=frame_step
                         )
                         if not success:
-                            print(f"⚠️ Experiment failed, continuing...")
+                            print(f"⚠️ Evaluation or fairness incomplete, continuing...")
 
                 # Cleanup after physics model
                 self.allocator_obj = None
